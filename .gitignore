@@ -1,7 +1,10 @@
 # Rust
 /target/
 **/*.rs.bk
-Cargo.lock
+# Cargo.lock IS committed at the workspace root because we ship a binary
+# crate (ogentic-audit-cli). Standard Rust convention; required for
+# cargo-audit / cargo-deny to lock advisory scans against a specific
+# dependency closure rather than re-resolving every run.
 
 # Python
 __pycache__/

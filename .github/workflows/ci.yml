@@ -46,14 +46,11 @@ jobs:
           # Per-OS cache key avoids cross-platform cache pollution.
           key: ${{ matrix.os }}
 
-      # Cargo.lock is .gitignored at the v0.1 bootstrap stage (no binary
-      # release yet). When the CLI binary ships with R1+C1, lock-file
-      # commits land alongside it and `--locked` returns here.
-      - name: cargo build
-        run: cargo build --workspace ${{ env.WORKSPACE_EXCLUDE }} --all-features
+      - name: cargo build (locked)
+        run: cargo build --workspace ${{ env.WORKSPACE_EXCLUDE }} --all-features --locked
 
-      - name: cargo test
-        run: cargo test --workspace ${{ env.WORKSPACE_EXCLUDE }} --all-features
+      - name: cargo test (locked)
+        run: cargo test --workspace ${{ env.WORKSPACE_EXCLUDE }} --all-features --locked
 
   # ----------------------------------------------------------------
   # Rust: clippy + rustfmt. Uses stable; MSRV is exercised by rust-test.
