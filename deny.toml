@@ -1,0 +1,61 @@
+# cargo-deny configuration for ogentic-audit.
+# https://embarkstudios.github.io/cargo-deny/
+
+[graph]
+# Lint the host build target plus the major OS targets we ship to.
+all-features = true
+targets = [
+    { triple = "x86_64-unknown-linux-gnu" },
+    { triple = "aarch64-unknown-linux-gnu" },
+    { triple = "x86_64-apple-darwin" },
+    { triple = "aarch64-apple-darwin" },
+    { triple = "x86_64-pc-windows-msvc" },
+]
+
+[advisories]
+version = 2
+# Crates.io advisory database. We treat any unfixed advisory in the
+# dependency closure as a build-breaker.
+db-path = "$CARGO_HOME/advisory-db"
+db-urls = ["https://github.com/RustSec/advisory-db"]
+yanked = "deny"
+
+[licenses]
+version = 2
+# Permissive licenses we accept in the dependency closure. The library
+# itself is Apache-2.0; we allow common compatible licenses so we don't
+# block on transitive dependencies.
+allow = [
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "MIT",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Unicode-DFS-2016",
+    "Unicode-3.0",
+    "Zlib",
+    "MPL-2.0",
+    "CC0-1.0",
+    "0BSD",
+]
+confidence-threshold = 0.9
+# License-detection exceptions for crates whose detection confidence
+# is low but whose licensing is well-known. Keep this list short and
+# justified.
+[[licenses.exceptions]]
+name = "ring"
+allow = ["ISC", "MIT", "OpenSSL"]
+
+[bans]
+# Block: an upstream is yanked or unmaintained but a transitive dep
+# still pulls it in. "warn" today, "deny" once we have a stable Rust
+# core (post-R1).
+multiple-versions = "warn"
+wildcards = "deny"
+
+[sources]
+# Only crates.io. Git deps need explicit allow-listing.
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

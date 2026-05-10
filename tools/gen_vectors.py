@@ -26,7 +26,6 @@ import argparse
 import hashlib
 import hmac
 import json
-import os
 import re
 import struct
 import sys
@@ -272,9 +271,7 @@ def parse_hex(s: str, expected_bytes: int | None = None) -> bytes:
         s = s[2:]
     out = bytes.fromhex(s)
     if expected_bytes is not None and len(out) != expected_bytes:
-        raise ValueError(
-            f"expected {expected_bytes}-byte hex string, got {len(out)} bytes"
-        )
+        raise ValueError(f"expected {expected_bytes}-byte hex string, got {len(out)} bytes")
     return out
 
 
@@ -340,9 +337,7 @@ def _resolve_payload(template: Any, i: int) -> Any:
     return template
 
 
-_ISO_RE = re.compile(
-    r"^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})\.(\d{3})Z$"
-)
+_ISO_RE = re.compile(r"^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})\.(\d{3})Z$")
 
 
 def _iso_to_ms(s: str) -> int:
@@ -369,9 +364,7 @@ def write_vector(spec: dict[str, Any]) -> tuple[list[WrittenSegment], dict[str, 
     session_id = parse_hex(spec["session_id_hex"], SESSION_ID_LEN)
     config_in = spec.get("writer_config") or {}
     cfg = WriterConfig(
-        segment_size_bytes=int(
-            config_in.get("segment_size_bytes", DEFAULT_SEGMENT_SIZE_BYTES)
-        ),
+        segment_size_bytes=int(config_in.get("segment_size_bytes", DEFAULT_SEGMENT_SIZE_BYTES)),
         finalize_on_rollover=bool(config_in.get("finalize_on_rollover", True)),
     )
     key_id = derive_key_id(key)
@@ -380,9 +373,7 @@ def write_vector(spec: dict[str, Any]) -> tuple[list[WrittenSegment], dict[str, 
     # First, build segments.
     segments: list[WrittenSegment] = []
     seg_index = 0
-    seg_records_in: list[dict[str, Any]] = []  # records targeted at the current segment
     record_id_in_segment = 0
-    prev_hmac: bytes | None = None  # tracks chain across records within current segment
 
     def open_segment(idx: int, prev_final: bytes) -> WrittenSegment:
         header = build_segment_header(idx, key_id, prev_final)
@@ -396,9 +387,7 @@ def write_vector(spec: dict[str, Any]) -> tuple[list[WrittenSegment], dict[str, 
 
     def append_record(seg: WrittenSegment, rec_input: dict[str, Any]) -> tuple[bytes, int]:
         nonlocal record_id_in_segment
-        prev_hash_for_record = (
-            seg.chain_start if not seg.records else seg.records[-1].hmac
-        )
+        prev_hash_for_record = seg.chain_start if not seg.records else seg.records[-1].hmac
         rec = Record(
             record_id=record_id_in_segment,
             prev_hash=prev_hash_for_record,
@@ -472,9 +461,7 @@ def write_vector(spec: dict[str, Any]) -> tuple[list[WrittenSegment], dict[str, 
     return segments, {"files": files, "chain": chain}
 
 
-def _estimate_record_size(
-    rec_input: dict[str, Any], key_id: bytes, session_id: bytes
-) -> int:
+def _estimate_record_size(rec_input: dict[str, Any], key_id: bytes, session_id: bytes) -> int:
     """Encode a candidate record with placeholder prev_hash + record_id 0 to
     estimate its payload length. The actual encoded length is independent of
     those two fields' values (they are fixed-length: u64 record_id ≤ 9 bytes,
@@ -529,9 +516,7 @@ def _append_segment_finalized(
 
 
 def _materialize_files(segments: list[WrittenSegment]) -> dict[str, bytes]:
-    return {
-        f"audit-{seg.segment_index:04d}.cbor": seg.file_bytes for seg in segments
-    }
+    return {f"audit-{seg.segment_index:04d}.cbor": seg.file_bytes for seg in segments}
 
 
 def _apply_post_process(
@@ -556,11 +541,7 @@ def _apply_post_process(
         rec = next(r for r in seg.records if r.record_id == rec_id)
         region = pp.get("region", "payload")
         byte_offset = int(pp["byte_in_region"])
-        xor = (
-            int(pp.get("xor", "0xff"), 16)
-            if isinstance(pp.get("xor"), str)
-            else int(pp["xor"])
-        )
+        xor = int(pp.get("xor", "0xff"), 16) if isinstance(pp.get("xor"), str) else int(pp["xor"])
         if region == "payload":
             absolute = rec.file_offset + 4 + byte_offset
             limit = rec.file_offset + 4 + len(rec.payload_bytes)
@@ -576,9 +557,7 @@ def _apply_post_process(
         else:
             raise VectorBuildError(f"unknown region {region!r}")
         if absolute >= limit:
-            raise VectorBuildError(
-                f"byte_in_region {byte_offset} out of range for region {region}"
-            )
+            raise VectorBuildError(f"byte_in_region {byte_offset} out of range for region {region}")
         name = f"audit-{seg_idx:04d}.cbor"
         data = bytearray(files[name])
         data[absolute] ^= xor & 0xFF

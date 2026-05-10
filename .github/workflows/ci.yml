@@ -1,0 +1,302 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Cancel old runs on the same PR; main pushes always run to completion.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  RUST_BACKTRACE: 1
+  # `python/ogentic-audit-py` is a PyO3 cdylib — built via maturin in the
+  # python-test job, not via `cargo test --workspace`. Excluded from
+  # workspace-wide cargo invocations on jobs that don't install Python.
+  WORKSPACE_EXCLUDE: --exclude ogentic-audit-py
+
+jobs:
+  # ----------------------------------------------------------------
+  # Rust: build + test on stable + MSRV across macOS, Linux, Windows.
+  # ----------------------------------------------------------------
+  rust-test:
+    name: rust-test (${{ matrix.os }} / ${{ matrix.toolchain }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        toolchain: [stable, "1.85"]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ matrix.toolchain }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: rust-test-${{ matrix.toolchain }}
+          # Per-OS cache key avoids cross-platform cache pollution.
+          key: ${{ matrix.os }}
+
+      # Cargo.lock is .gitignored at the v0.1 bootstrap stage (no binary
+      # release yet). When the CLI binary ships with R1+C1, lock-file
+      # commits land alongside it and `--locked` returns here.
+      - name: cargo build
+        run: cargo build --workspace ${{ env.WORKSPACE_EXCLUDE }} --all-features
+
+      - name: cargo test
+        run: cargo test --workspace ${{ env.WORKSPACE_EXCLUDE }} --all-features
+
+  # ----------------------------------------------------------------
+  # Rust: clippy + rustfmt. Uses stable; MSRV is exercised by rust-test.
+  # ----------------------------------------------------------------
+  rust-lint:
+    name: rust-lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: rust-lint
+
+      - name: cargo fmt --check
+        run: cargo fmt --all -- --check
+
+      - name: cargo clippy
+        run: cargo clippy --workspace ${{ env.WORKSPACE_EXCLUDE }} --all-targets --all-features -- -D warnings
+
+  # ----------------------------------------------------------------
+  # Rust: cargo-audit (advisory DB) + cargo-deny (licenses + advisories
+  # + sources + bans). Runs daily on `main` via the schedule below so
+  # newly-published advisories get noticed even without a PR.
+  # ----------------------------------------------------------------
+  rust-security:
+    name: rust-security
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: cargo audit
+        uses: rustsec/audit-check@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: cargo deny
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          log-level: warn
+          command: check
+          arguments: --all-features
+
+  # ----------------------------------------------------------------
+  # Python: pytest against a maturin-built native extension.
+  # ----------------------------------------------------------------
+  python-test:
+    name: python-test (${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.9", "3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: python-test
+          # The maturin develop step builds against the chosen Python
+          # ABI. abi3-py39 means one wheel per Python is unnecessary,
+          # but the matrix still validates each interpreter loads it.
+          key: py-${{ matrix.python }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+
+      - name: Install build + test deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install maturin pytest
+
+      - name: maturin develop
+        run: maturin develop --release
+
+      - name: pytest
+        run: pytest python/tests -v
+
+  # ----------------------------------------------------------------
+  # Python: ruff lint + format check. Cheap; runs on every push.
+  # ----------------------------------------------------------------
+  python-lint:
+    name: python-lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install "ruff>=0.4"
+
+      - name: ruff check
+        run: ruff check .
+
+      - name: ruff format --check
+        run: ruff format --check .
+
+  # ----------------------------------------------------------------
+  # Python: pip-audit on the build + dev dependency set.
+  # ----------------------------------------------------------------
+  python-security:
+    name: python-security
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      # Audit the dev extras as installed (matches pyproject.toml's
+      # [project.optional-dependencies].dev set). Project runtime deps
+      # are sparse at v0.1; this catches transitive advisories in the
+      # build + test toolchain that would land in user environments
+      # via `pip install ogentic-audit[dev]`.
+      - name: Install dev extras + pip-audit
+        run: |
+          python -m pip install --upgrade pip
+          pip install pip-audit \
+            "pytest>=7.0" "pytest-cov>=4.0" \
+            "ruff>=0.4" "mypy>=1.8" "maturin>=1.5"
+
+      - name: pip-audit (current env)
+        run: pip-audit --strict
+
+  # ----------------------------------------------------------------
+  # Vector conformance: enforce that committed v0.1 golden vectors
+  # are byte-for-byte what the reference generator produces today,
+  # and that cbor2 canonical-form parity still holds (1014 payloads).
+  # This is the load-bearing quality gate while the Rust core hasn't
+  # landed — it's what catches accidental spec drift in PRs that
+  # touch tools/gen_vectors.py or the schema.
+  # ----------------------------------------------------------------
+  vector-conformance:
+    name: vector-conformance
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install blake3 cbor2
+
+      - name: gen_vectors --check (no drift)
+        run: python3 tools/gen_vectors.py --check
+
+      - name: check_cbor_parity (cbor2 round-trip)
+        run: python3 tools/check_cbor_parity.py
+
+  # ----------------------------------------------------------------
+  # Conventional Commits on PR titles. Skipped on push to main since
+  # squash-merge titles are validated at merge time via the PR.
+  # ----------------------------------------------------------------
+  commitlint:
+    name: commitlint
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install commitlint
+        run: |
+          npm install --no-save \
+            @commitlint/cli@^19 \
+            @commitlint/config-conventional@^19
+
+      - name: Lint PR title
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: echo "$PR_TITLE" | npx commitlint --config .commitlintrc.json
+
+      - name: Lint commit messages on the branch
+        run: npx commitlint --config .commitlintrc.json --from origin/${{ github.base_ref }} --to HEAD
+
+  # ----------------------------------------------------------------
+  # Coverage: cargo-llvm-cov for Rust + pytest-cov for Python.
+  # Uploads to Codecov when CODECOV_TOKEN is configured; absence of
+  # the token does not fail the job.
+  #
+  # The 80% gate from OGE-442 is enforced post-v0.1.0 once R1/R2/R3
+  # land real code. While the crates are stubs, coverage is high but
+  # uninformative — the threshold is documented but not enforced yet
+  # (see closeout note on the ticket).
+  # ----------------------------------------------------------------
+  coverage:
+    name: coverage
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: coverage
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov
+
+      - name: Rust coverage
+        run: cargo llvm-cov --workspace ${{ env.WORKSPACE_EXCLUDE }} --all-features --lcov --output-path lcov.info
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install maturin pytest pytest-cov
+
+      - name: maturin develop
+        run: maturin develop --release
+
+      - name: Python coverage
+        run: pytest python/tests --cov=ogentic_audit --cov-report=xml:coverage.xml || true
+
+      - name: Upload to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          files: lcov.info,coverage.xml
+          fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}
+        continue-on-error: true

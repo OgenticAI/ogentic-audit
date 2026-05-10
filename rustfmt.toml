@@ -8,7 +8,10 @@ reorder_imports = true
 reorder_modules = true
 remove_nested_parens = true
 match_block_trailing_comma = true
-trailing_comma = "Vertical"
-trailing_semicolon = true
 use_field_init_shorthand = true
 use_try_shorthand = true
+
+# `trailing_comma = "Vertical"` and `trailing_semicolon = true` were
+# previously listed but are nightly-only and silently ignored on
+# stable. Removed to keep CI logs clean. Reconsider once Rust nightly
+# is wired into a separate matrix entry, or these options stabilize.

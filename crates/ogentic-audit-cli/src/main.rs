@@ -1,7 +1,11 @@
 use clap::{Parser, Subcommand};
 
 #[derive(Debug, Parser)]
-#[command(name = "ogentic-audit", version, about = "Verify, inspect, and export tamper-evident audit logs")]
+#[command(
+    name = "ogentic-audit",
+    version,
+    about = "Verify, inspect, and export tamper-evident audit logs"
+)]
 struct Cli {
     #[command(subcommand)]
     command: Command,
@@ -22,7 +26,7 @@ fn main() -> anyhow::Result<()> {
                 ogentic_audit_core::VERSION,
                 ogentic_audit_core::FORMAT_VERSION
             );
-        }
+        },
     }
     Ok(())
 }

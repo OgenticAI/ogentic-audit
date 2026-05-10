@@ -99,10 +99,7 @@ def main() -> int:
         if skipped_vectors
         else ""
     )
-    print(
-        f"{skip_note}  checked {checked} record payloads "
-        f"across all clean vectors  fails={fails}"
-    )
+    print(f"{skip_note}  checked {checked} record payloads across all clean vectors  fails={fails}")
     return 0 if fails == 0 else 1
 
 
