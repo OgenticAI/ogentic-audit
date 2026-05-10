@@ -1,0 +1,15 @@
+{
+  "expected_verdict": "Verified",
+  "format_version": 1,
+  "key_id_hex": "e528e95798037df410543d9f31e396ecdd458d71b157d6014398bae32fb56c65",
+  "records": [],
+  "segments": [
+    {
+      "chain_start_hex": "48802fa044ab1dfd48d97b582ad1ddbe5fe68a5183a120cbdfd849d51aca358c",
+      "final_hex": "48802fa044ab1dfd48d97b582ad1ddbe5fe68a5183a120cbdfd849d51aca358c",
+      "record_count": 0,
+      "segment": 0
+    }
+  ],
+  "session_id_hex": "00112233445566778899aabbccddeeff"
+}

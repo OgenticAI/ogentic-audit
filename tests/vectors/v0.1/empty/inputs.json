@@ -1,0 +1,11 @@
+{
+  "vector": "empty",
+  "description": "Segment 0 with header only, no records. Verifier returns Verified with final = chain_start_0.",
+  "key_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+  "session_id_hex": "00112233445566778899aabbccddeeff",
+  "writer_config": {
+    "segment_size_bytes": 67108864
+  },
+  "records": [],
+  "expected_verdict": "Verified"
+}

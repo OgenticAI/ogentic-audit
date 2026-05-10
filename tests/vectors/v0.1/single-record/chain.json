@@ -1,0 +1,23 @@
+{
+  "expected_verdict": "Verified",
+  "format_version": 1,
+  "key_id_hex": "e528e95798037df410543d9f31e396ecdd458d71b157d6014398bae32fb56c65",
+  "records": [
+    {
+      "hmac_hex": "470d5142d63eee765aae496780fb8293b27a5346c687231d0ecc3b38452522c2",
+      "payload_len": 167,
+      "prev_hash_hex": "48802fa044ab1dfd48d97b582ad1ddbe5fe68a5183a120cbdfd849d51aca358c",
+      "record_id": 0,
+      "segment": 0
+    }
+  ],
+  "segments": [
+    {
+      "chain_start_hex": "48802fa044ab1dfd48d97b582ad1ddbe5fe68a5183a120cbdfd849d51aca358c",
+      "final_hex": "470d5142d63eee765aae496780fb8293b27a5346c687231d0ecc3b38452522c2",
+      "record_count": 1,
+      "segment": 0
+    }
+  ],
+  "session_id_hex": "00112233445566778899aabbccddeeff"
+}
