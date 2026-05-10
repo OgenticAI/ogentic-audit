@@ -1,0 +1,69 @@
+{
+  "vector": "segment-rollover",
+  "description": "Writer configured with segment_size_bytes = 1024 to force a rollover after a handful of records. Segment 0 ends with a segment.finalized record whose payload.final_hash equals the HMAC of the preceding record. Segment 1's header.prev_final equals segment 0's last HMAC (the segment.finalized record's HMAC). The verifier confirms chain continuity across the rollover and returns Verified.",
+  "key_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+  "session_id_hex": "00112233445566778899aabbccddeeff",
+  "writer_config": {
+    "segment_size_bytes": 1024,
+    "finalize_on_rollover": true
+  },
+  "records": [
+    {
+      "ts_wall": "2026-05-10T12:00:00.000Z",
+      "ts_mono_delta": 0,
+      "actor": "user:david",
+      "event": "vault.unlocked",
+      "schema_version": 1,
+      "payload": { "vault_id": "v-001" }
+    },
+    {
+      "ts_wall": "2026-05-10T12:00:01.000Z",
+      "ts_mono_delta": 1000,
+      "actor": "user:david",
+      "event": "shield.classified",
+      "schema_version": 1,
+      "payload": { "decision": "allow", "rule": "r-12" }
+    },
+    {
+      "ts_wall": "2026-05-10T12:00:02.000Z",
+      "ts_mono_delta": 2000,
+      "actor": "user:david",
+      "event": "shield.classified",
+      "schema_version": 1,
+      "payload": { "decision": "deny", "rule": "r-7" }
+    },
+    {
+      "ts_wall": "2026-05-10T12:00:03.000Z",
+      "ts_mono_delta": 3000,
+      "actor": "user:david",
+      "event": "shield.classified",
+      "schema_version": 1,
+      "payload": { "decision": "allow", "rule": "r-12" }
+    },
+    {
+      "ts_wall": "2026-05-10T12:00:04.000Z",
+      "ts_mono_delta": 4000,
+      "actor": "user:david",
+      "event": "shield.classified",
+      "schema_version": 1,
+      "payload": { "decision": "allow", "rule": "r-3" }
+    },
+    {
+      "ts_wall": "2026-05-10T12:00:05.000Z",
+      "ts_mono_delta": 5000,
+      "actor": "user:david",
+      "event": "shield.classified",
+      "schema_version": 1,
+      "payload": { "decision": "deny", "rule": "r-9" }
+    },
+    {
+      "ts_wall": "2026-05-10T12:00:06.000Z",
+      "ts_mono_delta": 6000,
+      "actor": "user:david",
+      "event": "vault.locked",
+      "schema_version": 1,
+      "payload": { "vault_id": "v-001" }
+    }
+  ],
+  "expected_verdict": "Verified"
+}

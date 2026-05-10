@@ -1,0 +1,22 @@
+{
+  "vector": "single-record",
+  "description": "Segment 0 with header + one record. Smallest non-empty chain: record.prev_hash == chain_start_0, record.hmac == HMAC(key, payload_bytes).",
+  "key_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+  "session_id_hex": "00112233445566778899aabbccddeeff",
+  "writer_config": {
+    "segment_size_bytes": 67108864
+  },
+  "records": [
+    {
+      "ts_wall": "2026-05-10T12:00:00.000Z",
+      "ts_mono_delta": 0,
+      "actor": "user:david",
+      "event": "vault.unlocked",
+      "schema_version": 1,
+      "payload": {
+        "vault_id": "v-001"
+      }
+    }
+  ],
+  "expected_verdict": "Verified"
+}

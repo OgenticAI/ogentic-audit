@@ -1,0 +1,25 @@
+{
+  "vector": "1k-records",
+  "description": "Segment 0 with 1000 records. Tests per-record chain progression at scale, canonical CBOR encoding for many records, and record_id monotonicity. Records are generated deterministically: record_id N has ts_wall = base + N * 1000ms, ts_mono_delta = N * 1000, and payload {\"i\": N}.",
+  "key_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+  "session_id_hex": "00112233445566778899aabbccddeeff",
+  "writer_config": {
+    "segment_size_bytes": 67108864
+  },
+  "records": {
+    "mode": "generated",
+    "count": 1000,
+    "template": {
+      "ts_wall_base": "2026-05-10T12:00:00.000Z",
+      "ts_wall_step_ms": 1000,
+      "ts_mono_step_ms": 1000,
+      "actor": "user:david",
+      "event": "noise.tick",
+      "schema_version": 1,
+      "payload": {
+        "i": "$i"
+      }
+    }
+  },
+  "expected_verdict": "Verified"
+}

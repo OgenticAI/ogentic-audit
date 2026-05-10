@@ -1,0 +1,91 @@
+{
+  "expected_verdict": "Verified",
+  "format_version": 1,
+  "key_id_hex": "e528e95798037df410543d9f31e396ecdd458d71b157d6014398bae32fb56c65",
+  "records": [
+    {
+      "hmac_hex": "470d5142d63eee765aae496780fb8293b27a5346c687231d0ecc3b38452522c2",
+      "payload_len": 167,
+      "prev_hash_hex": "48802fa044ab1dfd48d97b582ad1ddbe5fe68a5183a120cbdfd849d51aca358c",
+      "record_id": 0,
+      "segment": 0
+    },
+    {
+      "hmac_hex": "adc192201e3bd519cc9c3e1ab9247fba098850f817de539098c015427eb5ca8f",
+      "payload_len": 182,
+      "prev_hash_hex": "470d5142d63eee765aae496780fb8293b27a5346c687231d0ecc3b38452522c2",
+      "record_id": 1,
+      "segment": 0
+    },
+    {
+      "hmac_hex": "3bf942484631bd02c19d74ebf131e668b6eaf0e1d3e6ab98eaf93d73f80a4fdd",
+      "payload_len": 180,
+      "prev_hash_hex": "adc192201e3bd519cc9c3e1ab9247fba098850f817de539098c015427eb5ca8f",
+      "record_id": 2,
+      "segment": 0
+    },
+    {
+      "hmac_hex": "1c76278b3db82399405689748333cf9c3273361f234c707c0f94af039bead44b",
+      "payload_len": 213,
+      "prev_hash_hex": "3bf942484631bd02c19d74ebf131e668b6eaf0e1d3e6ab98eaf93d73f80a4fdd",
+      "record_id": 3,
+      "segment": 0
+    },
+    {
+      "hmac_hex": "ba8e9b968924858ba8e21ddadf51093ca2834374c63575a4f60c8d62b4b691b4",
+      "payload_len": 182,
+      "prev_hash_hex": "1c76278b3db82399405689748333cf9c3273361f234c707c0f94af039bead44b",
+      "record_id": 0,
+      "segment": 1
+    },
+    {
+      "hmac_hex": "424a71a548df12b05d019743871a88940fdcd03718766ef6ecf78ca25e0e3b69",
+      "payload_len": 181,
+      "prev_hash_hex": "ba8e9b968924858ba8e21ddadf51093ca2834374c63575a4f60c8d62b4b691b4",
+      "record_id": 1,
+      "segment": 1
+    },
+    {
+      "hmac_hex": "c8d8616f4cb256fb1cb5204ada42b8550a37c017e63c2df9bbcf97cc04f5ac74",
+      "payload_len": 180,
+      "prev_hash_hex": "424a71a548df12b05d019743871a88940fdcd03718766ef6ecf78ca25e0e3b69",
+      "record_id": 2,
+      "segment": 1
+    },
+    {
+      "hmac_hex": "db67d363b0a047962842efe804159e332dd79c959e6fcaa8157052a49e34f22f",
+      "payload_len": 213,
+      "prev_hash_hex": "c8d8616f4cb256fb1cb5204ada42b8550a37c017e63c2df9bbcf97cc04f5ac74",
+      "record_id": 3,
+      "segment": 1
+    },
+    {
+      "hmac_hex": "ae118dc9ae426e01b37f8a350b2611716e036863c965657e5e8f4e08f64b26c5",
+      "payload_len": 167,
+      "prev_hash_hex": "db67d363b0a047962842efe804159e332dd79c959e6fcaa8157052a49e34f22f",
+      "record_id": 0,
+      "segment": 2
+    }
+  ],
+  "segments": [
+    {
+      "chain_start_hex": "48802fa044ab1dfd48d97b582ad1ddbe5fe68a5183a120cbdfd849d51aca358c",
+      "final_hex": "1c76278b3db82399405689748333cf9c3273361f234c707c0f94af039bead44b",
+      "record_count": 4,
+      "segment": 0
+    },
+    {
+      "chain_start_hex": "1c76278b3db82399405689748333cf9c3273361f234c707c0f94af039bead44b",
+      "final_hex": "db67d363b0a047962842efe804159e332dd79c959e6fcaa8157052a49e34f22f",
+      "record_count": 4,
+      "segment": 1
+    },
+    {
+      "chain_start_hex": "db67d363b0a047962842efe804159e332dd79c959e6fcaa8157052a49e34f22f",
+      "final_hex": "ae118dc9ae426e01b37f8a350b2611716e036863c965657e5e8f4e08f64b26c5",
+      "record_count": 1,
+      "segment": 2
+    }
+  ],
+  "session_id_hex": "00112233445566778899aabbccddeeff"
+}
