@@ -1,14 +1,14 @@
 # See https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-security/managing-repository-settings/about-code-owners
 # Default owner for everything in the repo.
 
-*                                  @OgenticAI/ogentic-audit-maintainers
+*                                  @OgenticAI/ogenticai-engineering
 
-/docs/spec/                        @OgenticAI/ogentic-audit-maintainers
-/docs/security/                    @OgenticAI/ogentic-audit-maintainers
-/docs/adr/                         @OgenticAI/ogentic-audit-maintainers
+/docs/spec/                        @OgenticAI/ogenticai-engineering
+/docs/security/                    @OgenticAI/ogenticai-engineering
+/docs/adr/                         @OgenticAI/ogenticai-engineering
 
-/crates/ogentic-audit-core/        @OgenticAI/ogentic-audit-maintainers
-/crates/ogentic-audit-cli/         @OgenticAI/ogentic-audit-maintainers
-/crates/ogentic-audit-keychain/    @OgenticAI/ogentic-audit-maintainers
+/crates/ogentic-audit-core/        @OgenticAI/ogenticai-engineering
+/crates/ogentic-audit-cli/         @OgenticAI/ogenticai-engineering
+/crates/ogentic-audit-keychain/    @OgenticAI/ogenticai-engineering
 
-/python/                           @OgenticAI/ogentic-audit-maintainers
+/python/                           @OgenticAI/ogenticai-engineering
