@@ -1,0 +1,21 @@
+[package]
+name = "ogentic-audit-py"
+description = "PyO3 bindings for ogentic-audit"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+readme = "../../README.md"
+publish = false
+
+[lib]
+name = "ogentic_audit_native"
+crate-type = ["cdylib"]
+path = "src/lib.rs"
+
+[dependencies]
+ogentic-audit-core = { workspace = true }
+pyo3 = { workspace = true }

@@ -1,0 +1,43 @@
+name: Feature request
+description: Propose a new capability or API addition.
+title: "[feat]: "
+labels: ["enhancement", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        v0.1 is scoped tightly. Format-changing proposals will likely be deferred to v0.2 unless they fix a defect — please call out which milestone you have in mind.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What can you not do today, and why does it matter?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: API sketch, behavior change, or design direction.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+    validations:
+      required: false
+
+  - type: dropdown
+    id: format-impact
+    attributes:
+      label: Does this change the on-disk format?
+      options:
+        - "No"
+        - "Yes — backwards-compatible (additive)"
+        - "Yes — breaking"
+    validations:
+      required: true

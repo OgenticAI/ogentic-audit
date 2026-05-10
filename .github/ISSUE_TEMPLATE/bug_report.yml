@@ -1,0 +1,65 @@
+name: Bug report
+description: Report a defect in ogentic-audit (non-security). For security findings, see SECURITY.md.
+title: "[bug]: "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a bug report. **If this is a tamper-evidence, HMAC, or cryptographic finding, do not open a public issue — see [SECURITY.md](https://github.com/OgenticAI/ogentic-audit/blob/main/SECURITY.md).**
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Crate version, Python package version, or commit SHA you tested against.
+      placeholder: "0.1.0-alpha.0 / commit abc1234"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      multiple: true
+      options:
+        - core (Rust library)
+        - CLI (ogentic-audit binary)
+        - keychain (OS-keychain key source)
+        - Python bindings
+        - On-disk format spec
+        - Cross-language vectors
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction
+      description: Minimal reproduction. A failing test or `cargo run` invocation is ideal.
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+
+  - type: input
+    id: platform
+    attributes:
+      label: Platform
+      placeholder: "macOS 14.5 (arm64), Rust 1.75, Python 3.11"
+    validations:
+      required: true

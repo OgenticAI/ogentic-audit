@@ -1,0 +1,8 @@
+avoid-breaking-exported-api = true
+msrv = "1.75"
+cognitive-complexity-threshold = 30
+too-many-arguments-threshold = 8
+type-complexity-threshold = 250
+disallowed-methods = [
+    { path = "std::time::SystemTime::now", reason = "audit log time anchoring goes through ogentic_audit_core::time::now() to capture monotonic + session_id alongside wall-clock" },
+]

@@ -1,0 +1,58 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/ogentic-audit-core",
+    "crates/ogentic-audit-cli",
+    "crates/ogentic-audit-keychain",
+    "python/ogentic-audit-py",
+]
+
+[workspace.package]
+version = "0.1.0-alpha.0"
+edition = "2021"
+rust-version = "1.75"
+license = "Apache-2.0"
+repository = "https://github.com/OgenticAI/ogentic-audit"
+homepage = "https://github.com/OgenticAI/ogentic-audit"
+authors = ["OgenticAI <engineering@ogenticai.com>"]
+readme = "README.md"
+keywords = ["audit", "log", "hmac", "tamper-evident", "compliance"]
+categories = ["cryptography", "data-structures", "filesystem"]
+
+[workspace.dependencies]
+ogentic-audit-core = { version = "0.1.0-alpha.0", path = "crates/ogentic-audit-core" }
+ogentic-audit-keychain = { version = "0.1.0-alpha.0", path = "crates/ogentic-audit-keychain" }
+
+# Crypto / encoding
+hmac = "0.12"
+sha2 = "0.10"
+blake3 = "1.5"
+ciborium = "0.2"
+crc32fast = "1.4"
+zeroize = { version = "1.7", features = ["zeroize_derive"] }
+
+# Errors / utilities
+thiserror = "1.0"
+anyhow = "1.0"
+
+# CLI
+clap = { version = "4.5", features = ["derive"] }
+
+# Bindings
+pyo3 = { version = "0.21", features = ["extension-module", "abi3-py39"] }
+
+# Testing
+proptest = "1.4"
+rstest = "0.21"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "symbols"
+panic = "abort"
+opt-level = 3
+
+[profile.release-debuginfo]
+inherits = "release"
+strip = "none"
+debug = true

@@ -1,0 +1,79 @@
+[build-system]
+requires = ["maturin>=1.5,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "ogentic-audit"
+description = "HMAC-SHA256 chained, append-only audit log — Python bindings"
+readme = "README.md"
+license = { file = "LICENSE" }
+authors = [{ name = "OgenticAI", email = "engineering@ogenticai.com" }]
+requires-python = ">=3.9"
+keywords = ["audit", "log", "hmac", "tamper-evident", "compliance", "court-defensible"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Legal Industry",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: Microsoft :: Windows",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Rust",
+    "Topic :: Security :: Cryptography",
+    "Topic :: Software Development :: Libraries",
+    "Topic :: System :: Logging",
+]
+dynamic = ["version"]
+
+[project.urls]
+Homepage = "https://github.com/OgenticAI/ogentic-audit"
+Repository = "https://github.com/OgenticAI/ogentic-audit"
+Issues = "https://github.com/OgenticAI/ogentic-audit/issues"
+Specification = "https://github.com/OgenticAI/ogentic-audit/tree/main/docs/spec"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "ruff>=0.4",
+    "mypy>=1.8",
+    "maturin>=1.5",
+]
+
+[tool.maturin]
+manifest-path = "python/ogentic-audit-py/Cargo.toml"
+module-name = "ogentic_audit._native"
+python-source = "python"
+features = ["pyo3/extension-module"]
+strip = true
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+extend-exclude = ["target", "docs/_build"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "RUF"]
+ignore = ["E501"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["ogentic_audit"]
+
+[tool.mypy]
+python_version = "3.9"
+strict = true
+warn_unused_ignores = true
+warn_return_any = true
+disallow_untyped_defs = true
+files = ["python/ogentic_audit"]
+
+[tool.pytest.ini_options]
+testpaths = ["python/tests"]
+python_files = "test_*.py"
+addopts = "-ra --strict-markers"

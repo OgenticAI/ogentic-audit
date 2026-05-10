@@ -1,0 +1,22 @@
+[package]
+name = "ogentic-audit-cli"
+description = "ogentic-audit CLI — verify, inspect, and export tamper-evident audit logs"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[[bin]]
+name = "ogentic-audit"
+path = "src/main.rs"
+
+[dependencies]
+ogentic-audit-core = { workspace = true }
+clap = { workspace = true }
+anyhow = { workspace = true }

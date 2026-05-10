@@ -1,0 +1,24 @@
+[package]
+name = "ogentic-audit-keychain"
+description = "Optional OS-keychain key source for ogentic-audit (macOS Keychain, Linux Secret Service, Windows Credential Manager)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[features]
+default = []
+# Enable the OS-keychain backend. Off by default so downstream consumers
+# (Sotto Desktop, Zashboard server) opt in only when they need it.
+keychain = []
+
+[dependencies]
+ogentic-audit-core = { workspace = true }
+zeroize = { workspace = true }
+thiserror = { workspace = true }
