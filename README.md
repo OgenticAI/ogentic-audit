@@ -11,7 +11,7 @@ Regulated industries and audit-grade AI tooling need an audit log that:
 - **Cannot be silently rewritten** — every record is HMAC-chained to the previous, so any tamper is detectable.
 - **Survives crashes** — append-only with atomic flush + fsync; partial writes never produce a half-record.
 - **Travels across languages** — the on-disk format is documented and language-agnostic. Rust core, Python bindings, more to follow.
-- **Is court-defensible** — paired threat model and legal positioning brief; CLI exports a self-contained PDF for attorneys.
+- **Is court-defensible** — paired [threat model](docs/security/threat-model.md) and [court-defensibility brief](docs/legal/court-defensibility.md); CLI exports a self-contained PDF for attorneys.
 
 ## Components
 
@@ -28,9 +28,11 @@ Code, examples, and prebuilt binaries arrive with v0.1.0. See the [project plan]
 
 Apache License 2.0 — see [`LICENSE`](LICENSE) and [`NOTICE`](NOTICE).
 
-## Security
+## Security & legal
 
-Found a vulnerability? See [`SECURITY.md`](SECURITY.md) for responsible disclosure.
+- [`docs/security/threat-model.md`](docs/security/threat-model.md) — adversaries, invariants, accepted residual risk, and the security boundary of the v0.1 design.
+- [`docs/legal/court-defensibility.md`](docs/legal/court-defensibility.md) — engineering's brief on how the v0.1 design supports the "court-defensible" positioning. *Draft, awaiting legal review.*
+- [`SECURITY.md`](SECURITY.md) — responsible-disclosure address for vulnerability reports. **Do not** open public issues for tamper-evidence, HMAC, or cryptographic findings.
 
 ## Contributing
 
