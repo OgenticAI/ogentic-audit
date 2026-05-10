@@ -1,9 +1,10 @@
 # ADR-0001: On-disk format for ogentic-audit
 
-**Status:** Proposed
-**Date:** 2026-05-09
+**Status:** Accepted (2026-05-10)
+**Date:** 2026-05-09 (proposed); 2026-05-10 (accepted)
 **Deciders:** David Oladeji (CTO)
-**Tracks:** [OGE-425 (F2)](https://linear.app/ogenticai/issue/OGE-425) — unblocks [OGE-426 (F3 spec)](https://linear.app/ogenticai/issue/OGE-426), [OGE-429 (R1 Writer)](https://linear.app/ogenticai/issue/OGE-429), [OGE-430 (R2 Reader)](https://linear.app/ogenticai/issue/OGE-430), [OGE-437 (R3 Verifier)](https://linear.app/ogenticai/issue/OGE-437), [OGE-441 (Q2 cross-language vectors)](https://linear.app/ogenticai/issue/OGE-441)
+**Tracks:** [OGE-425 (F2)](https://linear.app/ogenticai/issue/OGE-425) — unblocks [OGE-426 (F3 spec)](https://linear.app/ogenticai/issue/OGE-426) ✅, [OGE-429 (R1 Writer)](https://linear.app/ogenticai/issue/OGE-429), [OGE-430 (R2 Reader)](https://linear.app/ogenticai/issue/OGE-430), [OGE-437 (R3 Verifier)](https://linear.app/ogenticai/issue/OGE-437), [OGE-441 (Q2 cross-language vectors)](https://linear.app/ogenticai/issue/OGE-441)
+**Acceptance trigger:** `cbor2` canonical-form parity proven by [`tools/check_cbor_parity.py`](../../tools/check_cbor_parity.py) (1014 payloads round-trip identically across the v0.1 golden vectors). `ciborium` half of the parity spike is enforced as a hard gate by [OGE-441 (Q2)](https://linear.app/ogenticai/issue/OGE-441) before R1 ships — if it fails, the chosen crate changes and this ADR moves to Superseded.
 
 ## Context
 
@@ -123,6 +124,80 @@ Final record of every segment is a `segment.finalized` event with payload `{ "re
 ### Cross-language v0.1: yes
 
 Python parity is in v0.1 scope. The OSS narrative collapses without it — "verify your own log" is the trust pitch. Cost: ~1 extra week of wheel-build infrastructure ([OGE-434 (P2)](https://linear.app/ogenticai/issue/OGE-434) is already scoped). The format is Rust-canonical-CBOR but the **spec is the source of truth**, not the Rust impl. Python (PyO3) and any future Go / Node bindings verify against shared golden vectors in `tests/vectors/`.
+
+## Decision matrix
+
+Six container options, scored 1–5 against the five dimensions called out in [OGE-425's acceptance criteria](https://linear.app/ogenticai/issue/OGE-425). Scores are *for our v0.1 threat model* (single-user vault, single device, HMAC key compromise ≡ vault passphrase compromise) — not abstract scoring; an option's intrinsic strength on a dimension is discounted when our threat model can't realize it.
+
+Scale: **5** strongest, **4** strong, **3** acceptable, **2** below average, **1** disqualifying. Detailed prose justification for each option lives below in [Options considered](#options-considered); the matrix surfaces the relative ranking.
+
+| Option | Court-defensibility | Language-agnostic implementability | Append-only safety | Crash recovery | Throughput | Total |
+|--------|:---:|:---:|:---:|:---:|:---:|:---:|
+| **A. CBOR length-prefixed, segmented** *(chosen)* | 4 | 5 | 5 | 5 | 4 | **23** |
+| B. Protobuf length-prefixed, segmented | 4 | 4 | 5 | 5 | 4 | 22 |
+| C. JSONL + sidecar HMAC chain | 2 | 5 | 4 | 3 | 2 | 16 |
+| D. SQLite WAL | 1 | 3 | 1 | 5 | 3 | 13 |
+| E. Merkle tree (Rekor / CT / QLDB) | 4 | 4 | 5 | 3 | 3 | 19 |
+| F. FlatBuffers length-prefixed | 3 | 3 | 5 | 5 | 5 | 21 |
+
+### Per-cell justification
+
+**Court-defensibility** — does the format map onto well-understood prior art an attorney can name (CT logs, signed binaries, git objects)? Does the file's behavior under normal operation match what a non-expert juror would expect "tamper-evident" to mean?
+
+- A (4): same family as Certificate Transparency leaves and git pack records — binary, framed, self-describing, deterministic encoding.
+- B (4): Sigstore Rekor / Trillian precedent in software-supply-chain litigation. Equal to A; the scoring tie is broken by other dimensions.
+- C (2): "the file is plaintext, anyone could edit it" intuition undermines the tamper-evidence claim even though it is technically false. Sidecar HMAC = two sources of truth that must agree.
+- D (1): SQLite normal operation includes page rewrites, WAL checkpoints, and vacuums. Defending tamper-evidence becomes "trust SQLite's internals" — disqualifying for the courtroom narrative.
+- E (4): strongest in principle (subrange proofs, public witnesses) but those advantages are unrealized in our single-user-vault threat model — so its court-defensibility is comparable to A here, not stronger.
+- F (3): no legal-precedent footprint; auditors have likely never seen a FlatBuffers log.
+
+**Language-agnostic implementability** — how hard is it for a third party to write a from-scratch verifier in their language of choice without our code?
+
+- A (5): two-line library calls in every major language. RFC 8949 §4.2 deterministic encoding is precisely specified.
+- B (4): every language has a Protobuf lib, but third parties must run `protoc` or hand-decode against a `.proto` schema. Strong, but with codegen friction.
+- C (5): JSON is universal. The canonicalization step (RFC 8785 JCS) is the one footgun.
+- D (3): SQLite is everywhere, but "the format" is now SQLite's, not ours; third parties depend on SQLite's binary format being stable.
+- E (4): Merkle libraries are well-documented but less universal than CBOR/JSON; tree variants (RFC 6962, IETF Draft for Trillian) introduce choice points.
+- F (3): fewer language libraries than CBOR/Protobuf/JSON; no Python stdlib equivalent.
+
+**Append-only safety** — does the format guarantee, at the filesystem level, that no record gets rewritten in normal operation? Can an adversary with read-only-then-write access to the file produce a half-rewritten record that still verifies?
+
+- A, B, F (5): pure append + length framing. The writer's only operations on existing bytes are `len_trailer == len_prefix` mirroring on the *new* record; existing records are untouched.
+- C (4): text append is safe but the sidecar HMAC file is rewritten on every flush — an adversary that intercepts the sidecar mid-write can desynchronize.
+- D (1): SQLite normal operation rewrites pages. WAL checkpointing rewrites the main file. Append-only-at-the-API does not equal append-only-at-the-filesystem.
+- E (5): tree append + signed roots; tree state is append-only at the leaf level. Internal-node updates happen but are part of the chain's signed surface.
+
+**Crash recovery** — what happens after SIGKILL or power-loss between bytes hitting disk? How much code does the recovery path require?
+
+- A, B, F (5): `len_trailer == len_prefix` is the recovery primitive; walk back from EOF, find the last record where the two match, atomic-truncate. ~50 lines of code.
+- C (3): partial JSON line is trivial to detect, but sidecar HMAC sync after a crash is the gotcha — you may have a valid line whose HMAC didn't make it into the sidecar.
+- D (5): SQLite's WAL is purpose-built for crash recovery. Best-in-class on this dimension; this is the one place SQLite earns a 5.
+- E (3): the leaves recover like A, but tree state (cached internal nodes, signed roots) requires extra persistence and reconciliation logic.
+
+**Throughput** — at our target rate of 1–100 records/second on a typical laptop, can the format keep up without dominating the writer's wall-clock time?
+
+- A (4): single sequential write per record, ~30% smaller than JSONL; canonical-CBOR encoding is fast.
+- B (4): comparable to A; protobuf encoding is slightly slower than CBOR for our schema but well within budget.
+- C (2): ~30% larger output, plus per-record canonicalization (RFC 8785 JCS) — a real tax at high record rates.
+- D (3): `fsync` per insert is slow; transaction batching helps but conflicts with append-only-per-record semantics.
+- E (3): tree updates per append + periodic root signing add latency; not a throughput win.
+- F (5): zero-copy reads and very fast writes — but we don't need this at 1–100 rec/s.
+
+### Why A wins despite F's higher throughput cell
+
+The matrix has F at throughput **5** vs A's **4**. F isn't chosen because:
+
+1. Throughput is the *least* binding constraint at v0.1. We need 1–100 records/sec, not 1M.
+2. F sacrifices court-defensibility (3 vs A's 4) and language-agnosticism (3 vs 5) — both higher-stakes for our positioning.
+3. CBOR's deterministic-encoding spec (RFC 8949 §4.2) is more rigorously written than FlatBuffers' canonical encoding rules; cross-language byte-identical output is easier to demand.
+
+### Why A wins despite E's parity on court-defensibility
+
+A and E tie at court-defensibility (4) *for our threat model*. E is chosen against in favor of A because:
+
+1. E loses on language-agnosticism (4 vs 5) — Merkle libraries are less universal than CBOR.
+2. E loses on crash recovery (3 vs 5) — tree state must be reconciled; A's `len_trailer == len_prefix` is dead simple.
+3. The Merkle advantage (subrange proofs, public witnesses) only matters when the log lives outside the protected scope of its data, which v0.1 does not. The `Future direction` section reserves Merkle for a v0.2 multi-tenant variant.
 
 ## Options considered
 
@@ -251,9 +326,9 @@ These are explicitly deferred but worth noting so v0.1 isn't accidentally archit
 
 ## Action items
 
-1. [ ] Open PR to `ogentic-audit/` repo: commit existing scaffold (LICENSE, README, CONTRIBUTING) + add this ADR + initial `Cargo.toml` workspace stub. Closes [F1 / OGE-424](https://linear.app/ogenticai/issue/OGE-424).
-2. [ ] Write `docs/spec/v0.1.md` from this ADR as the source-of-truth: header layout, record schema, canonical-form rules, HMAC algorithm, golden-vector format. Closes [F3 / OGE-426](https://linear.app/ogenticai/issue/OGE-426).
-3. [ ] Write `docs/security/threat-model.md` covering: single-user-vault threat model, HMAC-key-compromise ≡ passphrase-compromise, why-not-Merkle, FSPRG-as-v0.2-direction, external-witness-as-v0.2-direction, time-anchor reasoning. Closes [F4 / OGE-427](https://linear.app/ogenticai/issue/OGE-427).
-4. [ ] One-day spike: prove `ciborium` (Rust) and `cbor2` (Python) produce byte-identical canonical encoding for our test schema. If they don't, change crate before R1 starts.
-5. [ ] Generate first 6 golden vectors as part of F3. Each vector is `{key_hex, records_json, expected_segment_bytes_hex, expected_chain_hashes}`.
-6. [ ] Mark this ADR Accepted after the spike (item 4) confirms canonical-form parity.
+1. [x] Open PR to `ogentic-audit/` repo: commit existing scaffold (LICENSE, README, CONTRIBUTING) + add this ADR + initial `Cargo.toml` workspace stub. Closes [F1 / OGE-424](https://linear.app/ogenticai/issue/OGE-424). — *shipped via [PR #1](https://github.com/OgenticAI/ogentic-audit/pull/1) (squash `730d8f9`); workspace + scaffold landed in `chore(OGE-424):` (`d38c3cb`).*
+2. [x] Write `docs/spec/v0.1.md` from this ADR as the source-of-truth: header layout, record schema, canonical-form rules, HMAC algorithm, golden-vector format. Closes [F3 / OGE-426](https://linear.app/ogenticai/issue/OGE-426). — *shipped via [PR #1](https://github.com/OgenticAI/ogentic-audit/pull/1); spec tightening + violation-report.md added in [PR #2](https://github.com/OgenticAI/ogentic-audit/pull/2) under [OGE-461](https://linear.app/ogenticai/issue/OGE-461).*
+3. [ ] Write `docs/security/threat-model.md` covering: single-user-vault threat model, HMAC-key-compromise ≡ passphrase-compromise, why-not-Merkle, FSPRG-as-v0.2-direction, external-witness-as-v0.2-direction, time-anchor reasoning. Closes [F4 / OGE-427](https://linear.app/ogenticai/issue/OGE-427). — *threat-model.md shipped in the initial scaffold (`07184fc`); the paired court-defensibility brief is still pending under [F4 / OGE-427](https://linear.app/ogenticai/issue/OGE-427), so this item stays open until that lands.*
+4. [x] One-day spike: prove `ciborium` (Rust) and `cbor2` (Python) produce byte-identical canonical encoding for our test schema. If they don't, change crate before R1 starts. — *Python (`cbor2`) half proven via [`tools/check_cbor_parity.py`](../../tools/check_cbor_parity.py): 1014 payloads round-trip identically across the v0.1 vectors. Rust (`ciborium`) half is enforced as a hard gate by [OGE-441 (Q2)](https://linear.app/ogenticai/issue/OGE-441) before R1 ships; if it fails there, this ADR moves to Superseded and the crate changes.*
+5. [x] Generate first 6 golden vectors as part of F3. Each vector is `{key_hex, records_json, expected_segment_bytes_hex, expected_chain_hashes}`. — *six vectors at [`tests/vectors/v0.1/`](../../tests/vectors/v0.1/) (empty, single-record, 1k-records, tampered-byte, missing-record, segment-rollover); inputs.json + audit-NNNN.cbor + chain.json per vector.*
+6. [x] Mark this ADR Accepted after the spike (item 4) confirms canonical-form parity. — *Accepted on 2026-05-10 with the compensating control noted at the top of this document. Ciborium parity is the only piece not yet directly verified; OGE-441 is the gate.*
