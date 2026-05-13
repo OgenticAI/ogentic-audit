@@ -39,7 +39,7 @@ anyhow = "1.0"
 clap = { version = "4.5", features = ["derive"] }
 
 # Bindings
-pyo3 = { version = "0.21", features = ["extension-module", "abi3-py39"] }
+pyo3 = { version = "0.28", features = ["extension-module", "abi3-py39"] }
 
 # Testing
 proptest = "1.4"
