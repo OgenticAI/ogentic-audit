@@ -13,12 +13,18 @@ keywords.workspace = true
 categories.workspace = true
 
 [features]
-default = []
-# Enable the OS-keychain backend. Off by default so downstream consumers
-# (Sotto Desktop, Zashboard server) opt in only when they need it.
-keychain = []
+# Default: OS-keychain backend on. Off-switch lets server-side consumers
+# (Zashboard via OGE-460 KMS source) compile this crate with the type
+# surface intact but no platform-specific code linked in.
+default = ["keychain"]
+keychain = ["dep:keyring", "dep:getrandom"]
 
 [dependencies]
 ogentic-audit-core = { workspace = true }
 zeroize = { workspace = true }
 thiserror = { workspace = true }
+keyring = { workspace = true, optional = true, default-features = true }
+getrandom = { workspace = true, optional = true }
+
+[dev-dependencies]
+hex = { workspace = true }

@@ -29,7 +29,15 @@ sha2 = "0.10"
 blake3 = "1.5"
 ciborium = "0.2"
 crc32fast = "1.4"
+subtle = "2.6"
 zeroize = { version = "1.7", features = ["zeroize_derive"] }
+hex = "0.4"
+getrandom = "0.2"
+
+# OS keychain (used by the optional ogentic-audit-keychain crate).
+# Pinned at the workspace level so consumers see a single, audited version
+# in `cargo audit` output.
+keyring = "3"
 
 # Errors / utilities
 thiserror = "1.0"
