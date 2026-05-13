@@ -6,10 +6,30 @@
 //! for the security boundary this crate defends.
 //!
 //! v0.1 is in development. The public API is unstable until v0.1.0 is tagged.
+//!
+//! ## What's implemented today
+//!
+//! - [`KeyHandle`] trait and the in-memory [`InMemoryKey`] implementation
+//!   (this module, [`key`]). Optional OS-keychain backing lives in the
+//!   companion `ogentic-audit-keychain` crate.
+//!
+//! ## What's coming
+//!
+//! The writer ([R1 / OGE-429]), reader ([R2 / OGE-430]), and verifier
+//! ([R3 / OGE-437]) all consume [`KeyHandle`] and land in subsequent
+//! tickets.
+//!
+//! [R1 / OGE-429]: https://linear.app/ogenticai/issue/OGE-429
+//! [R2 / OGE-430]: https://linear.app/ogenticai/issue/OGE-430
+//! [R3 / OGE-437]: https://linear.app/ogenticai/issue/OGE-437
 
 #![forbid(unsafe_code)]
 #![deny(rust_2018_idioms, missing_debug_implementations)]
 #![warn(missing_docs)]
+
+pub mod key;
+
+pub use key::{HmacBytes, InMemoryKey, KeyError, KeyHandle, KeyId, HMAC_LEN, KEY_ID_LEN};
 
 /// Crate version, sourced from `Cargo.toml`.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
