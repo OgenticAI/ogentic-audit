@@ -1,5 +1,8 @@
 # ogentic-audit
 
+[![CI](https://github.com/OgenticAI/ogentic-audit/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/OgenticAI/ogentic-audit/actions/workflows/ci.yml)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+
 HMAC-SHA256 chained, append-only audit log library. Court-defensible, tamper-evident, language-agnostic on-disk format.
 
 > **Status:** v0.1 in development. The on-disk format is not yet stabilized — see [`docs/spec/`](docs/spec/) once published. Do not depend on this library for production data until v0.1.0 is tagged.

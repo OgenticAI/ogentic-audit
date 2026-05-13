@@ -10,7 +10,7 @@ members = [
 [workspace.package]
 version = "0.1.0-alpha.0"
 edition = "2021"
-rust-version = "1.75"
+rust-version = "1.85"
 license = "Apache-2.0"
 repository = "https://github.com/OgenticAI/ogentic-audit"
 homepage = "https://github.com/OgenticAI/ogentic-audit"
@@ -39,7 +39,7 @@ anyhow = "1.0"
 clap = { version = "4.5", features = ["derive"] }
 
 # Bindings
-pyo3 = { version = "0.21", features = ["extension-module", "abi3-py39"] }
+pyo3 = { version = "0.28", features = ["extension-module", "abi3-py39"] }
 
 # Testing
 proptest = "1.4"

@@ -19,6 +19,6 @@ except ImportError as exc:  # pragma: no cover - import-time only
         "`maturin develop` from the repo root."
     ) from exc
 
-__all__ = ["core_version", "format_version", "__version__"]
+__all__ = ["__version__", "core_version", "format_version"]
 
 __version__ = "0.1.0a0"
