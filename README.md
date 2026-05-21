@@ -159,6 +159,8 @@ The legal narrative is documented in [`docs/legal/court-defensibility.md`](docs/
 - [`docs/legal/court-defensibility.md`](docs/legal/court-defensibility.md) — court-defensibility brief (draft)
 - [`docs/adr/0001-on-disk-format.md`](docs/adr/0001-on-disk-format.md) — on-disk format rationale (ADR)
 - [`tests/vectors/v0.1/README.md`](tests/vectors/v0.1/README.md) — golden-vector layout + procedure for adding new vectors
+- [`docs/integrations/sotto-desktop.md`](docs/integrations/sotto-desktop.md) — embedding `ogentic-audit-core` inside the Sotto Desktop Tauri shell
+- [`examples/sotto-desktop-tauri/`](examples/sotto-desktop-tauri/) — minimal Tauri sample code
 
 ## License
 
