@@ -1,0 +1,185 @@
+# Python wheels — manylinux + macOS arm64/x86_64 + Windows x86_64
+# (OGE-434 / P2).
+#
+# Two trigger surfaces:
+#
+# * Pushed tags `v*` → build wheels + sdist for every (OS, arch, Python)
+#   combination in the matrix, then publish to PyPI via Trusted
+#   Publishers (no API token in the repo — set up at PyPI side).
+#
+# * Manual `workflow_dispatch` → build everything, upload as a GitHub
+#   Actions artifact, but skip the PyPI publish step. Useful for dry
+#   runs before tagging.
+#
+# The wheels are built via `cibuildwheel` driving `maturin`'s build
+# backend. `pyo3 = { ..., features = ["abi3-py39"] }` in the workspace
+# Cargo.toml means each platform / arch ships ONE wheel that loads on
+# every supported CPython 3.9+ — the matrix below builds with Python
+# 3.12 as the build interpreter (cibuildwheel picks up the abi3 tag
+# from pyproject.toml's `tool.maturin` block) and the result is
+# `abi3-py39` for every platform.
+#
+# Trusted Publisher setup (one-time, on PyPI side):
+#
+#   PyPI → Account → Publishing → Add a new publisher
+#     Owner:        OgenticAI
+#     Repository:   ogentic-audit
+#     Workflow:     wheels.yml
+#     Environment:  pypi
+#
+# Until that's configured, the `publish-to-pypi` job will fail at the
+# trusted-publish step. Wheels and sdist build successfully regardless.
+
+name: wheels
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # ----------------------------------------------------------------
+  # Build wheels for every (OS, arch) target.
+  # ----------------------------------------------------------------
+  build-wheels:
+    name: wheels (${{ matrix.os }} / ${{ matrix.arch }})
+    runs-on: ${{ matrix.runs-on }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: linux
+            arch: x86_64
+            runs-on: ubuntu-latest
+            cibw_archs: x86_64
+          - os: linux
+            arch: aarch64
+            runs-on: ubuntu-24.04-arm
+            cibw_archs: aarch64
+          - os: macos
+            arch: arm64
+            runs-on: macos-14
+            cibw_archs: arm64
+          - os: macos
+            arch: x86_64
+            runs-on: macos-13
+            cibw_archs: x86_64
+          - os: windows
+            arch: x86_64
+            runs-on: windows-latest
+            cibw_archs: AMD64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Build wheels with cibuildwheel
+        uses: pypa/cibuildwheel@v2.21.3
+        env:
+          # abi3 wheels cover every supported CPython once built.
+          # We still iterate one build per ABI tag, but cibuildwheel
+          # produces a single wheel under `tool.maturin`'s abi3-py39
+          # config.
+          CIBW_BUILD: "cp39-*"
+          CIBW_SKIP: "*-musllinux*"
+          CIBW_ARCHS: ${{ matrix.cibw_archs }}
+          # manylinux_2_28 — matches the abi3-py39 baseline.
+          CIBW_MANYLINUX_X86_64_IMAGE: manylinux_2_28
+          CIBW_MANYLINUX_AARCH64_IMAGE: manylinux_2_28
+          # cibuildwheel needs to know to use maturin's build backend.
+          CIBW_BUILD_FRONTEND: "build"
+          # Rust on the build host: install rustup inside the manylinux
+          # container so maturin can build the cdylib.
+          CIBW_BEFORE_ALL_LINUX: |
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs |
+              sh -s -- -y --profile minimal --default-toolchain stable
+            source "$HOME/.cargo/env"
+            rustup show
+          CIBW_ENVIRONMENT_LINUX: 'PATH="$HOME/.cargo/bin:$PATH"'
+          # Smoke-test: import + run the format_version helper.
+          CIBW_TEST_REQUIRES: "pytest"
+          CIBW_TEST_COMMAND: 'python -c "import ogentic_audit; assert ogentic_audit.format_version() == 0x0001"'
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheels-${{ matrix.os }}-${{ matrix.arch }}
+          path: ./wheelhouse/*.whl
+
+  # ----------------------------------------------------------------
+  # Build the sdist (source distribution).
+  # ----------------------------------------------------------------
+  build-sdist:
+    name: sdist
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install build deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install maturin
+
+      - name: Build sdist
+        run: maturin sdist --out dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sdist
+          path: dist/*.tar.gz
+
+  # ----------------------------------------------------------------
+  # Publish to PyPI via Trusted Publishers. Tag pushes only.
+  # ----------------------------------------------------------------
+  publish-to-pypi:
+    name: publish to PyPI
+    needs: [build-wheels, build-sdist]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    environment:
+      name: pypi
+      url: https://pypi.org/p/ogentic-audit
+    permissions:
+      # Trusted Publishers needs id-token: write to mint the OIDC token
+      # PyPI verifies against the configured publisher.
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          # Pull every wheels-* artifact + sdist into ./dist
+          path: artifacts
+          pattern: "wheels-*"
+          merge-multiple: true
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: sdist
+          path: artifacts
+
+      - name: Flatten into ./dist
+        run: |
+          mkdir -p dist
+          find artifacts -type f \( -name "*.whl" -o -name "*.tar.gz" \) -exec cp {} dist/ \;
+          ls -la dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          # `password` is omitted on purpose — Trusted Publishers
+          # supplies a short-lived OIDC token via id-token: write.
+          packages-dir: dist/
+          skip-existing: false
+          verbose: true
