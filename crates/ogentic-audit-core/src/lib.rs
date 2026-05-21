@@ -32,11 +32,16 @@ pub mod key;
 pub mod reader;
 pub mod segment;
 pub mod sync_compat;
+pub mod verifier;
 pub mod writer;
 
 pub use key::{HmacBytes, InMemoryKey, KeyError, KeyHandle, KeyId, HMAC_LEN, KEY_ID_LEN};
 pub use reader::{ReadStrategy, Reader, ReaderConfig, ReaderError, Record, RecordIterator};
 pub use segment::{SegmentHeader, FORMAT_MAGIC, HEADER_BODY_LEN, HEADER_TOTAL_LEN, SESSION_ID_LEN};
+pub use verifier::{
+    HeaderCorruptSubkind, LogSummary, RecordCorruptSubkind, Verdict, Verifier, VerifyError,
+    VerifyOptions, VerifyReport, Violation, ViolationEvidence, ViolationKind, ViolationLocation,
+};
 pub use writer::{PayloadValue, RecordId, RecordInput, Writer, WriterConfig, WriterError};
 
 /// Crate version, sourced from `Cargo.toml`.
