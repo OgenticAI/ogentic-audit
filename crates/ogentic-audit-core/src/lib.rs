@@ -27,9 +27,15 @@
 #![deny(rust_2018_idioms, missing_debug_implementations)]
 #![warn(missing_docs)]
 
+pub mod cbor;
 pub mod key;
+pub mod segment;
+pub mod sync_compat;
+pub mod writer;
 
 pub use key::{HmacBytes, InMemoryKey, KeyError, KeyHandle, KeyId, HMAC_LEN, KEY_ID_LEN};
+pub use segment::{SegmentHeader, FORMAT_MAGIC, HEADER_BODY_LEN, HEADER_TOTAL_LEN, SESSION_ID_LEN};
+pub use writer::{PayloadValue, RecordId, RecordInput, Writer, WriterConfig, WriterError};
 
 /// Crate version, sourced from `Cargo.toml`.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
