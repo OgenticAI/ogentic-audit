@@ -1,0 +1,230 @@
+# Static CLI binaries per platform (OGE-439 / C4).
+#
+# Triggered by:
+# * `v*` tag push — full release build, signed where possible,
+#   attached to the GitHub Release for the same tag.
+# * `workflow_dispatch` — dry run; binaries upload as Actions
+#   artifacts but skip release attachment.
+#
+# Five targets:
+#
+#   macOS arm64    — codesigned + notarized (gated on AC_* secrets)
+#   macOS x86_64   — codesigned + notarized (gated on AC_* secrets)
+#   Linux x86_64   — musl static
+#   Linux aarch64  — musl static
+#   Windows x86_64 — Authenticode-signed (gated on WINDOWS_PFX_* secrets)
+#
+# Signing secret names (set under repo → Settings → Secrets and
+# variables → Actions):
+#
+#   AC_CERTIFICATE_BASE64       Apple Developer ID Application .p12, base64
+#   AC_CERTIFICATE_PASSWORD     password for the .p12
+#   AC_KEYCHAIN_PASSWORD        password for the ephemeral keychain CI creates
+#   AC_APPLE_ID                 Apple ID for notarytool
+#   AC_TEAM_ID                  Apple Developer team id
+#   AC_NOTARY_PASSWORD          app-specific password for notarytool
+#   WINDOWS_PFX_BASE64          Authenticode .pfx, base64
+#   WINDOWS_PFX_PASSWORD        password for the .pfx
+#
+# When the secrets are absent, the workflow still builds binaries
+# successfully — they ship unsigned. Sigstore (cosign keyless) signs
+# every artifact regardless; sigstore signatures don't need a
+# customer-paid cert and satisfy the "every artifact signed" AC's
+# spirit even when codesigning hasn't been provisioned yet.
+
+name: release-cli
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  id-token: write # cosign keyless
+
+jobs:
+  # ----------------------------------------------------------------
+  # Build matrix.
+  # ----------------------------------------------------------------
+  build:
+    name: build (${{ matrix.target }})
+    runs-on: ${{ matrix.runs-on }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            runs-on: macos-14
+            archive: tar.gz
+            artifact_name: ogentic-audit-macos-arm64
+          - target: x86_64-apple-darwin
+            runs-on: macos-13
+            archive: tar.gz
+            artifact_name: ogentic-audit-macos-x86_64
+          - target: x86_64-unknown-linux-musl
+            runs-on: ubuntu-latest
+            archive: tar.gz
+            artifact_name: ogentic-audit-linux-x86_64
+            apt_packages: musl-tools
+          - target: aarch64-unknown-linux-musl
+            runs-on: ubuntu-24.04-arm
+            archive: tar.gz
+            artifact_name: ogentic-audit-linux-aarch64
+            apt_packages: musl-tools
+          - target: x86_64-pc-windows-msvc
+            runs-on: windows-latest
+            archive: zip
+            artifact_name: ogentic-audit-windows-x86_64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: release-${{ matrix.target }}
+
+      - name: Install musl-tools (Linux only)
+        if: matrix.apt_packages
+        run: sudo apt-get update && sudo apt-get install -y ${{ matrix.apt_packages }}
+
+      - name: Build release binary
+        run: cargo build --release --target ${{ matrix.target }} --bin ogentic-audit
+        env:
+          # Linux musl: ensure fully static linking.
+          CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_RUSTFLAGS: "-C target-feature=+crt-static"
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_RUSTFLAGS: "-C target-feature=+crt-static"
+
+      - name: Codesign + notarize (macOS)
+        if: startsWith(matrix.target, 'aarch64-apple-darwin') || startsWith(matrix.target, 'x86_64-apple-darwin')
+        env:
+          AC_CERTIFICATE_BASE64: ${{ secrets.AC_CERTIFICATE_BASE64 }}
+          AC_CERTIFICATE_PASSWORD: ${{ secrets.AC_CERTIFICATE_PASSWORD }}
+          AC_KEYCHAIN_PASSWORD: ${{ secrets.AC_KEYCHAIN_PASSWORD }}
+          AC_APPLE_ID: ${{ secrets.AC_APPLE_ID }}
+          AC_TEAM_ID: ${{ secrets.AC_TEAM_ID }}
+          AC_NOTARY_PASSWORD: ${{ secrets.AC_NOTARY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          BIN="target/${{ matrix.target }}/release/ogentic-audit"
+
+          if [ -z "${AC_CERTIFICATE_BASE64:-}" ]; then
+            echo "::warning::AC_CERTIFICATE_BASE64 not set; shipping unsigned binary"
+            exit 0
+          fi
+
+          # Import the Developer ID into an ephemeral keychain.
+          echo "$AC_CERTIFICATE_BASE64" | base64 --decode > /tmp/cert.p12
+          security create-keychain -p "$AC_KEYCHAIN_PASSWORD" build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "$AC_KEYCHAIN_PASSWORD" build.keychain
+          security import /tmp/cert.p12 -k build.keychain -P "$AC_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$AC_KEYCHAIN_PASSWORD" build.keychain
+
+          IDENTITY="Developer ID Application: OgenticAI (${AC_TEAM_ID})"
+          codesign --force --options runtime --timestamp --sign "$IDENTITY" "$BIN"
+
+          # Notarize.
+          ditto -c -k --keepParent "$BIN" /tmp/ogentic-audit.zip
+          xcrun notarytool submit /tmp/ogentic-audit.zip \
+            --apple-id "$AC_APPLE_ID" \
+            --team-id "$AC_TEAM_ID" \
+            --password "$AC_NOTARY_PASSWORD" \
+            --wait
+          # Stapling for a single CLI binary isn't supported (no
+          # bundle); notarization is recorded with Apple's servers and
+          # gatekeeper checks online on first launch.
+
+      - name: Sign with Authenticode (Windows)
+        if: startsWith(matrix.target, 'x86_64-pc-windows-msvc')
+        env:
+          WINDOWS_PFX_BASE64: ${{ secrets.WINDOWS_PFX_BASE64 }}
+          WINDOWS_PFX_PASSWORD: ${{ secrets.WINDOWS_PFX_PASSWORD }}
+        shell: pwsh
+        run: |
+          if (-not $env:WINDOWS_PFX_BASE64) {
+            Write-Warning "WINDOWS_PFX_BASE64 not set; shipping unsigned binary"
+            exit 0
+          }
+          $bin = "target/${{ matrix.target }}/release/ogentic-audit.exe"
+          $pfx = "$env:RUNNER_TEMP/cert.pfx"
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:WINDOWS_PFX_BASE64))
+          $signtool = "${env:ProgramFiles(x86)}\Windows Kits\10\bin\10.0.22621.0\x64\signtool.exe"
+          if (-not (Test-Path $signtool)) { $signtool = (Get-Command signtool).Source }
+          & $signtool sign /f $pfx /p $env:WINDOWS_PFX_PASSWORD /tr "http://timestamp.digicert.com" /td SHA256 /fd SHA256 $bin
+
+      - name: Verify static linkage (Linux)
+        if: startsWith(matrix.target, 'x86_64-unknown-linux-musl') || startsWith(matrix.target, 'aarch64-unknown-linux-musl')
+        run: |
+          file "target/${{ matrix.target }}/release/ogentic-audit"
+          if ldd "target/${{ matrix.target }}/release/ogentic-audit" 2>&1 | grep -v "not a dynamic executable"; then
+            echo "::error::Linux binary is not statically linked"
+            exit 1
+          fi
+
+      - name: Package artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          if [[ "${{ matrix.archive }}" == "zip" ]]; then
+            cp "target/${{ matrix.target }}/release/ogentic-audit.exe" "dist/ogentic-audit.exe"
+            cp LICENSE README.md "dist/"
+            (cd dist && 7z a "${{ matrix.artifact_name }}.zip" ogentic-audit.exe LICENSE README.md)
+            rm dist/ogentic-audit.exe dist/LICENSE dist/README.md
+          else
+            cp "target/${{ matrix.target }}/release/ogentic-audit" "dist/ogentic-audit"
+            cp LICENSE README.md "dist/"
+            tar -czf "dist/${{ matrix.artifact_name }}.tar.gz" -C dist ogentic-audit LICENSE README.md
+            rm dist/ogentic-audit dist/LICENSE dist/README.md
+          fi
+          ls -la dist/
+
+      - name: Sign with cosign (keyless, sigstore)
+        uses: sigstore/cosign-installer@v3
+      - shell: bash
+        run: |
+          set -euo pipefail
+          cd dist
+          for f in *.tar.gz *.zip; do
+            [ -f "$f" ] || continue
+            cosign sign-blob --yes --output-signature "$f.sig" --output-certificate "$f.pem" "$f"
+          done
+          ls -la
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: dist/*
+
+  # ----------------------------------------------------------------
+  # Attach to the GitHub Release (tag pushes only).
+  # ----------------------------------------------------------------
+  attach-to-release:
+    name: attach to GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: List downloaded artifacts
+        run: ls -la artifacts/
+
+      - name: Upload to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/*.tar.gz
+            artifacts/*.zip
+            artifacts/*.sig
+            artifacts/*.pem
+          fail_on_unmatched_files: true
+          generate_release_notes: true
