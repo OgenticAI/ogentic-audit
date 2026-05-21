@@ -44,6 +44,11 @@ keyring = "3"
 # `forbid(unsafe_code)` surface.
 rustix = { version = "1", features = ["fs"] }
 
+# Optional memory-mapped reader (see crate::reader::ReadStrategy::Mmap).
+# Default reader strategy is plain buffered I/O; mmap is a configurable
+# opt-in for very-large-log analytical reads.
+memmap2 = "0.9"
+
 # Errors / utilities
 thiserror = "1.0"
 anyhow = "1.0"

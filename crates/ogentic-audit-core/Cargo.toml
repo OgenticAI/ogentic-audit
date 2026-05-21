@@ -22,6 +22,7 @@ sha2 = { workspace = true }
 blake3 = { workspace = true }
 ciborium = { workspace = true }
 crc32fast = { workspace = true }
+memmap2 = { workspace = true }
 rustix = { workspace = true }
 subtle = { workspace = true }
 zeroize = { workspace = true }
