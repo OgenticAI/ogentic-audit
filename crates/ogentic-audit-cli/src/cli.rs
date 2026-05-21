@@ -192,4 +192,18 @@ pub struct ExportArgs {
     /// Output PDF path.
     #[arg(long)]
     pub pdf: PathBuf,
+    /// Override the "Generated" timestamp on the cover (RFC 3339
+    /// string). Default is `1970-01-01T00:00:00Z` for bit-
+    /// reproducibility; pass the actual generation time for real
+    /// court submissions.
+    #[arg(long)]
+    pub source_date: Option<String>,
+    /// Custodian name on the cover. Defaults to the value of
+    /// `HOSTNAME` / `COMPUTERNAME`, or `(unknown host)`.
+    #[arg(long)]
+    pub custodian: Option<String>,
+    /// Include every record in the sample-events section instead of
+    /// just head 50 + tail 50.
+    #[arg(long, action = ArgAction::SetTrue)]
+    pub full: bool,
 }
