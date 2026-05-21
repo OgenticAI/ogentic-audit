@@ -18,4 +18,6 @@ path = "src/lib.rs"
 
 [dependencies]
 ogentic-audit-core = { workspace = true }
+ogentic-audit-keychain = { workspace = true }
 pyo3 = { workspace = true }
+hex = { workspace = true }

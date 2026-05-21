@@ -701,7 +701,9 @@ dependencies = [
 name = "ogentic-audit-py"
 version = "0.1.0-alpha.0"
 dependencies = [
+ "hex",
  "ogentic-audit-core",
+ "ogentic-audit-keychain",
  "pyo3",
 ]
 
