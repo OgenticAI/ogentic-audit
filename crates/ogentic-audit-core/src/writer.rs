@@ -44,13 +44,14 @@
 
 use std::collections::BTreeMap;
 use std::fs::{File, OpenOptions};
-use std::io::{self, Write};
+use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 
 use crate::cbor;
 use crate::key::{HmacBytes, KeyHandle, HMAC_LEN};
 use crate::segment::{
-    self, SegmentHeader, HEADER_BODY_LEN, HEADER_TOTAL_LEN, RECORD_FRAMING_OVERHEAD, SESSION_ID_LEN,
+    self, HeaderParseError, SegmentHeader, HEADER_BODY_LEN, HEADER_TOTAL_LEN,
+    RECORD_FRAMING_OVERHEAD, SESSION_ID_LEN,
 };
 use crate::sync_compat::full_sync;
 
@@ -163,6 +164,156 @@ pub enum WriterError {
     /// Record input violated a schema invariant (e.g. ts_wall not RFC 3339).
     #[error("invalid record input: {0}")]
     InvalidInput(String),
+
+    /// Crash-recovery scan refused to resume from this log directory.
+    ///
+    /// This is NOT a torn tail — that we repair silently. Recovery fails
+    /// loudly when the existing log shows signs of in-place tampering,
+    /// key rotation without migration, or unsupported on-disk format.
+    /// See [`RecoveryFailure`] for the discriminated reason.
+    ///
+    /// The Writer never silently extends a corrupt chain; callers must
+    /// decide whether to archive the broken log and create a fresh one.
+    #[error("crash recovery refused: {reason}")]
+    Recovery {
+        /// Discriminated reason.
+        reason: RecoveryFailure,
+    },
+}
+
+/// Why the writer refused to resume from an existing log directory.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum RecoveryFailure {
+    /// The latest segment file's header bytes were corrupt
+    /// (truncated, bad magic, unsupported version, CRC mismatch).
+    HeaderCorrupt {
+        /// Segment whose header failed to parse.
+        segment_index: u16,
+        /// The header-parse error.
+        cause: HeaderParseError,
+    },
+    /// A record inside the latest segment HMAC'd against the running
+    /// chain but the stored HMAC differed. This is structural tampering,
+    /// not crash. The Writer refuses to extend such a log.
+    HmacMismatch {
+        /// Segment containing the bad record.
+        segment_index: u16,
+        /// Per-segment monotonic record id of the bad record.
+        record_id: u64,
+        /// Byte offset where the bad record starts in the segment file.
+        file_offset: u64,
+    },
+    /// A record's `prev_hash` did not match the prior record's HMAC.
+    /// As with `HmacMismatch`, this is tampering, not crash.
+    ChainBreak {
+        /// Segment containing the bad record.
+        segment_index: u16,
+        /// Per-segment monotonic record id of the bad record.
+        record_id: u64,
+        /// Byte offset where the bad record starts in the segment file.
+        file_offset: u64,
+    },
+    /// The segment header's `key_id` does not match the key handle the
+    /// caller passed to `Writer::open`. Either the wrong key was loaded
+    /// or the log was created under a rotated key. v0.1 requires the
+    /// caller to migrate the log into a fresh dir before continuing.
+    KeyIdMismatch {
+        /// Segment whose header had the unexpected key_id.
+        segment_index: u16,
+        /// Header's key_id hex.
+        header_key_id_hex: String,
+        /// Caller-supplied key handle's key_id hex.
+        expected_key_id_hex: String,
+    },
+}
+
+impl core::fmt::Display for RecoveryFailure {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            RecoveryFailure::HeaderCorrupt {
+                segment_index,
+                cause,
+            } => write!(f, "header corrupt in segment {segment_index}: {cause}"),
+            RecoveryFailure::HmacMismatch {
+                segment_index,
+                record_id,
+                file_offset,
+            } => write!(
+                f,
+                "HMAC mismatch at segment {segment_index}, record {record_id} \
+                 (file offset {file_offset}) — log shows in-place tampering, refusing to extend"
+            ),
+            RecoveryFailure::ChainBreak {
+                segment_index,
+                record_id,
+                file_offset,
+            } => write!(
+                f,
+                "chain break at segment {segment_index}, record {record_id} \
+                 (file offset {file_offset}) — log shows in-place tampering, refusing to extend"
+            ),
+            RecoveryFailure::KeyIdMismatch {
+                segment_index,
+                header_key_id_hex,
+                expected_key_id_hex,
+            } => write!(
+                f,
+                "key_id mismatch in segment {segment_index}: header has {header_key_id_hex}, \
+                 caller's key handle is {expected_key_id_hex}"
+            ),
+        }
+    }
+}
+
+/// What `Writer::open` did with the target directory.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RecoveryAction {
+    /// Directory had no segment files. A fresh segment 0 was created.
+    Fresh,
+    /// Existing log's tail was clean. Resumed appending without any
+    /// truncation.
+    Resumed,
+    /// Existing log's tail was torn (partial framing / `len_trailer !=
+    /// len_prefix`). The torn bytes were truncated and the writer
+    /// resumed at the last valid record.
+    Repaired,
+    /// The latest segment was finalized end-to-end (last record was
+    /// `segment.finalized`). The writer opened a fresh segment N+1 with
+    /// its `prev_final` chained from the finalized segment's last HMAC.
+    OpenedNextAfterFinalized,
+}
+
+/// Per-call report describing what `Writer::open` recovered.
+///
+/// Returned from [`Writer::recovery_report`]. The calling app surfaces
+/// the relevant bits to the user — e.g. "previous session ended
+/// unexpectedly; recovered to record 1234, truncated 67 bytes".
+#[derive(Debug, Clone)]
+pub struct RecoveryReport {
+    /// Discriminated action taken.
+    pub action: RecoveryAction,
+    /// Segment index that became `current` after open.
+    pub current_segment_index: u16,
+    /// `record_id` of the last valid record found across the recovered
+    /// log. `None` when `action == Fresh` or the latest segment had no
+    /// records.
+    pub last_record_id: Option<u64>,
+    /// Number of records present in the recovered current segment at
+    /// the moment of resume (0 if action is `Fresh` or
+    /// `OpenedNextAfterFinalized`).
+    pub records_in_current_segment: u64,
+    /// Bytes lopped off the latest segment file during repair. Zero
+    /// unless `action == Repaired`.
+    pub truncated_bytes: u64,
+    /// Total segments scanned during recovery (always 1 unless future
+    /// versions add cross-segment scanning; v0.1 trusts earlier
+    /// segments and only scans the latest).
+    pub segments_scanned: u16,
+    /// HMAC of the last valid record (or chain_start equivalent).
+    /// Useful for callers that want to surface an integrity-anchor
+    /// fingerprint in their UI.
+    pub last_hmac: HmacBytes,
 }
 
 /// Append-only writer over a directory of segment files.
@@ -172,6 +323,9 @@ pub struct Writer {
     session_id: [u8; SESSION_ID_LEN],
     config: WriterConfig,
     current: SegmentState,
+    /// Populated by `Writer::open` / `Writer::with_config`. Surfaced to
+    /// callers via [`Writer::recovery_report`].
+    recovery: RecoveryReport,
 }
 
 struct SegmentState {
@@ -200,18 +354,34 @@ struct SegmentState {
 }
 
 impl Writer {
-    /// Open or create a log directory and return a fresh writer
-    /// targeting a brand-new segment 0.
+    /// Open a log directory.
     ///
-    /// At v0.1 the Writer does NOT resume from an existing directory.
-    /// If `log_dir` already contains segment files, this call will
-    /// truncate `audit-0000.cbor` on open — the resume case is
-    /// [R5 / OGE-432]'s responsibility.
+    /// If the directory is empty (or has no `audit-NNNN.cbor` files),
+    /// creates a fresh segment 0 (the v0.1 genesis path).
+    ///
+    /// If the directory already contains segment files, runs the
+    /// [R5 / OGE-432] crash-recovery scan on the latest segment:
+    ///
+    /// * a torn tail (incomplete frame / `len_trailer != len_prefix`)
+    ///   is truncated atomically before any new append;
+    /// * a clean tail is resumed in-place;
+    /// * a fully-finalized latest segment causes a fresh segment N+1 to
+    ///   be opened with `prev_final` chained from the finalize HMAC.
+    ///
+    /// In-place tampering (HMAC mismatch or chain break inside an
+    /// otherwise framed record, or a `key_id` that doesn't match the
+    /// caller's key handle) causes [`Writer::open`] to return
+    /// [`WriterError::Recovery`] — the writer never silently extends a
+    /// corrupt chain.
+    ///
+    /// After open, call [`Writer::recovery_report`] for a structured
+    /// description of what the scan did. This is the event the calling
+    /// app surfaces as "previous session ended unexpectedly; recovered
+    /// to record 1234, truncated 67 bytes".
     ///
     /// `session_id` should be a UUIDv4 generated at vault unlock or
     /// equivalent application-lifecycle event; it is stamped into every
-    /// record in the log and provides the cross-record session anchor
-    /// for the dual-time-anchor invariant in the spec.
+    /// new record written via this Writer.
     ///
     /// [R5 / OGE-432]: https://linear.app/ogenticai/issue/OGE-432
     pub fn open(
@@ -232,20 +402,96 @@ impl Writer {
     ) -> Result<Self, WriterError> {
         let log_dir = log_dir.as_ref().to_path_buf();
         std::fs::create_dir_all(&log_dir)?;
-        let current = SegmentState::create(0, &log_dir, key.as_ref().key_id().as_bytes())?;
-        // Compute chain_start for genesis: HMAC(key, header_bytes[0..72]).
-        let header = SegmentHeader::genesis(*key.as_ref().key_id().as_bytes());
-        let header_bytes = header.to_bytes();
-        let chain_start = sign_bytes(key.as_ref(), &header_bytes[..HEADER_BODY_LEN]);
-        let mut writer = Self {
+
+        let existing = list_segment_indices(&log_dir)?;
+        if existing.is_empty() {
+            // Fresh-create the genesis segment.
+            let current = SegmentState::create(0, &log_dir, key.as_ref().key_id().as_bytes())?;
+            let header = SegmentHeader::genesis(*key.as_ref().key_id().as_bytes());
+            let header_bytes = header.to_bytes();
+            let chain_start = sign_bytes(key.as_ref(), &header_bytes[..HEADER_BODY_LEN]);
+            let recovery = RecoveryReport {
+                action: RecoveryAction::Fresh,
+                current_segment_index: 0,
+                last_record_id: None,
+                records_in_current_segment: 0,
+                truncated_bytes: 0,
+                segments_scanned: 0,
+                last_hmac: HmacBytes::from(chain_start),
+            };
+            let mut writer = Self {
+                log_dir,
+                key,
+                session_id,
+                config,
+                current,
+                recovery,
+            };
+            writer.current.last_hmac = chain_start;
+            return Ok(writer);
+        }
+
+        // Recovery path: scan the highest-numbered segment.
+        let latest_index = *existing.last().expect("non-empty");
+        let scan = scan_segment_for_recovery(&log_dir, latest_index, key.as_ref())?;
+
+        let (current, recovery) = if scan.last_record_was_finalize {
+            // Latest segment closed cleanly. Open N+1 fresh.
+            let next_index = latest_index
+                .checked_add(1)
+                .ok_or_else(|| WriterError::InvalidInput("segment_index overflow (u16)".into()))?;
+            let new_state = SegmentState::create_next(
+                next_index,
+                &log_dir,
+                key.as_ref().key_id().as_bytes(),
+                scan.last_hmac,
+            )?;
+            let report = RecoveryReport {
+                action: RecoveryAction::OpenedNextAfterFinalized,
+                current_segment_index: next_index,
+                last_record_id: scan.last_record_id,
+                records_in_current_segment: 0,
+                truncated_bytes: scan.truncated_bytes,
+                segments_scanned: 1,
+                last_hmac: HmacBytes::from(scan.last_hmac),
+            };
+            (new_state, report)
+        } else {
+            // Resume in-place in the latest segment.
+            let state = reopen_segment_for_append(&log_dir, latest_index, &scan)?;
+            let action = if scan.truncated_bytes > 0 {
+                RecoveryAction::Repaired
+            } else {
+                RecoveryAction::Resumed
+            };
+            let report = RecoveryReport {
+                action,
+                current_segment_index: latest_index,
+                last_record_id: scan.last_record_id,
+                records_in_current_segment: scan.record_count,
+                truncated_bytes: scan.truncated_bytes,
+                segments_scanned: 1,
+                last_hmac: HmacBytes::from(scan.last_hmac),
+            };
+            (state, report)
+        };
+
+        Ok(Self {
             log_dir,
             key,
             session_id,
             config,
             current,
-        };
-        writer.current.last_hmac = chain_start;
-        Ok(writer)
+            recovery,
+        })
+    }
+
+    /// Structured description of what [`Writer::open`] did with the
+    /// target directory: fresh create, clean resume, torn-tail repair,
+    /// or open-next-after-finalized. Always populated.
+    #[must_use]
+    pub fn recovery_report(&self) -> &RecoveryReport {
+        &self.recovery
     }
 
     /// Append one record to the current segment, rolling over first if
@@ -642,3 +888,407 @@ fn hex_lower(bytes: &[u8]) -> String {
 
 // (legacy assemble_finalize_input helper removed — the size-estimation
 // path now uses assemble_finalize_input_from_last directly.)
+
+// ---------------------------------------------------------------------
+// Crash-recovery scan (R5 / OGE-432)
+//
+// `Writer::open` consults these helpers when the target directory
+// already contains segment files. The scan walks the LATEST segment
+// only — earlier segments are treated as already-durable history (the
+// Verifier R3 checks them on demand). Torn tails are truncated
+// silently; HMAC mismatches and chain breaks inside framed records are
+// surfaced as `WriterError::Recovery` and refuse to extend the chain.
+// ---------------------------------------------------------------------
+
+/// Result of scanning the latest segment for recovery.
+struct ScanResult {
+    /// Number of valid records found.
+    record_count: u64,
+    /// Per-segment monotonic id of the last valid record (None if 0).
+    last_record_id: Option<u64>,
+    /// Total bytes the file ends at after any torn-tail truncation.
+    bytes_written: u64,
+    /// Number of bytes the recovery truncated off the tail.
+    truncated_bytes: u64,
+    /// HMAC of the last valid record (or chain_start if no records).
+    last_hmac: [u8; HMAC_LEN],
+    /// `ts_wall` of the last valid record (empty if no records).
+    last_ts_wall: String,
+    /// `ts_mono_delta` of the last valid record (0 if no records).
+    last_ts_mono_delta: u64,
+    /// Whether the last valid record was a `segment.finalized` event.
+    last_record_was_finalize: bool,
+}
+
+/// List `audit-NNNN.cbor` files in `log_dir` and return their `NNNN`
+/// indices in ascending order.
+fn list_segment_indices(log_dir: &Path) -> Result<Vec<u16>, WriterError> {
+    let mut out = Vec::new();
+    let entries = match std::fs::read_dir(log_dir) {
+        Ok(e) => e,
+        Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(out),
+        Err(err) => return Err(err.into()),
+    };
+    for entry in entries {
+        let entry = entry?;
+        let name = entry.file_name();
+        let name = match name.to_str() {
+            Some(s) => s,
+            None => continue,
+        };
+        if let Some(idx) = parse_segment_filename(name) {
+            out.push(idx);
+        }
+    }
+    out.sort_unstable();
+    Ok(out)
+}
+
+/// `"audit-0042.cbor"` → `Some(42)`. Anything else → `None`.
+fn parse_segment_filename(name: &str) -> Option<u16> {
+    let body = name.strip_prefix("audit-")?.strip_suffix(".cbor")?;
+    if body.len() != 4 {
+        return None;
+    }
+    body.parse::<u16>().ok()
+}
+
+/// Walk the latest segment forward, HMAC each record, detect torn tail,
+/// truncate if needed. Returns a structured [`ScanResult`].
+fn scan_segment_for_recovery(
+    log_dir: &Path,
+    seg_idx: u16,
+    key: &dyn KeyHandle,
+) -> Result<ScanResult, WriterError> {
+    let path = segment_path(log_dir, seg_idx);
+    let mut file = OpenOptions::new().read(true).write(true).open(&path)?;
+    let file_len = file.metadata()?.len();
+
+    // 1. Parse + validate header.
+    if file_len < HEADER_TOTAL_LEN as u64 {
+        return Err(WriterError::Recovery {
+            reason: RecoveryFailure::HeaderCorrupt {
+                segment_index: seg_idx,
+                cause: HeaderParseError::TooShort {
+                    got: file_len as usize,
+                },
+            },
+        });
+    }
+    let mut header_bytes = [0u8; HEADER_TOTAL_LEN];
+    file.seek(SeekFrom::Start(0))?;
+    file.read_exact(&mut header_bytes)?;
+    let header = SegmentHeader::parse(&header_bytes).map_err(|cause| WriterError::Recovery {
+        reason: RecoveryFailure::HeaderCorrupt {
+            segment_index: seg_idx,
+            cause,
+        },
+    })?;
+
+    // 2. Validate header key_id matches caller's key handle.
+    let expected_key_id = key.key_id();
+    if header.key_id != *expected_key_id.as_bytes() {
+        return Err(WriterError::Recovery {
+            reason: RecoveryFailure::KeyIdMismatch {
+                segment_index: seg_idx,
+                header_key_id_hex: hex_lower(&header.key_id),
+                expected_key_id_hex: hex_lower(expected_key_id.as_bytes()),
+            },
+        });
+    }
+
+    // 3. Compute chain_start for this segment's first record.
+    let chain_start = if seg_idx == 0 {
+        sign_bytes(key, &header_bytes[..HEADER_BODY_LEN])
+    } else {
+        header.prev_final
+    };
+
+    // 4. Walk records.
+    let mut offset = HEADER_TOTAL_LEN as u64;
+    let mut prev_hash = chain_start;
+    let mut record_count: u64 = 0;
+    let mut last_record_id: Option<u64> = None;
+    let mut last_ts_wall = String::new();
+    let mut last_ts_mono_delta: u64 = 0;
+    let mut last_record_was_finalize = false;
+    let mut last_valid_offset = HEADER_TOTAL_LEN as u64;
+
+    loop {
+        if offset >= file_len {
+            break;
+        }
+        // Read the framed record at `offset`.
+        let framed = match read_framed_record(&mut file, file_len, offset) {
+            FramingOutcome::Ok(f) => f,
+            FramingOutcome::Torn => {
+                // Torn tail — truncate to `offset` and stop.
+                let truncated = file_len - offset;
+                if truncated > 0 {
+                    truncate_to(&mut file, offset)?;
+                }
+                return Ok(ScanResult {
+                    record_count,
+                    last_record_id,
+                    bytes_written: offset,
+                    truncated_bytes: truncated,
+                    last_hmac: prev_hash,
+                    last_ts_wall,
+                    last_ts_mono_delta,
+                    last_record_was_finalize,
+                });
+            },
+            FramingOutcome::Io(err) => return Err(err.into()),
+        };
+
+        // HMAC check.
+        let expected = sign_bytes(key, &framed.payload_bytes);
+        if !constant_time_eq(&expected, &framed.hmac) {
+            // Structural tampering — refuse to recover.
+            let record_id = peek_record_id(&framed.payload_bytes)
+                .unwrap_or_else(|| last_record_id.map(|r| r + 1).unwrap_or(0));
+            return Err(WriterError::Recovery {
+                reason: RecoveryFailure::HmacMismatch {
+                    segment_index: seg_idx,
+                    record_id,
+                    file_offset: offset,
+                },
+            });
+        }
+
+        // Decode + chain check.
+        let decoded = match cbor::decode(&framed.payload_bytes) {
+            Ok(v) => v,
+            Err(e) => {
+                // Decoded layer failed even though HMAC matched. This
+                // means the encoded form is non-canonical (the writer
+                // signed something the decoder won't accept). Treat as
+                // structural corruption.
+                return Err(WriterError::InvalidInput(format!(
+                    "scan_segment_for_recovery: decoded record at offset {offset} \
+                     passed HMAC but failed canonical CBOR decode: {e}"
+                )));
+            },
+        };
+
+        let parsed = parse_recovered_record(&decoded).map_err(|e| {
+            // HMAC matched but the canonical-CBOR decode wasn't v0.1-
+            // schema-shaped. That's a writer bug, not crash / tamper —
+            // bail loudly so the caller doesn't silently extend a
+            // non-conforming chain.
+            WriterError::InvalidInput(format!(
+                "scan_segment_for_recovery: record at segment {seg_idx}, offset {offset} \
+                 passed HMAC but failed v0.1 schema parse: {}",
+                e.0
+            ))
+        })?;
+
+        // Chain check.
+        if parsed.prev_hash != prev_hash {
+            return Err(WriterError::Recovery {
+                reason: RecoveryFailure::ChainBreak {
+                    segment_index: seg_idx,
+                    record_id: parsed.record_id,
+                    file_offset: offset,
+                },
+            });
+        }
+
+        // Advance.
+        prev_hash = framed.hmac;
+        last_record_id = Some(parsed.record_id);
+        last_ts_wall = parsed.ts_wall;
+        last_ts_mono_delta = parsed.ts_mono_delta;
+        last_record_was_finalize = parsed.event == "segment.finalized";
+        record_count += 1;
+        last_valid_offset = offset + framed.total_len;
+        offset = last_valid_offset;
+    }
+
+    Ok(ScanResult {
+        record_count,
+        last_record_id,
+        bytes_written: last_valid_offset,
+        truncated_bytes: 0,
+        last_hmac: prev_hash,
+        last_ts_wall,
+        last_ts_mono_delta,
+        last_record_was_finalize,
+    })
+}
+
+/// Outcome of attempting to read a framed record at `offset`.
+enum FramingOutcome {
+    Ok(FramedReadout),
+    Torn,
+    Io(io::Error),
+}
+
+/// One successfully framed record.
+struct FramedReadout {
+    payload_bytes: Vec<u8>,
+    hmac: [u8; HMAC_LEN],
+    total_len: u64,
+}
+
+/// Read a framed record at `offset`. Returns `Torn` for any incomplete
+/// framing (short read, len mismatch).
+fn read_framed_record(file: &mut File, file_len: u64, offset: u64) -> FramingOutcome {
+    if let Err(e) = file.seek(SeekFrom::Start(offset)) {
+        return FramingOutcome::Io(e);
+    }
+    if file_len - offset < 4 {
+        return FramingOutcome::Torn;
+    }
+    let mut lp = [0u8; 4];
+    if let Err(e) = file.read_exact(&mut lp) {
+        return FramingOutcome::Io(e);
+    }
+    let len_prefix = u32::from_le_bytes(lp) as u64;
+    let framed_total = 4 + len_prefix + (HMAC_LEN as u64) + 4;
+    if file_len - offset < framed_total {
+        return FramingOutcome::Torn;
+    }
+    // Defensive cap: a v0.1 record can be at most ~16 MiB given the
+    // 64 MiB segment cap and per-record overhead. Reject anything past
+    // 32 MiB outright (torn-tail with stale bytes that happen to look
+    // like a valid length).
+    if len_prefix > 32 * 1024 * 1024 {
+        return FramingOutcome::Torn;
+    }
+    let mut payload_bytes = vec![0u8; len_prefix as usize];
+    if let Err(e) = file.read_exact(&mut payload_bytes) {
+        return FramingOutcome::Io(e);
+    }
+    let mut hmac = [0u8; HMAC_LEN];
+    if let Err(e) = file.read_exact(&mut hmac) {
+        return FramingOutcome::Io(e);
+    }
+    let mut lt = [0u8; 4];
+    if let Err(e) = file.read_exact(&mut lt) {
+        return FramingOutcome::Io(e);
+    }
+    let len_trailer = u32::from_le_bytes(lt) as u64;
+    if len_trailer != len_prefix {
+        return FramingOutcome::Torn;
+    }
+    FramingOutcome::Ok(FramedReadout {
+        payload_bytes,
+        hmac,
+        total_len: framed_total,
+    })
+}
+
+fn truncate_to(file: &mut File, new_len: u64) -> io::Result<()> {
+    file.flush()?;
+    file.set_len(new_len)?;
+    full_sync(file)?;
+    Ok(())
+}
+
+/// Constant-time `==` over two 32-byte HMAC buffers.
+fn constant_time_eq(a: &[u8; HMAC_LEN], b: &[u8; HMAC_LEN]) -> bool {
+    use subtle::ConstantTimeEq;
+    a.ct_eq(b).into()
+}
+
+/// Minimal decoded view of a record's recovered fields. We avoid
+/// going through Reader::Record because the recovery scan needs to be
+/// self-contained (Reader is built on top of segment files we're
+/// actively repairing).
+struct RecoveredRecord {
+    record_id: u64,
+    prev_hash: [u8; HMAC_LEN],
+    ts_wall: String,
+    ts_mono_delta: u64,
+    event: String,
+}
+
+#[derive(Debug)]
+struct RecoveredParseError(String);
+
+fn parse_recovered_record(value: &cbor::Value) -> Result<RecoveredRecord, RecoveredParseError> {
+    let pairs = match value {
+        cbor::Value::Map(m) => m,
+        _ => return Err(RecoveredParseError("record is not a CBOR map".into())),
+    };
+    let mut record_id: Option<u64> = None;
+    let mut prev_hash: Option<[u8; HMAC_LEN]> = None;
+    let mut ts_wall: Option<String> = None;
+    let mut ts_mono_delta: Option<u64> = None;
+    let mut event: Option<String> = None;
+    for (k, v) in pairs {
+        let key = match k {
+            cbor::Value::Uint(n) => *n,
+            _ => return Err(RecoveredParseError("non-uint map key".into())),
+        };
+        match (key, v) {
+            (1, cbor::Value::Uint(n)) => record_id = Some(*n),
+            (2, cbor::Value::Bytes(b)) => {
+                if b.len() != HMAC_LEN {
+                    return Err(RecoveredParseError(format!(
+                        "prev_hash length: {}",
+                        b.len()
+                    )));
+                }
+                let mut buf = [0u8; HMAC_LEN];
+                buf.copy_from_slice(b);
+                prev_hash = Some(buf);
+            },
+            (3, cbor::Value::Text(s)) => ts_wall = Some(s.clone()),
+            (4, cbor::Value::Uint(n)) => ts_mono_delta = Some(*n),
+            (7, cbor::Value::Text(s)) => event = Some(s.clone()),
+            _ => {},
+        }
+    }
+    Ok(RecoveredRecord {
+        record_id: record_id.ok_or_else(|| RecoveredParseError("missing record_id".into()))?,
+        prev_hash: prev_hash.ok_or_else(|| RecoveredParseError("missing prev_hash".into()))?,
+        ts_wall: ts_wall.ok_or_else(|| RecoveredParseError("missing ts_wall".into()))?,
+        ts_mono_delta: ts_mono_delta
+            .ok_or_else(|| RecoveredParseError("missing ts_mono_delta".into()))?,
+        event: event.ok_or_else(|| RecoveredParseError("missing event".into()))?,
+    })
+}
+
+/// Peek at the `record_id` field of a CBOR-encoded payload without
+/// fully decoding. Used in error paths where decode may fail.
+fn peek_record_id(payload: &[u8]) -> Option<u64> {
+    let value = cbor::decode(payload).ok()?;
+    match value {
+        cbor::Value::Map(pairs) => {
+            for (k, v) in pairs {
+                if let cbor::Value::Uint(1) = k {
+                    if let cbor::Value::Uint(n) = v {
+                        return Some(n);
+                    }
+                }
+            }
+            None
+        },
+        _ => None,
+    }
+}
+
+/// Reopen the latest segment file for resume-append after a successful
+/// scan. The file's bytes already match `scan.bytes_written` (we
+/// truncated during the scan if needed).
+fn reopen_segment_for_append(
+    log_dir: &Path,
+    seg_idx: u16,
+    scan: &ScanResult,
+) -> Result<SegmentState, WriterError> {
+    let path = segment_path(log_dir, seg_idx);
+    let mut file = OpenOptions::new().read(true).write(true).open(&path)?;
+    file.seek(SeekFrom::Start(scan.bytes_written))?;
+    Ok(SegmentState {
+        index: seg_idx,
+        file,
+        bytes_written: scan.bytes_written,
+        last_hmac: scan.last_hmac,
+        next_record_id: scan.last_record_id.map(|r| r + 1).unwrap_or(0),
+        record_count: scan.record_count,
+        last_ts_wall: scan.last_ts_wall.clone(),
+        last_ts_mono_delta: scan.last_ts_mono_delta,
+    })
+}
