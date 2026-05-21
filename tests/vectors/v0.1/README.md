@@ -60,4 +60,42 @@ python3 tools/check_cbor_parity.py       # validate canonical-form parity vs cbo
 1. Read `inputs.json` and rebuild the segment bytes — must equal the on-disk files (after `post_process`).
 2. Run the verifier on the on-disk files — must return `expected_verdict`.
 
+CI gate:
+
+| Job | What it asserts | Source |
+|---|---|---|
+| `vector-conformance` (Python) | `python3 tools/gen_vectors.py --check` — every committed `audit-NNNN.cbor` and `chain.json` matches what the reference generator produces today. | `.github/workflows/ci.yml` |
+| `rust-test` (Writer) | `crates/ogentic-audit-core/tests/vector_conformance.rs` — the Rust Writer produces byte-identical output to the on-disk vectors for the 4 clean vectors (empty, single-record, 1k-records, segment-rollover). | crates/ogentic-audit-core/tests/vector_conformance.rs |
+| `rust-test` (Verifier) | `crates/ogentic-audit-core/tests/verifier_conformance.rs` — the Rust verifier returns the expected verdict for all 6 vectors. | crates/ogentic-audit-core/tests/verifier_conformance.rs |
+| `python-test` (Verifier) | `python/tests/test_round_trip.py::test_verify_*_vector` — the Python verifier (PyO3 wrapper) returns the same verdict the Rust verifier does for all 6 vectors. | python/tests/test_round_trip.py |
+
+Any drift in any of these blocks merge.
+
 Vectors are append-only within a format version. If a future v0.2 changes the wire format, vectors land under `tests/vectors/v0.2/` and the v0.1 directory remains unchanged so v0.1 readers continue to compile and pass.
+
+## Adding a new vector
+
+The procedure is the same for first-party and third-party implementations — the canonical `inputs.json` + `audit-NNNN.cbor` + `chain.json` triple is the cross-language contract.
+
+1. **Pick a directory name** — short, descriptive, dashes-for-spaces (`empty`, `1k-records`, `tampered-byte`, …).
+2. **Author `inputs.json`** following the schema the existing vectors use:
+   - `name` — must match the directory name.
+   - `key_hex` — 64-char hex of the 32-byte HMAC-SHA256 key.
+   - `session_id_hex` — 32-char hex of the UUIDv4 session id.
+   - `records` — ordered list of `{ts_wall, ts_mono_delta, actor, event, payload, schema_version}`, *or* a `generator` block (see `1k-records/inputs.json` for the generator shape).
+   - `writer_config` — `{segment_size_bytes, finalize_on_rollover}`. Optional; defaults to spec values.
+   - `post_process` — optional. Currently supported: `{kind: "xor_byte", segment_index, byte_offset, mask}` and `{kind: "remove_record", segment_index, record_id}`. Used to build tamper / missing-record vectors.
+   - `expected_verdict` — `"Verified"` or `"<ViolationKind>@s<seg>r<rec>"`.
+3. **Generate the artifacts**:
+   ```sh
+   python3 tools/gen_vectors.py
+   ```
+   This writes `audit-NNNN.cbor` files and `chain.json` next to your `inputs.json`. `--check` will fail until you've committed; that's expected.
+4. **Wire the new vector into the conformance tests**. The three places to touch:
+   - **Rust writer conformance** (clean vectors only): add a `#[test]` calling `assert_vector("<name>")` in [`crates/ogentic-audit-core/tests/vector_conformance.rs`](../../../crates/ogentic-audit-core/tests/vector_conformance.rs). Skip this for tamper vectors — the Writer should never produce tampered bytes.
+   - **Rust verifier conformance** (every vector): add a `#[test]` calling `verify_vector("<name>")` in [`crates/ogentic-audit-core/tests/verifier_conformance.rs`](../../../crates/ogentic-audit-core/tests/verifier_conformance.rs).
+   - **Python verifier conformance** (every vector): add a test calling `verify(str(VECTORS_DIR / "<name>"), key=_key_for_vector("<name>"))` in [`python/tests/test_round_trip.py`](../../../python/tests/test_round_trip.py).
+5. **Commit the directory**: `inputs.json`, `chain.json`, every `audit-NNNN.cbor`. The CBOR files are binary; only `tests/vectors/.tmp/` is `.gitignore`d.
+6. **Verify the gate**: `python3 tools/gen_vectors.py --check && cargo test --workspace --exclude ogentic-audit-py && (cd python && pytest)`. All three must pass before opening a PR.
+
+Third-party implementations that add a language-specific synthesize-and-verify test against these vectors are welcome — open a PR adding a directory under `bindings/<language>/` and wire its tests in the same style.
