@@ -36,8 +36,8 @@ pub const HEADER_TOTAL_LEN: usize = 80;
 pub const SESSION_ID_LEN: usize = 16;
 
 /// Decoded view of the 80-byte segment header. Constructed via
-/// [`SegmentHeader::build`] (writer side) or, in the future,
-/// [`SegmentHeader::parse`] (reader side; lands with OGE-430).
+/// [`SegmentHeader::genesis`] / [`SegmentHeader::next`] (writer side) or
+/// [`SegmentHeader::parse`] (reader / verifier side).
 #[derive(Debug, Clone)]
 pub struct SegmentHeader {
     /// Format version. Must equal [`FORMAT_VERSION`] (0x0001) at v0.1.

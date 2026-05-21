@@ -1,0 +1,24 @@
+# Read the Docs configuration (https://docs.readthedocs.io/en/stable/config-file/v2.html).
+#
+# Builds the Sphinx site under `python/docs/` on every tag and on
+# `main`. Published to https://ogentic-audit.readthedocs.io.
+
+version: 2
+
+build:
+  os: ubuntu-22.04
+  tools:
+    python: "3.12"
+    rust: "1.85"
+
+sphinx:
+  configuration: python/docs/conf.py
+  fail_on_warning: true
+
+python:
+  install:
+    - method: pip
+      path: .
+      extra_requirements:
+        - dev
+    - requirements: python/docs/requirements.txt

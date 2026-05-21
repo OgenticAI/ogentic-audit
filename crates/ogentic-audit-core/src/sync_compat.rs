@@ -11,7 +11,8 @@
 //! across a sudden power loss. This module exposes a single
 //! [`full_sync`] function that picks the right primitive per platform:
 //!
-//! - macOS: `fcntl(F_FULLFSYNC)` via [`rustix::fs::fcntl_fullfsync`].
+//! - macOS: `fcntl(F_FULLFSYNC)` via `rustix::fs::fcntl_fullfsync`
+//!   (platform-gated; only compiled in when `cfg(target_os = "macos")`).
 //! - everything else: [`File::sync_all`], which is the strongest
 //!   primitive Rust's std exposes on the platform.
 //!

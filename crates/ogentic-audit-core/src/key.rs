@@ -27,7 +27,7 @@
 //! - [`InMemoryKey`] zeroes its key material on drop ([`zeroize`]).
 //! - [`HmacBytes`] and [`KeyId`] use constant-time equality comparison
 //!   ([`subtle`]) to defend against timing side channels.
-//! - [`Debug`] and [`Display`] impls redact the key material; only the
+//! - `Debug` and `Display` impls redact the key material; only the
 //!   [`KeyId`] (a one-way hash) appears in formatted output.
 //!
 //! Threat-model context for what these invariants do and don't defend
