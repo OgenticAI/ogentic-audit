@@ -225,16 +225,86 @@ fn version_subcommand_prints_versions() {
 }
 
 #[test]
-fn export_stub_exits_zero_with_message() {
+fn export_writes_a_pdf_for_clean_vector() {
+    let key_hex = vector_key_hex("single-record");
     let tmp = tempfile::tempdir().unwrap();
     let pdf_path = tmp.path().join("out.pdf");
     cmd()
+        .env("OGENTIC_AUDIT_KEY_HEX", key_hex)
         .arg("export")
         .arg(vectors_dir().join("single-record"))
         .arg("--pdf")
         .arg(&pdf_path)
+        .arg("--source-date")
+        .arg("2026-05-21T05:00:00Z")
+        .arg("--custodian")
+        .arg("Conformance")
         .assert()
         .success()
-        .stderr(predicate::str::contains("not yet implemented"))
-        .stderr(predicate::str::contains("OGE-438"));
+        .stderr(predicate::str::contains("sha256="));
+    // Output must be a real PDF (starts with %PDF-1.4 and ends with %%EOF).
+    let bytes = fs::read(&pdf_path).unwrap();
+    assert!(bytes.starts_with(b"%PDF-1.4\n"), "missing PDF header");
+    assert!(bytes.ends_with(b"%%EOF\n"), "missing PDF trailer");
+    // sample size sanity (≥ 1 KB and ≤ 100 KB for the single-record case).
+    assert!(bytes.len() > 1024);
+    assert!(bytes.len() < 100_000);
+}
+
+#[test]
+fn export_is_bit_reproducible_for_same_inputs() {
+    let key_hex = vector_key_hex("single-record");
+    let tmp = tempfile::tempdir().unwrap();
+    let pdf_a = tmp.path().join("a.pdf");
+    let pdf_b = tmp.path().join("b.pdf");
+    for out in [&pdf_a, &pdf_b] {
+        cmd()
+            .env("OGENTIC_AUDIT_KEY_HEX", &key_hex)
+            .arg("export")
+            .arg(vectors_dir().join("single-record"))
+            .arg("--pdf")
+            .arg(out)
+            .arg("--source-date")
+            .arg("2026-05-21T05:00:00Z")
+            .arg("--custodian")
+            .arg("Conformance")
+            .assert()
+            .success();
+    }
+    let a = fs::read(&pdf_a).unwrap();
+    let b = fs::read(&pdf_b).unwrap();
+    assert_eq!(a, b, "PDF bytes diverge for identical inputs");
+}
+
+#[test]
+fn export_on_tampered_vector_emits_violation_pdf_and_exits_zero() {
+    // The export command verifies the chain but does not propagate a
+    // verification-failed exit code — by design, the PDF still gets
+    // written and contains the verdict verbatim (so the recipient
+    // sees the violation). Exit 0 indicates "PDF written
+    // successfully", not "log was clean".
+    let key_hex = vector_key_hex("tampered-byte");
+    let tmp = tempfile::tempdir().unwrap();
+    let pdf_path = tmp.path().join("tampered.pdf");
+    cmd()
+        .env("OGENTIC_AUDIT_KEY_HEX", key_hex)
+        .arg("export")
+        .arg(vectors_dir().join("tampered-byte"))
+        .arg("--pdf")
+        .arg(&pdf_path)
+        .arg("--source-date")
+        .arg("2026-05-21T05:00:00Z")
+        .assert()
+        .success();
+    let bytes = fs::read(&pdf_path).unwrap();
+    let text = String::from_utf8_lossy(&bytes);
+    // Verdict line is rendered in plain text inside the content stream.
+    assert!(
+        text.contains("VIOLATION"),
+        "expected VIOLATION marker in PDF text"
+    );
+    assert!(
+        text.contains("HmacMismatch"),
+        "expected HmacMismatch in PDF text"
+    );
 }

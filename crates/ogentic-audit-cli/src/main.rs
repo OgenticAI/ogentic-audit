@@ -22,6 +22,7 @@ mod commands;
 mod exit;
 mod keysource;
 mod output;
+mod pdf;
 
 use std::process::ExitCode;
 
