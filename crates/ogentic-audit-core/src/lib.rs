@@ -15,13 +15,15 @@
 //!
 //! ## What's coming
 //!
-//! The writer ([R1 / OGE-429]), reader ([R2 / OGE-430]), and verifier
-//! ([R3 / OGE-437]) all consume [`KeyHandle`] and land in subsequent
-//! tickets.
+//! The writer ([R1 / OGE-429]), reader ([R2 / OGE-430]), verifier
+//! ([R3 / OGE-437]), and crash-recovery scan
+//! ([R5 / OGE-432]) all consume [`KeyHandle`]. CLI, Python bindings,
+//! and remaining surface land in subsequent tickets.
 //!
 //! [R1 / OGE-429]: https://linear.app/ogenticai/issue/OGE-429
 //! [R2 / OGE-430]: https://linear.app/ogenticai/issue/OGE-430
 //! [R3 / OGE-437]: https://linear.app/ogenticai/issue/OGE-437
+//! [R5 / OGE-432]: https://linear.app/ogenticai/issue/OGE-432
 
 #![forbid(unsafe_code)]
 #![deny(rust_2018_idioms, missing_debug_implementations)]
@@ -37,12 +39,18 @@ pub mod writer;
 
 pub use key::{HmacBytes, InMemoryKey, KeyError, KeyHandle, KeyId, HMAC_LEN, KEY_ID_LEN};
 pub use reader::{ReadStrategy, Reader, ReaderConfig, ReaderError, Record, RecordIterator};
-pub use segment::{SegmentHeader, FORMAT_MAGIC, HEADER_BODY_LEN, HEADER_TOTAL_LEN, SESSION_ID_LEN};
+pub use segment::{
+    HeaderParseError, SegmentHeader, FORMAT_MAGIC, HEADER_BODY_LEN, HEADER_TOTAL_LEN,
+    SESSION_ID_LEN,
+};
 pub use verifier::{
     HeaderCorruptSubkind, LogSummary, RecordCorruptSubkind, Verdict, Verifier, VerifyError,
     VerifyOptions, VerifyReport, Violation, ViolationEvidence, ViolationKind, ViolationLocation,
 };
-pub use writer::{PayloadValue, RecordId, RecordInput, Writer, WriterConfig, WriterError};
+pub use writer::{
+    PayloadValue, RecordId, RecordInput, RecoveryAction, RecoveryFailure, RecoveryReport, Writer,
+    WriterConfig, WriterError,
+};
 
 /// Crate version, sourced from `Cargo.toml`.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

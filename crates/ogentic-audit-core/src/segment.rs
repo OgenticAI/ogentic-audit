@@ -56,6 +56,55 @@ pub struct SegmentHeader {
     pub prev_final: [u8; HMAC_LEN],
 }
 
+/// Errors a header byte-buffer can produce when being parsed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum HeaderParseError {
+    /// Buffer was shorter than [`HEADER_TOTAL_LEN`].
+    TooShort {
+        /// Number of bytes actually provided.
+        got: usize,
+    },
+    /// First four bytes did not equal [`FORMAT_MAGIC`].
+    BadMagic {
+        /// Bytes actually found in the magic slot.
+        got: [u8; 4],
+    },
+    /// `version` field did not equal [`FORMAT_VERSION`].
+    UnsupportedVersion {
+        /// Version value actually present in the header.
+        got: u16,
+    },
+    /// Stored CRC32 did not match recomputed CRC32 over `body`.
+    CrcMismatch {
+        /// CRC32 recomputed from the on-disk body bytes.
+        expected: u32,
+        /// CRC32 actually stored in the header trailer.
+        got: u32,
+    },
+}
+
+impl core::fmt::Display for HeaderParseError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            HeaderParseError::TooShort { got } => {
+                write!(f, "segment header too short: {got} bytes")
+            },
+            HeaderParseError::BadMagic { got } => {
+                write!(f, "segment header magic mismatch: got {got:?}")
+            },
+            HeaderParseError::UnsupportedVersion { got } => {
+                write!(f, "unsupported segment-header version: 0x{got:04x}")
+            },
+            HeaderParseError::CrcMismatch { expected, got } => write!(
+                f,
+                "segment header CRC32 mismatch: expected 0x{expected:08x}, got 0x{got:08x}"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for HeaderParseError {}
+
 impl SegmentHeader {
     /// Build the genesis-segment header.
     #[must_use]
@@ -78,6 +127,50 @@ impl SegmentHeader {
             key_id,
             prev_final,
         }
+    }
+
+    /// Parse an 80-byte on-disk segment header. Validates magic, version,
+    /// and CRC32 over the 72-byte body.
+    ///
+    /// This is the inverse of [`SegmentHeader::to_bytes`]. The
+    /// [R5 / OGE-432] writer-side recovery scan uses this to validate
+    /// the head of every segment file before walking records.
+    ///
+    /// [R5 / OGE-432]: https://linear.app/ogenticai/issue/OGE-432
+    pub fn parse(bytes: &[u8]) -> Result<Self, HeaderParseError> {
+        if bytes.len() < HEADER_TOTAL_LEN {
+            return Err(HeaderParseError::TooShort { got: bytes.len() });
+        }
+        let mut magic = [0u8; 4];
+        magic.copy_from_slice(&bytes[..4]);
+        if &magic != FORMAT_MAGIC {
+            return Err(HeaderParseError::BadMagic { got: magic });
+        }
+        let version = u16::from_le_bytes([bytes[4], bytes[5]]);
+        if version != FORMAT_VERSION {
+            return Err(HeaderParseError::UnsupportedVersion { got: version });
+        }
+        let segment_index = u16::from_le_bytes([bytes[6], bytes[7]]);
+        let mut key_id = [0u8; KEY_ID_LEN];
+        key_id.copy_from_slice(&bytes[8..40]);
+        let mut prev_final = [0u8; HMAC_LEN];
+        prev_final.copy_from_slice(&bytes[40..72]);
+
+        let stored_crc = u32::from_le_bytes([bytes[72], bytes[73], bytes[74], bytes[75]]);
+        let recomputed_crc = crc32fast::hash(&bytes[..HEADER_BODY_LEN]);
+        if stored_crc != recomputed_crc {
+            return Err(HeaderParseError::CrcMismatch {
+                expected: recomputed_crc,
+                got: stored_crc,
+            });
+        }
+
+        Ok(Self {
+            version,
+            segment_index,
+            key_id,
+            prev_final,
+        })
     }
 
     /// Serialize the header to its 80-byte on-disk form, including the
@@ -165,6 +258,67 @@ mod tests {
         assert_eq!(u16::from_le_bytes([bytes[6], bytes[7]]), 7);
         assert_eq!(&bytes[8..40], &key_id);
         assert_eq!(&bytes[40..72], &prev_final);
+    }
+
+    #[test]
+    fn parse_round_trips_genesis() {
+        let key_id = [0xabu8; KEY_ID_LEN];
+        let header = SegmentHeader::genesis(key_id);
+        let bytes = header.to_bytes();
+        let parsed = SegmentHeader::parse(&bytes).expect("parse ok");
+        assert_eq!(parsed.version, FORMAT_VERSION);
+        assert_eq!(parsed.segment_index, 0);
+        assert_eq!(parsed.key_id, key_id);
+        assert_eq!(parsed.prev_final, [0u8; HMAC_LEN]);
+    }
+
+    #[test]
+    fn parse_round_trips_segment_n() {
+        let key_id = [3u8; KEY_ID_LEN];
+        let prev_final = [4u8; HMAC_LEN];
+        let header = SegmentHeader::next(42, key_id, prev_final);
+        let bytes = header.to_bytes();
+        let parsed = SegmentHeader::parse(&bytes).expect("parse ok");
+        assert_eq!(parsed.segment_index, 42);
+        assert_eq!(parsed.key_id, key_id);
+        assert_eq!(parsed.prev_final, prev_final);
+    }
+
+    #[test]
+    fn parse_rejects_too_short() {
+        let res = SegmentHeader::parse(&[0u8; 79]);
+        assert!(matches!(res, Err(HeaderParseError::TooShort { got: 79 })));
+    }
+
+    #[test]
+    fn parse_rejects_bad_magic() {
+        let mut bytes = SegmentHeader::genesis([0u8; KEY_ID_LEN]).to_bytes();
+        bytes[0] = b'X';
+        let res = SegmentHeader::parse(&bytes);
+        assert!(matches!(res, Err(HeaderParseError::BadMagic { .. })));
+    }
+
+    #[test]
+    fn parse_rejects_bad_version() {
+        let mut bytes = SegmentHeader::genesis([0u8; KEY_ID_LEN]).to_bytes();
+        bytes[4] = 0xff;
+        bytes[5] = 0xff;
+        // Recompute CRC so we exercise the version check, not CRC.
+        let crc = crc32fast::hash(&bytes[..HEADER_BODY_LEN]);
+        bytes[72..76].copy_from_slice(&crc.to_le_bytes());
+        let res = SegmentHeader::parse(&bytes);
+        assert!(matches!(
+            res,
+            Err(HeaderParseError::UnsupportedVersion { got: 0xffff })
+        ));
+    }
+
+    #[test]
+    fn parse_rejects_bad_crc() {
+        let mut bytes = SegmentHeader::genesis([0u8; KEY_ID_LEN]).to_bytes();
+        bytes[72] ^= 0xff;
+        let res = SegmentHeader::parse(&bytes);
+        assert!(matches!(res, Err(HeaderParseError::CrcMismatch { .. })));
     }
 
     #[test]
