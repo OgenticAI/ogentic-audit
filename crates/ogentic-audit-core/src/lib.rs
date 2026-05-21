@@ -7,18 +7,66 @@
 //!
 //! v0.1 is in development. The public API is unstable until v0.1.0 is tagged.
 //!
-//! ## What's implemented today
+//! # Your first audit log
 //!
-//! - [`KeyHandle`] trait and the in-memory [`InMemoryKey`] implementation
-//!   (this module, [`key`]). Optional OS-keychain backing lives in the
-//!   companion `ogentic-audit-keychain` crate.
+//! ```no_run
+//! use std::collections::BTreeMap;
+//! use ogentic_audit_core::{InMemoryKey, PayloadValue, RecordInput, Verifier, Writer};
 //!
-//! ## What's coming
+//! fn main() -> Result<(), Box<dyn std::error::Error>> {
+//!     // 32 raw HMAC-SHA256 key bytes. In real use, load via the
+//!     // `ogentic-audit-keychain` crate or a vault. The session_id
+//!     // is a UUIDv4 generated at vault-unlock time.
+//!     let key = InMemoryKey::from_bytes([0u8; 32]);
+//!     let session_id = [0u8; 16];
 //!
-//! The writer ([R1 / OGE-429]), reader ([R2 / OGE-430]), verifier
-//! ([R3 / OGE-437]), and crash-recovery scan
-//! ([R5 / OGE-432]) all consume [`KeyHandle`]. CLI, Python bindings,
-//! and remaining surface land in subsequent tickets.
+//!     // 1. Open the log directory. Creates segment 0 if empty;
+//!     //    otherwise recovers a torn tail and resumes appending.
+//!     let mut writer = Writer::open("./audit-logs", Box::new(key), session_id)?;
+//!
+//!     // 2. Append one record.
+//!     let mut payload = BTreeMap::new();
+//!     payload.insert("vault_id".into(), PayloadValue::Text("v-001".into()));
+//!     writer.append(RecordInput {
+//!         ts_wall: "2026-05-21T05:00:00.000Z".into(),
+//!         ts_mono_delta: 0,
+//!         actor: "user:alice".into(),
+//!         event: "vault.unlocked".into(),
+//!         payload,
+//!         schema_version: 1,
+//!     })?;
+//!     writer.flush()?;
+//!     drop(writer);
+//!
+//!     // 3. Verify the log end-to-end.
+//!     let key = InMemoryKey::from_bytes([0u8; 32]);
+//!     let report = Verifier::new(Box::new(key)).verify("./audit-logs")?;
+//!     assert_eq!(report.compact_verdict(), "Verified");
+//!     Ok(())
+//! }
+//! ```
+//!
+//! # Modules
+//!
+//! - [`key`] — `KeyHandle` trait + in-memory implementation; constant-time
+//!   compare on HMACs and key_ids
+//! - [`writer`] — append-only writer with atomic flush, segment rollover,
+//!   crash-recovery scan ([`RecoveryReport`])
+//! - [`reader`] — sequential iterator + indexed seek; cooperative
+//!   tail-watching with a live writer
+//! - [`verifier`] — HMAC + chain integrity; structured [`Violation`]
+//!   evidence on any failure
+//! - [`segment`] — byte-level segment-header + record framing primitives
+//! - [`cbor`] — canonical CBOR encoder + decoder (RFC 8949 §4.2)
+//!
+//! # Tracker
+//!
+//! The pieces landed via these tickets:
+//!
+//! - Writer — [R1 / OGE-429]
+//! - Reader — [R2 / OGE-430]
+//! - Verifier — [R3 / OGE-437]
+//! - Crash recovery — [R5 / OGE-432]
 //!
 //! [R1 / OGE-429]: https://linear.app/ogenticai/issue/OGE-429
 //! [R2 / OGE-430]: https://linear.app/ogenticai/issue/OGE-430

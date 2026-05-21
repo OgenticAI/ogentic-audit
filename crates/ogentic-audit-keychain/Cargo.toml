@@ -19,6 +19,10 @@ categories.workspace = true
 default = ["keychain"]
 keychain = ["dep:keyring", "dep:getrandom"]
 
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
 [dependencies]
 ogentic-audit-core = { workspace = true }
 zeroize = { workspace = true }

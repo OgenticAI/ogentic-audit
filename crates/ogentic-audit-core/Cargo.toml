@@ -16,6 +16,12 @@ categories.workspace = true
 name = "ogentic_audit_core"
 path = "src/lib.rs"
 
+# docs.rs build configuration: ensure intra-doc links resolve and the
+# rendered page links to the canonical source repo.
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
 [dependencies]
 hmac = { workspace = true }
 sha2 = { workspace = true }

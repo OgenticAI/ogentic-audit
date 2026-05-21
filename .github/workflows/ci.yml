@@ -75,6 +75,11 @@ jobs:
       - name: cargo clippy
         run: cargo clippy --workspace ${{ env.WORKSPACE_EXCLUDE }} --all-targets --all-features -- -D warnings
 
+      - name: cargo doc (no missing-docs warnings)
+        env:
+          RUSTDOCFLAGS: -D warnings
+        run: cargo doc --workspace ${{ env.WORKSPACE_EXCLUDE }} --no-deps --all-features
+
   # ----------------------------------------------------------------
   # Rust: cargo-audit (advisory DB) + cargo-deny (licenses + advisories
   # + sources + bans). Runs daily on `main` via the schedule below so
