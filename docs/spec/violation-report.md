@@ -302,6 +302,8 @@ Segment header CRC32 fails, or the magic bytes are not `OGAU`.
 
 - `"CrcMismatch"` — CRC32 over header bytes `[0, 72)` does not match the value at offset 72. Evidence: `expected_crc32`, `actual_crc32`, `header_bytes_hex` (full 80 bytes for context).
 - `"BadMagic"` — bytes 0–3 are not ASCII `"OGAU"`. Evidence: `actual_magic_hex` (8 hex chars), `header_bytes_hex`.
+- `"Truncated"` — header file ended before byte 80. Evidence: `message` (diagnostic from the reader).
+- `"ReservedBytesNonZero"` — reserved bytes `[76, 80)` contain a non-zero value. These bytes are not covered by the header CRC; verifiers MUST reject non-zero values to close a 4-byte mutation gap. Evidence: `actual_hex` (8 hex chars).
 
 ### `UnknownVersion`
 
