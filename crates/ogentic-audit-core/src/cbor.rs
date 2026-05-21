@@ -119,6 +119,293 @@ pub fn array(items: &[Vec<u8>]) -> Vec<u8> {
     out
 }
 
+// ---------------------------------------------------------------------------
+// Canonical CBOR decoder (RFC 8949 §4.2 — covering the subset we need)
+// ---------------------------------------------------------------------------
+
+/// Decoded CBOR value. Mirrors the encoder's [`PayloadValue`](crate::writer::PayloadValue)
+/// surface but kept independent of the writer's typed `Record` so the
+/// decoder can be exercised from the verifier path without pulling in
+/// writer-specific traits.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Value {
+    /// Major type 0: unsigned integer.
+    Uint(u64),
+    /// Major type 1: negative integer (caller stores the negative value).
+    Nint(i64),
+    /// Major type 2: byte string.
+    Bytes(Vec<u8>),
+    /// Major type 3: text string (UTF-8).
+    Text(String),
+    /// Major type 4: array, definite length.
+    Array(Vec<Value>),
+    /// Major type 5: map, definite length. Keyed by an opaque encoded-key
+    /// representation alongside its decoded form so callers can validate
+    /// canonical ordering without re-encoding.
+    Map(Vec<(Value, Value)>),
+    /// Major type 7 simple values 20 (false) / 21 (true).
+    Bool(bool),
+}
+
+/// Errors decoding canonical CBOR. Distinguishes truncation (recoverable
+/// — see R5 / OGE-432) from non-canonical encoding (a `RecordCorrupt`
+/// violation, per the spec's violation taxonomy).
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum CborError {
+    /// Input ran out mid-item.
+    #[error("CBOR truncated at offset {offset}: needed {needed} more bytes")]
+    Truncated {
+        /// Byte offset within the input where decoding stopped.
+        offset: usize,
+        /// Number of additional bytes required to finish the item.
+        needed: usize,
+    },
+    /// A length / argument was encoded in a longer form than the
+    /// shortest one that fits — violates RFC 8949 §4.2.
+    #[error("CBOR non-canonical at offset {offset}: {message}")]
+    NonCanonical {
+        /// Byte offset within the input where the violation was detected.
+        offset: usize,
+        /// Human-readable description of the rule violated.
+        message: String,
+    },
+    /// Map keys were not sorted canonically (length, then byte order).
+    #[error("CBOR map keys not in canonical order at offset {offset}")]
+    MapKeyOrder {
+        /// Byte offset within the input where the out-of-order pair starts.
+        offset: usize,
+    },
+    /// An item used a major type or simple value not supported at v0.1.
+    #[error("CBOR unsupported item at offset {offset}: {message}")]
+    Unsupported {
+        /// Byte offset within the input where the unsupported item starts.
+        offset: usize,
+        /// Human-readable description of the unsupported construct.
+        message: String,
+    },
+    /// Trailing bytes remain after the top-level item — indicates a framing bug.
+    #[error("CBOR trailing bytes at offset {offset}: {extra} bytes unconsumed")]
+    TrailingBytes {
+        /// Byte offset within the input where decoding finished.
+        offset: usize,
+        /// Number of bytes left unconsumed.
+        extra: usize,
+    },
+    /// Text string contained invalid UTF-8.
+    #[error("CBOR text string not valid UTF-8 at offset {offset}")]
+    InvalidUtf8 {
+        /// Byte offset within the input where the bad text-string started.
+        offset: usize,
+    },
+}
+
+/// Decode a single canonical CBOR item from `bytes`. The whole input
+/// must be consumed; trailing bytes yield [`CborError::TrailingBytes`].
+pub fn decode(bytes: &[u8]) -> Result<Value, CborError> {
+    let mut cursor = 0usize;
+    let value = decode_value(bytes, &mut cursor)?;
+    if cursor != bytes.len() {
+        return Err(CborError::TrailingBytes {
+            offset: cursor,
+            extra: bytes.len() - cursor,
+        });
+    }
+    Ok(value)
+}
+
+fn decode_value(bytes: &[u8], cursor: &mut usize) -> Result<Value, CborError> {
+    if *cursor >= bytes.len() {
+        return Err(CborError::Truncated {
+            offset: *cursor,
+            needed: 1,
+        });
+    }
+    let initial = bytes[*cursor];
+    let major = initial >> 5;
+    let additional = initial & 0x1f;
+    let start_offset = *cursor;
+
+    match major {
+        0 => {
+            let v = decode_argument(bytes, cursor, additional)?;
+            Ok(Value::Uint(v))
+        },
+        1 => {
+            let arg = decode_argument(bytes, cursor, additional)?;
+            let v = -(arg as i128) - 1;
+            if v < i64::MIN as i128 {
+                return Err(CborError::Unsupported {
+                    offset: start_offset,
+                    message: "negative integer below i64::MIN".into(),
+                });
+            }
+            Ok(Value::Nint(v as i64))
+        },
+        2 => {
+            let len = decode_argument(bytes, cursor, additional)? as usize;
+            ensure(bytes, *cursor, len)?;
+            let out = bytes[*cursor..*cursor + len].to_vec();
+            *cursor += len;
+            Ok(Value::Bytes(out))
+        },
+        3 => {
+            let len = decode_argument(bytes, cursor, additional)? as usize;
+            ensure(bytes, *cursor, len)?;
+            let slice = &bytes[*cursor..*cursor + len];
+            let s = std::str::from_utf8(slice)
+                .map_err(|_| CborError::InvalidUtf8 { offset: *cursor })?;
+            let owned = s.to_owned();
+            *cursor += len;
+            Ok(Value::Text(owned))
+        },
+        4 => {
+            let len = decode_argument(bytes, cursor, additional)? as usize;
+            let mut items = Vec::with_capacity(len.min(1024));
+            for _ in 0..len {
+                items.push(decode_value(bytes, cursor)?);
+            }
+            Ok(Value::Array(items))
+        },
+        5 => {
+            let len = decode_argument(bytes, cursor, additional)? as usize;
+            let mut items: Vec<(Value, Value)> = Vec::with_capacity(len.min(1024));
+            let mut prev_key_encoded: Option<Vec<u8>> = None;
+            for _ in 0..len {
+                let key_start = *cursor;
+                let key = decode_value(bytes, cursor)?;
+                let key_encoded = bytes[key_start..*cursor].to_vec();
+                if let Some(prev) = prev_key_encoded.as_ref() {
+                    if !key_order_canonical(prev, &key_encoded) {
+                        return Err(CborError::MapKeyOrder { offset: key_start });
+                    }
+                }
+                prev_key_encoded = Some(key_encoded);
+                let value = decode_value(bytes, cursor)?;
+                items.push((key, value));
+            }
+            Ok(Value::Map(items))
+        },
+        7 => match additional {
+            20 => {
+                *cursor += 1;
+                Ok(Value::Bool(false))
+            },
+            21 => {
+                *cursor += 1;
+                Ok(Value::Bool(true))
+            },
+            other => Err(CborError::Unsupported {
+                offset: start_offset,
+                message: format!("major 7 simple value {other} unsupported at v0.1"),
+            }),
+        },
+        _ => Err(CborError::Unsupported {
+            offset: start_offset,
+            message: format!("major type {major} unsupported at v0.1"),
+        }),
+    }
+}
+
+/// Decode the head argument for `additional` and advance the cursor.
+/// Enforces shortest-form encoding (RFC 8949 §4.2.1).
+fn decode_argument(bytes: &[u8], cursor: &mut usize, additional: u8) -> Result<u64, CborError> {
+    let start_offset = *cursor;
+    *cursor += 1;
+    match additional {
+        n if n < 24 => Ok(n as u64),
+        24 => {
+            ensure(bytes, *cursor, 1)?;
+            let v = bytes[*cursor] as u64;
+            *cursor += 1;
+            if v < 24 {
+                return Err(CborError::NonCanonical {
+                    offset: start_offset,
+                    message: format!("u8 arg {v} should fit in inline form"),
+                });
+            }
+            Ok(v)
+        },
+        25 => {
+            ensure(bytes, *cursor, 2)?;
+            let v = u16::from_be_bytes([bytes[*cursor], bytes[*cursor + 1]]) as u64;
+            *cursor += 2;
+            if v < 1 << 8 {
+                return Err(CborError::NonCanonical {
+                    offset: start_offset,
+                    message: format!("u16 arg {v} should fit in u8 form"),
+                });
+            }
+            Ok(v)
+        },
+        26 => {
+            ensure(bytes, *cursor, 4)?;
+            let v = u32::from_be_bytes([
+                bytes[*cursor],
+                bytes[*cursor + 1],
+                bytes[*cursor + 2],
+                bytes[*cursor + 3],
+            ]) as u64;
+            *cursor += 4;
+            if v < 1 << 16 {
+                return Err(CborError::NonCanonical {
+                    offset: start_offset,
+                    message: format!("u32 arg {v} should fit in u16 form"),
+                });
+            }
+            Ok(v)
+        },
+        27 => {
+            ensure(bytes, *cursor, 8)?;
+            let v = u64::from_be_bytes([
+                bytes[*cursor],
+                bytes[*cursor + 1],
+                bytes[*cursor + 2],
+                bytes[*cursor + 3],
+                bytes[*cursor + 4],
+                bytes[*cursor + 5],
+                bytes[*cursor + 6],
+                bytes[*cursor + 7],
+            ]);
+            *cursor += 8;
+            if v < 1 << 32 {
+                return Err(CborError::NonCanonical {
+                    offset: start_offset,
+                    message: format!("u64 arg {v} should fit in u32 form"),
+                });
+            }
+            Ok(v)
+        },
+        other => Err(CborError::Unsupported {
+            offset: start_offset,
+            message: format!(
+                "indefinite-length / reserved additional info {other} not supported at v0.1"
+            ),
+        }),
+    }
+}
+
+fn ensure(bytes: &[u8], cursor: usize, needed: usize) -> Result<(), CborError> {
+    if cursor + needed > bytes.len() {
+        return Err(CborError::Truncated {
+            offset: cursor,
+            needed: needed - (bytes.len() - cursor),
+        });
+    }
+    Ok(())
+}
+
+/// Canonical key ordering: shorter encoded key first; tie-break by
+/// lexicographic byte order. Returns true iff `prev < next` per RFC 8949
+/// §4.2.1.
+fn key_order_canonical(prev: &[u8], next: &[u8]) -> bool {
+    match prev.len().cmp(&next.len()) {
+        std::cmp::Ordering::Less => true,
+        std::cmp::Ordering::Greater => false,
+        std::cmp::Ordering::Equal => prev < next,
+    }
+}
+
 /// Encode the head byte(s) for any major type, picking the shortest
 /// argument encoding that fits `value`.
 fn head(major: u8, value: u64) -> Vec<u8> {
@@ -207,6 +494,48 @@ mod tests {
             v
         };
         assert_eq!(encoded, expected);
+    }
+
+    #[test]
+    fn decoder_rejects_non_canonical_long_encoding() {
+        // u8 form for value 0 should be rejected (use inline form instead).
+        let bad = vec![0x18, 0x00];
+        let err = decode(&bad).unwrap_err();
+        assert!(matches!(err, CborError::NonCanonical { .. }), "got {err:?}");
+    }
+
+    #[test]
+    fn decoder_detects_truncation() {
+        let bad = vec![0x18]; // u8 follows but missing
+        let err = decode(&bad).unwrap_err();
+        assert!(matches!(err, CborError::Truncated { .. }), "got {err:?}");
+    }
+
+    #[test]
+    fn decoder_round_trips_record_shaped_map() {
+        // Build a record-shaped map (integer keys 1..=3) and decode it back.
+        let items: Vec<(u64, Vec<u8>)> =
+            vec![(1, uint(42)), (2, bstr(&[0xaa, 0xbb])), (3, tstr("ts"))];
+        let encoded = map_int_keys(&items);
+        let decoded = decode(&encoded).unwrap();
+        let Value::Map(pairs) = decoded else {
+            panic!("expected map");
+        };
+        assert_eq!(pairs.len(), 3);
+        assert!(matches!(pairs[0].0, Value::Uint(1)));
+        assert!(matches!(pairs[0].1, Value::Uint(42)));
+    }
+
+    #[test]
+    fn decoder_detects_map_key_disorder() {
+        // Hand-craft a map with keys out of canonical order: 2 before 1.
+        let mut bytes = vec![0xa2]; // map(2)
+        bytes.extend_from_slice(&uint(2));
+        bytes.extend_from_slice(&uint(20));
+        bytes.extend_from_slice(&uint(1));
+        bytes.extend_from_slice(&uint(10));
+        let err = decode(&bytes).unwrap_err();
+        assert!(matches!(err, CborError::MapKeyOrder { .. }), "got {err:?}");
     }
 
     #[test]
