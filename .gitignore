@@ -49,3 +49,6 @@ docs/python/_build/
 
 # Test artifacts
 tests/vectors/.tmp/
+
+# Claude Code session metadata (per-user, never committed)
+.claude/scheduled_tasks.lock

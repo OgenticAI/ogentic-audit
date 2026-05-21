@@ -682,6 +682,15 @@ pub enum HeaderCorruptSubkind {
         /// Diagnostic from the reader.
         message: String,
     },
+    /// Reserved bytes `[76..80]` were not all zero. Per `docs/spec/v0.1.md`
+    /// these are reserved for v0.2 and MUST be zero in v0.1 logs; the
+    /// header CRC32 does not cover this range, so we enforce zeroness
+    /// explicitly to close a 4-byte mutation gap a tamperer would
+    /// otherwise pass through.
+    ReservedBytesNonZero {
+        /// Hex of the 4 reserved bytes the verifier read.
+        actual_hex: String,
+    },
 }
 
 /// Errors that prevent the verifier from running at all (as distinct
@@ -830,6 +839,33 @@ fn parse_and_validate_header(
                 record_key_id_hex: expected_key_id.to_hex(),
             },
             message: format!("Segment {seg_idx} header key_id does not match verifier's key"),
+        });
+    }
+
+    // Reserved bytes [76..80] MUST be zero per `docs/spec/v0.1.md` §
+    // "Segment header" (the `reserved` field is "zero-filled, reserved
+    // for v0.2"). The CRC32 over `[0, 72)` does NOT cover this range,
+    // so we explicitly enforce zeroness here — otherwise a tamperer
+    // could flip the reserved bytes without disturbing any other
+    // check. Per the spec's normative posture for "reserved" fields,
+    // non-zero values are malformed and MUST be rejected.
+    if bytes[76..80] != [0u8; 4] {
+        return Err(Violation {
+            kind: ViolationKind::HeaderCorrupt,
+            location: ViolationLocation {
+                segment_index: seg_idx,
+                record_id: None,
+                byte_offset: 76,
+            },
+            evidence: ViolationEvidence::HeaderCorrupt {
+                subkind: HeaderCorruptSubkind::ReservedBytesNonZero {
+                    actual_hex: hex(&bytes[76..80]),
+                },
+            },
+            message: format!(
+                "Segment {seg_idx} reserved header bytes [76..80] are not zero: {:?}",
+                &bytes[76..80]
+            ),
         });
     }
 
