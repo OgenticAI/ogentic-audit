@@ -12,6 +12,7 @@ import pytest
 
 ogentic_audit = pytest.importorskip("ogentic_audit", reason="native extension not built yet")
 from ogentic_audit import (  # noqa: E402
+    ArgumentError,
     ChainBreakError,
     HmacMismatchError,
     KeyHandle,
@@ -222,7 +223,7 @@ def test_keyhandle_from_env_works() -> None:
 
 
 def test_keyhandle_from_bytes_rejects_wrong_length() -> None:
-    with pytest.raises(Exception):  # ArgumentError
+    with pytest.raises(ArgumentError):
         KeyHandle.from_bytes(b"\x00" * 16)
 
 

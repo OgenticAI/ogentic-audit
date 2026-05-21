@@ -28,7 +28,7 @@ https://github.com/OgenticAI/ogentic-audit/tree/main/docs/spec.
 from __future__ import annotations
 
 try:
-    from ogentic_audit._native import (  # noqa: F401  (re-exported)
+    from ogentic_audit._native import (
         ArgumentError,
         ChainBreakError,
         HeaderCorruptError,
@@ -59,31 +59,28 @@ except ImportError as exc:  # pragma: no cover - import-time only
     ) from exc
 
 __all__ = [
-    "__version__",
-    # version helpers
-    "core_version",
-    "format_version",
-    # core API
-    "KeyHandle",
-    "Writer",
-    "Reader",
-    "verify",
-    "VerifyReport",
-    # exception hierarchy
-    "OgenticAuditError",
-    "VerificationFailed",
+    "ArgumentError",
     "ChainBreakError",
-    "HmacMismatchError",
-    "MissingRecordError",
-    "RecordCorruptError",
     "HeaderCorruptError",
+    "HmacMismatchError",
+    "IoFailure",
+    "KeyHandle",
     "KeyIdMismatchError",
+    "MissingRecordError",
+    "OgenticAuditError",
+    "Reader",
+    "RecordCorruptError",
+    "RecoveryError",
+    "SchemaError",
     "SegmentDiscontinuityError",
     "TimestampError",
-    "SchemaError",
-    "IoFailure",
-    "ArgumentError",
-    "RecoveryError",
+    "VerificationFailed",
+    "VerifyReport",
+    "Writer",
+    "__version__",
+    "core_version",
+    "format_version",
+    "verify",
 ]
 
 __version__ = "0.1.0a0"
