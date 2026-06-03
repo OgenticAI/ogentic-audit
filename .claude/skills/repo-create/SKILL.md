@@ -9,6 +9,19 @@ The upstream partner of `repo-bootstrap`. Where `repo-bootstrap` installs the fa
 
 This is the heaviest of the orchestrator skills because it has real, external side effects: a new GitHub repo is a permanent artefact, visible to anyone with org access, that we'll have to live with. So: one approval gate, no surprises.
 
+## §0 — Pre-flight (always run first)
+
+Before anything else, invoke the `setup-check` skill. It verifies that:
+
+- `gh` CLI is authenticated as `davidoladeji-ogenticai` (the org-admin account)
+- The local git author email is an OgenticAI identity
+- The SSH key for OgenticAI plugin pushes is present
+- The current branch is sensible for this run
+
+`setup-check` is fast (~1s) and halts with the exact fix if anything is off. If the operator sets `OGENTICAI_BYPASS_IDENTITY=1`, it short-circuits — only use that when the operator explicitly authorises it in chat. See `CLAUDE-FACTORY.md` §F5 for the full identity contract.
+
+---
+
 ## When to invoke this skill
 
 The operator (or `project-planner`) said:

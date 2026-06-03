@@ -20,7 +20,7 @@ Either way, **do not let this file silently overwrite anything you wrote.** It i
 ## §F1 — Where the factory lives in this repo
 
 - Agent definitions: `.claude/agents/` (12 core + 3 extensions: library-publisher, rust-builder, compliance-reviewer)
-- Orchestrator skills: `.claude/skills/feature-factory/`, `build-with-tests/`, `repo-bootstrap/`, `multi-repo-coordinator/`, `project-planner/`, `repo-create/`, `fleet-onboarding/`
+- Orchestrator skills: `.claude/skills/feature-factory/`, `build-with-tests/`, `repo-bootstrap/`, `multi-repo-coordinator/`, `project-planner/`, `project-factory/`, `repo-create/`, `fleet-onboarding/`, `new-from-knowledge/`
 - Hooks: `.claude/hooks/pre-commit`, `.claude/hooks/pre-push`
 - Multi-repo registry: `.claude/registry/repos.yml`
 - Linear integration contract: `.claude/LINEAR-INTEGRATION.md` — every agent links here.
@@ -66,6 +66,7 @@ If your team uses different state names, list the mapping here. The orchestrator
 | `factory-degraded` | Orchestrator when Linear MCP partial | Orchestrator on reconnect |
 | `factory-paused` | Orchestrator on stall > 24h | manual |
 | `incident` + priority 1 | Incident Responder | manual / on resolution |
+| `project-factory-running` | Project Factory (per ticket on enqueue) | Project Factory (on ticket reaching pr-open / factory-paused) |
 
 **Acceptance criteria** live as Linear **checkboxes** in the ticket description. Test Verifier ticks them on pass; Validator reads them to confirm coverage. See `.claude/LINEAR-INTEGRATION.md` §8.
 
@@ -109,5 +110,129 @@ Sections 1–8 (or whatever your existing sections are) are yours. The factory r
 If you want the factory's section to live elsewhere — different filename, different folder, included from a higher-level memory file — change the `@./.claude/CLAUDE-FACTORY.md` import in your `CLAUDE.md` and update §F1 here to match. The agents discover everything via that file path.
 
 ---
+
+
+---
+
+## §F5 — Git identity (OgenticAI org-admin discipline)
+
+Every commit pushed to an OgenticAI repo must be authored by an OgenticAI identity and pushed under the org-admin gh account. Mis-attributed commits break Vercel preview attribution, distort PR contributor signals, and confuse OgenticAI Reviewer's UAT-gating.
+
+**Canonical gh CLI user:**
+
+```
+davidoladeji-ogenticai    # has admin:org on OgenticAI
+```
+
+`davidoladeji` (the personal account) **must not** be the active gh user for any factory push.
+
+**Canonical commit author email:**
+
+- Any `@ogenticai.com` address — typically `david@ogenticai.com` for now.
+- Or the no-reply form for the org-admin: `davidoladeji-ogenticai@users.noreply.github.com`.
+
+`davidoladeji@users.noreply.github.com` is **not** approved — it attributes to the wrong GitHub account.
+
+**One-time machine setup** (the operator runs this on their laptop, not the agents):
+
+```
+git config --global user.email david@ogenticai.com
+gh auth switch -u davidoladeji-ogenticai
+ssh-add --apple-use-keychain ~/.ssh/ogenticai_plugins  # macOS
+```
+
+**Enforcement** — the kit's `.claude/hooks/pre-push` blocks any push where:
+
+1. `gh auth` is active as anything other than `davidoladeji-ogenticai`, **or**
+2. any commit in the push range has an author email outside the approved set.
+
+To bypass for a single push (use sparingly, explain in the PR description):
+
+```
+OGENTICAI_BYPASS_IDENTITY=1 git push ...
+```
+
+**Verification** — agents that touch the network may call the `setup-check` skill at the top of their run to fail fast on identity drift. The `feature-factory`, `repo-bootstrap`, `repo-create`, and `fleet-onboarding` skills do this automatically.
+
+
+
+---
+
+## §F6 — Kit propagation (how this repo stays in sync with `agent-factory`)
+
+When the kit on `OgenticAI/agent-factory` changes (a new agent role, a tightened hook, a clarified Linear convention), every onboarded repo should pick that change up without anyone having to copy files by hand.
+
+**How it works**
+
+- A workflow on `agent-factory` (`.github/workflows/propagate-factory-kit.yml`) watches for pushes to `main` that touch `kit/.claude/**`.
+- For each repo in `kit/.claude/registry/repos.yml` (filtered to non-stale entries), it opens a sync PR titled `chore(factory): sync kit from agent-factory@<sha>`.
+- The sync respects this repo's `.claude/_factory-manifest.yml`. For every tracked file:
+  - new file → copied in (additive)
+  - file unchanged since the last sync → overwritten with the new kit version
+  - file hand-edited locally → **left alone**; the divergence is listed in the sync PR body
+  - file path in `opt_out:` → skipped entirely
+- Purely-additive sync PRs with no preserved local edits get the `factory-sync-auto-merge` label and merge themselves once CI is green. Anything else waits for human review.
+
+**Files the propagator never touches**
+
+- `CLAUDE.md` and `.claude/CLAUDE.md` (per-repo, operator-owned).
+- `.claude/registry/repos.yml` (per-repo customisations).
+- Anything you've explicitly added to `.claude/_factory-manifest.yml`'s `opt_out:` list.
+
+**Opting a file out of propagation**
+
+Open `.claude/_factory-manifest.yml` and add the path under `opt_out:`:
+
+```yaml
+opt_out:
+  - .claude/agents/05-frontend-builder.md
+```
+
+After that, propagation will never overwrite the file in this repo.
+
+**Forcing a re-sync**
+
+In `agent-factory` → Actions → "Propagate factory kit" → "Run workflow". Choose `non-stale` or pass an explicit comma-separated list of repo names.
+
+
+---
+
+## §F7 — Org-knowledge (the `factory.knowledge_enabled` feature flag)
+
+The factory can consult **org-knowledge** — the org's unified search across Slack, Notion, Drive, Gmail, Calendar, GitHub, OneDrive, and Documents — to ground new work in what the team has already discussed. This is delivered by the `mcp-orgknowledge` plugin (in `OgenticAI/ogenticai-plugins`), which wraps the org-knowledge `/api/v1/search` API (Linear ticket `OGE-590`).
+
+**Default: off.** Until the operator turns it on per-repo, none of the agents call the API. This is deliberate — the API is still in flight (Track C Phase 1), and we want every repo to opt-in once it's live and the operator has generated a token.
+
+**How to turn it on for this repo.**
+
+1. Generate an API key at `orgknowledge.ogenticai.com → Settings → API keys`. Label it `agent-factory · <repo-name>`.
+2. Export the token where Cowork runs (host shell, not sandbox):
+   ```sh
+   export ORGKNOWLEDGE_API_TOKEN="okak_<prefix>_<secret>"
+   ```
+3. Install the `mcp-orgknowledge` Cowork plugin from the `ogenticai-plugins` marketplace.
+4. Add this line to this repo's `CLAUDE.md` (anywhere — convention is §6 / "Open questions for the operator" — or replace this whole sentence with a fresh §7 if you prefer):
+
+   ```
+   factory.knowledge_enabled: true
+   ```
+
+5. Verify: in a Cowork session, ask the `mcp-orgknowledge:orgknowledge_health` tool to run. It should return `{ok: true, …}`.
+
+**Which agents read it.**
+
+| Agent / skill | What it does with org-knowledge |
+|---|---|
+| `researcher` | Calls `orgknowledge_search` as Step 0 of every feature-factory run; posts a `[factory:researcher] knowledge digest` comment on the Linear ticket. |
+| `project-planner` | Calls `orgknowledge_search` in §0 before drafting; halts and asks the operator if the ask fits an existing project. |
+| `new-from-knowledge` | Periodically scans for "decisions without tickets" and proposes Linear issues. |
+
+**Privacy / Shield.** Snippets from `orgknowledge_search` can contain PHI, privilege, or MNPI. Agents must **not** copy snippets verbatim into Linear comments if this repo imports `@ogenticai/shield` or sits in the Therapy / Private Credit verticals. Paraphrase one sentence; rely on `source_url` for inspection.
+
+**Rollback.** Set `factory.knowledge_enabled: false` in this repo's `CLAUDE.md` (or remove the line — false is the default). Agents will skip the org-knowledge step silently and note `factory.knowledge_enabled=false` in their output.
+
+**Failure semantics.** While the API is in flight, every call returns `code: UNREACHABLE`. Agents must treat this as a no-op and continue, not a halt. Once `OGE-590` ships, the same flag flip turns the calls into a hard signal.
+
+
 
 — end of factory partial —

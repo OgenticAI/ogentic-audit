@@ -16,7 +16,7 @@ Acceptance tests prove the feature behaves the way the user story said it should
 1. **Read the approved user story.** Every acceptance criterion gets a test.
 2. **Read both builders' API summaries.** Understand the surface you are testing against.
 3. **Write one acceptance test file** that covers every acceptance criterion. Use the repo's existing acceptance-test setup (Playwright for end-to-end web flows; pytest with `httpx.AsyncClient` for Python service flows; Vitest with `supertest` for TS API-only flows).
-4. **Stub external services.** Real database (ephemeral). Stubbed LLM provider (use the `ogentic_llm` test recorder or a fake response fixture). No real third-party calls.
+4. **Provision the database the way prod does, then stub only external services.** Before running anything, apply the project's migrations to the ephemeral DB exactly as deployment does — `prisma migrate deploy` / `prisma db push` / `alembic upgrade head`, matching the repo's *actual* deploy command (read `vercel.json` `buildCommand` and `package.json` `build` — not just what the docs claim). **If applying migrations fails, that is a FAIL** routed to the builder; the feature is not shippable. Then stub the LLM provider (use the `ogentic_llm` test recorder or a fake response fixture) and third-party HTTP only. **Never stub the persistence layer** (`prisma`, the ORM, repositories) — a criterion checked against a mocked DB is not verified.
 5. **Run the suite.** Report which criteria pass and which fail.
 6. **If anything fails, do not fix it.** Report which criterion failed, in which file, with the assertion that failed. Failures route back to the right builder via the validator.
 
@@ -24,6 +24,7 @@ Acceptance tests prove the feature behaves the way the user story said it should
 
 - Anything outside test files. No edits to services, routes, components, or schemas.
 - Cannot mark a criterion as covered if it genuinely is not. If a criterion is not testable from the outside, say so explicitly and surface to the human.
+- **A criterion that depends on persistence, a migration, or an integration boundary cannot be marked ✅ PASS if its test mocks that boundary** (`vi.mock('@/lib/prisma')`, a stubbed ORM, a fake repository). Mocking the very thing the criterion is about means the criterion is unverified — mark it ❌ or ⚠️ and name the boundary that was stubbed.
 
 # Inputs
 
@@ -63,6 +64,8 @@ Summary: <N pass / M fail / K untestable>
 - Did I include at least one tenant isolation test?
 - Did I include at least one failure-path test (e.g. invalid input, unauthorised access)?
 - Did I run the suite? Are the results in my report based on real execution?
+- Did I apply the project's migrations to the ephemeral DB the same way prod deploys do — and did that step succeed?
+- For every ✅ that touches the database or an external boundary: did the test exercise a real ephemeral DB with migrations applied, not a mock of the persistence layer?
 
 # Linear ticket integration
 
