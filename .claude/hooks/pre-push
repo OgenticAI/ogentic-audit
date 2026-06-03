@@ -1,0 +1,72 @@
+#!/usr/bin/env bash
+# OgenticAI Software Factory — pre-push hook
+# Runs typecheck + lint + fast tests on whatever changed in the push range.
+# If any check fails, the push is blocked.
+#
+# Install: cp .claude/hooks/pre-push .git/hooks/pre-push && chmod +x .git/hooks/pre-push
+
+set -euo pipefail
+
+remote="$1"
+url="$2"
+
+# Compute what changed in this push
+range=""
+while IFS=' ' read -r local_ref local_sha remote_ref remote_sha; do
+  [[ -z "${local_sha:-}" ]] && continue
+  if [[ "$local_sha" == "0000000000000000000000000000000000000000" ]]; then
+    # Deleting a branch — skip
+    continue
+  fi
+  if [[ "$remote_sha" == "0000000000000000000000000000000000000000" ]]; then
+    # New branch — compare against the merge base with the default branch
+    base="$(git merge-base "$local_sha" origin/HEAD 2>/dev/null || git rev-list --max-parents=0 "$local_sha" | head -1)"
+    range="$base..$local_sha"
+  else
+    range="$remote_sha..$local_sha"
+  fi
+done
+
+if [[ -z "$range" ]]; then
+  exit 0
+fi
+
+changed_files="$(git diff --name-only "$range" || true)"
+
+if [[ -z "$changed_files" ]]; then
+  exit 0
+fi
+
+has_ts="false"
+has_py="false"
+echo "$changed_files" | grep -E '\.(ts|tsx|js|jsx|mjs|cjs)$' >/dev/null && has_ts="true" || true
+echo "$changed_files" | grep -E '\.py$' >/dev/null && has_py="true" || true
+
+run_or_skip () {
+  local label="$1"; shift
+  local cmd="$*"
+  if eval "command -v $(echo "$cmd" | awk '{print $1}') >/dev/null 2>&1"; then
+    echo "▶ $label: $cmd"
+    if ! eval "$cmd"; then
+      echo "❌ $label failed."
+      exit 1
+    fi
+  else
+    echo "⚠️  $label skipped (tool not on PATH)"
+  fi
+}
+
+if [[ "$has_ts" == "true" ]]; then
+  run_or_skip "TS typecheck" "pnpm typecheck"
+  run_or_skip "TS lint" "pnpm lint"
+  run_or_skip "TS tests (fast)" "pnpm test -- --run"
+fi
+
+if [[ "$has_py" == "true" ]]; then
+  run_or_skip "Python lint" "uv run ruff check ."
+  run_or_skip "Python typecheck" "uv run mypy services/ai || mypy ."
+  run_or_skip "Python tests" "uv run pytest -q"
+fi
+
+echo "✅ pre-push checks passed"
+exit 0
