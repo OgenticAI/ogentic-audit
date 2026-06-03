@@ -1,0 +1,76 @@
+# OgenticAI Software Factory — local install manifest.
+# Updated by the propagate workflow. Hand-edit only `opt_out`.
+
+manifest_version: 1
+factory_source: "https://github.com/OgenticAI/agent-factory"
+
+synced_kit_sha: "af906c968606f4acc22d6c3f7f7e27da696ddc6c"
+synced_kit_hash: "52da30c0e90c9bca296f1633b119fe6b4c53cc126f837a989ce554bf9fb98586"
+synced_at: "2026-06-03T19:01:52.457347+00:00"
+
+files:
+  - path: .claude/CLAUDE-FACTORY.md
+    content_sha256: 8dd9e66e08f97928b66005017ef7ab708b1d18c51778edac70ae53f29523a46e
+  - path: .claude/LINEAR-INTEGRATION.md
+    content_sha256: 1063b1c042308718c31aa6ea3d2d8ae3989540fdc4071a07c58ea165e7303dac
+  - path: .claude/agents/01-researcher.md
+    content_sha256: b776bec33a393a20277ded6d3c36910f55ab4962b9182092070f0b1f2769be08
+  - path: .claude/agents/02-story-writer.md
+    content_sha256: 4759cb8cd510d21aa46d10294a0dc7913215dbbb6cfa7e5d051502878fa1486b
+  - path: .claude/agents/03-spec-writer.md
+    content_sha256: 78feb45f02071987cbfb45c986f282b79747184ffdda1ec91f381f99fb5ca1bf
+  - path: .claude/agents/04a-backend-builder-python.md
+    content_sha256: 207e329712f771b93eb03bb36ae334353e1311015c132b6431c791b0459165d4
+  - path: .claude/agents/04b-backend-builder-typescript.md
+    content_sha256: d287eb01c1eec87587239cf88fb315f6895cdf59054c5c0289e9a5a3e0f3a689
+  - path: .claude/agents/05-frontend-builder.md
+    content_sha256: c1cfba91c20f9d11cee3dfd62c95d53cb5a04d93b1181954f72006b5ae936667
+  - path: .claude/agents/06-test-verifier.md
+    content_sha256: 5012ca63ab1886a1c9474d7f17a790156b4de3930d3a0b5f635cdeccd473ca41
+  - path: .claude/agents/07-validator.md
+    content_sha256: 93968b9f65d8018f3b93619bef4317fc767394c2f2f91a6472644708d40ac9d0
+  - path: .claude/agents/08-ai-eval-engineer.md
+    content_sha256: 085be1dd4486a5acb4959c886e3fe6501b4a70877a4fd82987c7b9c339fd1d2d
+  - path: .claude/agents/09-security-reviewer.md
+    content_sha256: 20ed019ef3c311443df15c375c9461f4a5e213a6251f525402e3f7687bff2fb0
+  - path: .claude/agents/10-release-manager.md
+    content_sha256: 0a4ee8f36cfa40933fe8d3e5d11cd2cd85a738ae8f0d9a25f2015d005f1f0b19
+  - path: .claude/agents/11-cross-repo-coordinator.md
+    content_sha256: e500e96a82f08a5415dfafe95a170cc5ad00fab02607de350578138a5514128f
+  - path: .claude/agents/12-incident-responder.md
+    content_sha256: a4f2aebd6d62738d1ad409d205fd71b497470b03f6b17324aef55cfa5af9a0f3
+  - path: .claude/agents/13-library-publisher.md
+    content_sha256: a605f623335dcc932264c1bde1d97efc6455808b2a67ee1a1bb69af09d339b0a
+  - path: .claude/agents/14-rust-builder.md
+    content_sha256: 45bed7684d9ee00e1bc4134100a9ca9b151e0b85e24a856d3191c17b94c59d26
+  - path: .claude/agents/15-compliance-reviewer.md
+    content_sha256: fa1a299a47f596b538e5ba544c9bc6473f1a2150e60e1e788123c4b4c56ee31e
+  - path: .claude/hooks/pre-commit
+    content_sha256: 4620e26e07112561a3c0d8c2225c72f7f6c2dad55bc1028e4b995c4f41b1ea6f
+  - path: .claude/hooks/pre-push
+    content_sha256: e36ac616e6f0a26b8e5ebd8483f99751a43cbf99ef2feb70f0cf4412a93309ac
+  - path: .claude/hooks/tests/test-pre-commit.sh
+    content_sha256: 15e7fdf20bab3b6210d9342ddbf1ba39395a189e9b2c4477c9f12f99fcf6d092
+  - path: .claude/skills/build-with-tests/SKILL.md
+    content_sha256: d63fb0406236822ce12999cb58e85c36217bcb3256984569bf6b20d6d5ddf221
+  - path: .claude/skills/feature-factory/SKILL.md
+    content_sha256: 7d298a58bc2a366ee01202223fef7afcf7143523cf028725abfe84b7e7b8689f
+  - path: .claude/skills/fleet-onboarding/SKILL.md
+    content_sha256: b5359ed469b8005203d4970c4e973381a0f6bd564d5299d7ef8633524ff42d62
+  - path: .claude/skills/multi-repo-coordinator/SKILL.md
+    content_sha256: de3eb21edb74810af6c35f326effc5fbc1ba43c63806c2b1252684f82a12e7a9
+  - path: .claude/skills/new-from-knowledge/SKILL.md
+    content_sha256: 0dea4692022b0010beceb46906c5ea3953416aec55bc285be71ab03d52e73f7d
+  - path: .claude/skills/project-factory/SKILL.md
+    content_sha256: 5bc6ebebbebb31b19d7e62a71cd6de0841027ed0bd17c4b69b80bbbdf284b8df
+  - path: .claude/skills/project-planner/SKILL.md
+    content_sha256: cee6c74fada65213e3746823214341dbb90b22dc23c8d618c81e49049eb32168
+  - path: .claude/skills/repo-bootstrap/SKILL.md
+    content_sha256: 2c082bf2e2bfbcbb609ab8468fc75d762e6a72211aae67306539a8186d1eabcf
+  - path: .claude/skills/repo-create/SKILL.md
+    content_sha256: ccaa52fff6eb7a3beb177d1a39661a2e88bdca602c2c8291948b879c415d5d2b
+  - path: .claude/skills/setup-check/SKILL.md
+    content_sha256: 9661abc1c0dd5bf54fb6afddf3bdc46614583b165b7958114eaf7dcc0b2480e7
+
+opt_out:
+  # (none)
