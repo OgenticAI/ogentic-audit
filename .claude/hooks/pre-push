@@ -10,6 +10,29 @@ set -euo pipefail
 remote="$1"
 url="$2"
 
+# ──────────────────────────────────────────────────────────────────────────
+# OgenticAI identity gate (1/2) — gh CLI account
+# ──────────────────────────────────────────────────────────────────────────
+# All OgenticAI pushes must run under the org-admin GitHub account
+# (davidoladeji-ogenticai). Pushing as davidoladeji breaks Vercel preview
+# attribution and confuses OgenticAI Reviewer's contributor signals.
+#
+# Bypass for a single push (use sparingly; explain in PR):
+#   OGENTICAI_BYPASS_IDENTITY=1 git push ...
+
+if [[ "${OGENTICAI_BYPASS_IDENTITY:-0}" != "1" ]]; then
+  if command -v gh >/dev/null 2>&1; then
+    logged_in="$(gh api user --jq .login 2>/dev/null || true)"
+    if [[ -n "$logged_in" && "$logged_in" != "davidoladeji-ogenticai" ]]; then
+      echo "❌ gh auth is active as '$logged_in'. OgenticAI pushes must use 'davidoladeji-ogenticai'."
+      echo "   Fix:    gh auth switch -u davidoladeji-ogenticai"
+      echo "   Bypass: OGENTICAI_BYPASS_IDENTITY=1 git push ..."
+      exit 1
+    fi
+  fi
+fi
+
+
 # Compute what changed in this push
 range=""
 while IFS=' ' read -r local_ref local_sha remote_ref remote_sha; do
@@ -36,6 +59,29 @@ changed_files="$(git diff --name-only "$range" || true)"
 if [[ -z "$changed_files" ]]; then
   exit 0
 fi
+
+# ──────────────────────────────────────────────────────────────────────────
+# OgenticAI identity gate (2/2) — commit author email
+# ──────────────────────────────────────────────────────────────────────────
+# Every commit being pushed must be authored by an @ogenticai.com address
+# or the davidoladeji-ogenticai no-reply form. Personal emails are blocked
+# because Vercel + OgenticAI Reviewer attribute by author email.
+
+if [[ "${OGENTICAI_BYPASS_IDENTITY:-0}" != "1" ]]; then
+  bad_authors="$(git log --format='%ae' "$range" 2>/dev/null | \
+    grep -vE '@ogenticai\.com$|^davidoladeji-ogenticai@users\.noreply\.github\.com$' || true)"
+  if [[ -n "$bad_authors" ]]; then
+    echo "❌ commits with non-OgenticAI author email in this push:"
+    echo "$bad_authors" | sort -u | sed 's/^/   - /'
+    echo "   Approved: any @ogenticai.com address,"
+    echo "             or davidoladeji-ogenticai@users.noreply.github.com"
+    echo "   Fix:    git config --global user.email david@ogenticai.com"
+    echo "           then amend offending commits (git rebase -i origin/main)"
+    echo "   Bypass: OGENTICAI_BYPASS_IDENTITY=1 git push ..."
+    exit 1
+  fi
+fi
+
 
 has_ts="false"
 has_py="false"

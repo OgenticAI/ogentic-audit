@@ -110,4 +110,88 @@ If you want the factory's section to live elsewhere — different filename, diff
 
 ---
 
+
+---
+
+## §F5 — Git identity (OgenticAI org-admin discipline)
+
+Every commit pushed to an OgenticAI repo must be authored by an OgenticAI identity and pushed under the org-admin gh account. Mis-attributed commits break Vercel preview attribution, distort PR contributor signals, and confuse OgenticAI Reviewer's UAT-gating.
+
+**Canonical gh CLI user:**
+
+```
+davidoladeji-ogenticai    # has admin:org on OgenticAI
+```
+
+`davidoladeji` (the personal account) **must not** be the active gh user for any factory push.
+
+**Canonical commit author email:**
+
+- Any `@ogenticai.com` address — typically `david@ogenticai.com` for now.
+- Or the no-reply form for the org-admin: `davidoladeji-ogenticai@users.noreply.github.com`.
+
+`davidoladeji@users.noreply.github.com` is **not** approved — it attributes to the wrong GitHub account.
+
+**One-time machine setup** (the operator runs this on their laptop, not the agents):
+
+```
+git config --global user.email david@ogenticai.com
+gh auth switch -u davidoladeji-ogenticai
+ssh-add --apple-use-keychain ~/.ssh/ogenticai_plugins  # macOS
+```
+
+**Enforcement** — the kit's `.claude/hooks/pre-push` blocks any push where:
+
+1. `gh auth` is active as anything other than `davidoladeji-ogenticai`, **or**
+2. any commit in the push range has an author email outside the approved set.
+
+To bypass for a single push (use sparingly, explain in the PR description):
+
+```
+OGENTICAI_BYPASS_IDENTITY=1 git push ...
+```
+
+**Verification** — agents that touch the network may call the `setup-check` skill at the top of their run to fail fast on identity drift. The `feature-factory`, `repo-bootstrap`, `repo-create`, and `fleet-onboarding` skills do this automatically.
+
+
+
+---
+
+## §F6 — Kit propagation (how this repo stays in sync with `agent-factory`)
+
+When the kit on `OgenticAI/agent-factory` changes (a new agent role, a tightened hook, a clarified Linear convention), every onboarded repo should pick that change up without anyone having to copy files by hand.
+
+**How it works**
+
+- A workflow on `agent-factory` (`.github/workflows/propagate-factory-kit.yml`) watches for pushes to `main` that touch `kit/.claude/**`.
+- For each repo in `kit/.claude/registry/repos.yml` (filtered to non-stale entries), it opens a sync PR titled `chore(factory): sync kit from agent-factory@<sha>`.
+- The sync respects this repo's `.claude/_factory-manifest.yml`. For every tracked file:
+  - new file → copied in (additive)
+  - file unchanged since the last sync → overwritten with the new kit version
+  - file hand-edited locally → **left alone**; the divergence is listed in the sync PR body
+  - file path in `opt_out:` → skipped entirely
+- Purely-additive sync PRs with no preserved local edits get the `factory-sync-auto-merge` label and merge themselves once CI is green. Anything else waits for human review.
+
+**Files the propagator never touches**
+
+- `CLAUDE.md` and `.claude/CLAUDE.md` (per-repo, operator-owned).
+- `.claude/registry/repos.yml` (per-repo customisations).
+- Anything you've explicitly added to `.claude/_factory-manifest.yml`'s `opt_out:` list.
+
+**Opting a file out of propagation**
+
+Open `.claude/_factory-manifest.yml` and add the path under `opt_out:`:
+
+```yaml
+opt_out:
+  - .claude/agents/05-frontend-builder.md
+```
+
+After that, propagation will never overwrite the file in this repo.
+
+**Forcing a re-sync**
+
+In `agent-factory` → Actions → "Propagate factory kit" → "Run workflow". Choose `non-stale` or pass an explicit comma-separated list of repo names.
+
+
 — end of factory partial —
