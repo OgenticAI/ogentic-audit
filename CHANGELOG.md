@@ -7,7 +7,52 @@ library APIs follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-(no unreleased changes)
+### Added
+
+- **`ogentic-audit-kms` 0.2.0-pre (OGE-460):** optional KMS-backed
+  `KeyHandle`.  AWS KMS `GenerateMac` (HMAC_SHA_256) is the v0.1 default;
+  key material stays HSM-resident.  Envelope-encrypted local-HMAC mode
+  is reserved via `KmsKey::with_envelope_mode` (returns `Config` error
+  until OGE-603, v0.2).
+  Crate surface: `KmsKey<P>`, `KmsProvider` trait, `AwsKmsProvider`,
+  `KmsError` (with `is_retryable()`).  `Display`/`Debug` redact the ARN.
+  `key_id` is derived from the provider descriptor via BLAKE3-256 (not
+  key material — transparent to OGE-441 golden vectors).
+  CI: `kms-integration.yml` localstack job (HMAC_256 key seeding +
+  adversarial isolation suite); dormant `kms-smoke.yml` for real-AWS
+  smoke tests (activates when `AWS_KMS_SMOKE_ROLE_ARN` repo var is set).
+
+### Documentation
+
+- `docs/adr/0002-server-side-kms-key-sourcing.md` — new ADR accepted
+  2026-06-04; documents `kms` as optional feature, `KmsProvider` trait,
+  `GenerateMac` as v0.1 primitive, `key_id` projection, explicit axiom
+  changes (no-network-IO broken for kms consumers; signing!=verifying
+  principal), failure mode, and what is deferred to v0.2.
+- `docs/integrations/server-side-kms.md` — full integration guide:
+  CloudFormation snippet, minimum IAM policy, Rust quickstart, Node.js
+  interim approach, GenerateMac-vs-envelope decision matrix, error
+  taxonomy, per-org isolation pattern, observability guidance, key
+  rotation recipe, CloudTrail as chain-of-custody artefact.
+- `docs/security/threat-model.md` — new `## Server-side / KMS` section
+  with explicit axiom-change notes: no-network-IO invariant broken for
+  kms feature consumers; signing!=verifying axiom workaround; new failure
+  mode (KMS unavailable → panic); what KMS adds/doesn't add; timing
+  side-channel claim retained.
+- `docs/legal/court-defensibility.md` — new `## Server-side / KMS-backed
+  deployments` section: CloudTrail as parallel chain-of-custody artefact;
+  FRE 902(13)/(14) certification scope expansion to two systems; concrete
+  caveat on CloudTrail retention; what KMS adds/doesn't add.
+- `docs/security/key-rotation.md` — `## Rotation in multi-tenant /
+  server-side deployments` section continued: new ARN = rotation,
+  AWS KMS scheduled-deletion semantics (7–30 day window), verification
+  recipe for pre/post rotation logs.
+- `docs/spec/v0.1.md` — `key_id` terminology table extended with KMS
+  descriptor-based projection note (transparent to OGE-441 vectors;
+  links to ADR-0002).
+- `crates/ogentic-audit-kms/README.md` — crate README with quickstart,
+  feature-flag table, MSRV note, security summary, link to integration
+  guide.
 
 ## [0.1.0] — 2026-06-13
 
