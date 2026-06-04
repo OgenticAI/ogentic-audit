@@ -1,0 +1,43 @@
+# Canonical workflow template for adding the OgenticAI Reviewer to a repo.
+#
+# Drop this file at `.github/workflows/ogenticai-reviewer.yml` in the target
+# repo. Pair with `.github/workflows/uat-override.yml` (see
+# docs/INSTALL.md §4). The four org-level secrets must already be set on
+# the OgenticAI org — see docs/GITHUB_APP_SETUP.md.
+#
+# This is the file `scripts/rollout-reviewer.ts` opens a PR with on each
+# pilot repo. Keep it minimal — repo-specific overrides go in the calling
+# repo's own workflow, not this template.
+
+name: OgenticAI Reviewer
+
+on:
+  pull_request:
+    types: [opened, synchronize, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+  checks: write
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: github.event.pull_request.draft == false
+    steps:
+      - uses: actions/checkout@v5
+      - uses: OgenticAI/agent-reviewer/.github/actions/review@v2
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_app_id: ${{ secrets.OGENTICAI_REVIEWER_APP_ID }}
+          github_app_private_key: ${{ secrets.OGENTICAI_REVIEWER_APP_KEY }}
+          linear_api_token: ${{ secrets.LINEAR_API_TOKEN }}
+          # Auto-patch: when the model flags a FAIL as mechanically fixable,
+          # open a draft PR with the suggested fix. Off by default — flip to
+          # "true" once you trust the verdicts on this repo.
+          auto_patch: "false"
+          # Merge gate: empty → advisory; "NEEDS_WORK" → block merge on FAIL.
+          # Flip after you've watched 5–10 verdicts and trust the calls.
+          fail_on: ""
