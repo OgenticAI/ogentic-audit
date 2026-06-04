@@ -4,6 +4,7 @@ members = [
     "crates/ogentic-audit-core",
     "crates/ogentic-audit-cli",
     "crates/ogentic-audit-keychain",
+    "crates/ogentic-audit-kms",
     "python/ogentic-audit-py",
 ]
 

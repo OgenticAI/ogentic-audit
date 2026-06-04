@@ -1,0 +1,43 @@
+[package]
+name = "ogentic-audit-kms"
+version = "0.2.0-pre"
+edition = "2021"
+rust-version = "1.85"
+license = "Apache-2.0"
+description = "Optional KMS key source for ogentic-audit (AWS KMS in v0.1; GCP Cloud KMS, Azure Key Vault in v0.2)"
+repository = "https://github.com/OgenticAI/ogentic-audit"
+homepage = "https://github.com/OgenticAI/ogentic-audit"
+keywords = ["audit", "kms", "hmac", "tamper-evident", "court-defensible"]
+categories = ["cryptography", "authentication"]
+readme = "README.md"
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+[features]
+default = ["aws"]
+aws = ["dep:aws-sdk-kms", "dep:aws-config"]
+
+[dependencies]
+ogentic-audit-core = { path = "../ogentic-audit-core", version = "0.1.0-alpha.0" }
+async-trait = "0.1"
+tokio = { version = "1", default-features = false, features = ["rt", "rt-multi-thread", "macros"] }
+thiserror = "1"
+zeroize = { version = "1", features = ["derive"] }
+subtle = "2"
+blake3 = "1"
+tracing = "0.1"
+# MSRV pin: aws-sdk-kms 1.x requires 1.82+ but the SDK itself has
+# been verified to compile under Rust 1.85 (the workspace MSRV).
+# Pin to a known-good release to prevent silent MSRV drift when
+# dependabot bumps the SDK between CI runs.
+aws-sdk-kms = { version = "1", default-features = false, features = ["rustls"], optional = true }
+aws-config = { version = "1", optional = true }
+
+[dev-dependencies]
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+hex = "0.4"
+hmac = "0.12"
+sha2 = "0.10"
