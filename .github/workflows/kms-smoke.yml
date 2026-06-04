@@ -1,0 +1,37 @@
+# Dormant until the operator sets the `AWS_KMS_SMOKE_ROLE_ARN` +
+# `AWS_KMS_SMOKE_KEY_ARN` repository variables. Tracked in D3 / OGE-445.
+# Until then `if: vars.AWS_KMS_SMOKE_ROLE_ARN != ''` causes the job to
+# skip cleanly on every tag push.
+
+name: kms-smoke
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    if: vars.AWS_KMS_SMOKE_ROLE_ARN != ''
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_KMS_SMOKE_ROLE_ARN }}
+          aws-region: us-east-1
+
+      - name: cargo test (real AWS smoke)
+        env:
+          OGENTIC_KMS_TEST_KEY_A: ${{ vars.AWS_KMS_SMOKE_KEY_ARN }}
+        run: >
+          cargo test -p ogentic-audit-kms --features aws --tests
+          -- --ignored aws_smoke

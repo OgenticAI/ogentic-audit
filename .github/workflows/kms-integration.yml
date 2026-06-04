@@ -1,0 +1,73 @@
+name: kms-integration
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "crates/ogentic-audit-kms/**"
+      - ".github/workflows/kms-integration.yml"
+  pull_request:
+    paths:
+      - "crates/ogentic-audit-kms/**"
+      - ".github/workflows/kms-integration.yml"
+
+jobs:
+  localstack:
+    runs-on: ubuntu-latest
+    services:
+      localstack:
+        image: localstack/localstack:3
+        ports:
+          - "4566:4566"
+        env:
+          SERVICES: kms
+          DEBUG: "0"
+        options: >-
+          --health-cmd "curl -sf http://localhost:4566/_localstack/health || exit 1"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      OGENTIC_KMS_TEST_ENDPOINT: http://localhost:4566
+      AWS_DEFAULT_REGION: us-east-1
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: kms-integration
+
+      - name: Install awslocal
+        run: pip install awscli-local
+
+      - name: Seed two HMAC KMS keys
+        run: |
+          set -euo pipefail
+          KEY_A=$(awslocal kms create-key --key-spec HMAC_256 \
+            --key-usage GENERATE_VERIFY_MAC \
+            --description "ogentic-audit-kms test org-A" \
+            --query 'KeyMetadata.KeyId' --output text)
+          KEY_B=$(awslocal kms create-key --key-spec HMAC_256 \
+            --key-usage GENERATE_VERIFY_MAC \
+            --description "ogentic-audit-kms test org-B" \
+            --query 'KeyMetadata.KeyId' --output text)
+          ARN_A=$(awslocal kms describe-key --key-id "$KEY_A" \
+            --query 'KeyMetadata.Arn' --output text)
+          ARN_B=$(awslocal kms describe-key --key-id "$KEY_B" \
+            --query 'KeyMetadata.Arn' --output text)
+          echo "OGENTIC_KMS_TEST_KEY_A=$ARN_A" >> "$GITHUB_ENV"
+          echo "OGENTIC_KMS_TEST_KEY_B=$ARN_B" >> "$GITHUB_ENV"
+
+      - name: cargo test (localstack)
+        run: >
+          cargo test -p ogentic-audit-kms --features aws --tests
+          -- --ignored localstack
+
+      - name: cargo test (adversarial)
+        run: >
+          cargo test -p ogentic-audit-kms --features aws --tests
+          -- --ignored adversarial
