@@ -153,6 +153,12 @@ Operators are responsible for:
 
 ## Future work
 
+- **OGE-644** — Add fallible `KeyHandle::try_sign(&self, &[u8]) ->
+  Result<HmacBytes, SignError>` to `ogentic-audit-core` so KMS errors
+  surface as ordinary `Writer::append` errors instead of process
+  panics. **Breaking change** — `ogentic-audit-core` major-version
+  bump. Removes the panic shim documented in §vi above and in
+  `docs/integrations/server-side-kms.md` §"v0.1 panic posture".
 - OGE-603: envelope-encrypted local-HMAC, GCP/Azure providers, napi-rs
   FFI for Node.js consumers, `--key-arn` CLI flag.
 - Asymmetric signing (Ed25519/ML-DSA) for third-party verification without

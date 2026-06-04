@@ -188,6 +188,71 @@ Use `GenerateMac` for v0.1.  Envelope mode is reserved via
 
 `KmsError::is_retryable()` returns `true` for `Throttled` and `ServiceUnavailable`.
 
+## ⚠️ v0.1 panic posture (read before production rollout)
+
+`ogentic-audit-core`'s `KeyHandle::sign` trait method is **synchronous and
+infallible** — it predates KMS, was designed against an in-memory key, and
+returns `[u8; 32]` directly. The KMS-backed `KmsKey<P>` honours that
+signature by:
+
+1. Calling the async `KmsProvider::sign` under a blocking shim
+   (`tokio::task::block_in_place` on a multi-thread runtime;
+   `std::thread::scope` + a dedicated current-thread runtime as a
+   fallback on a single-thread runtime).
+2. **Panicking** on any `KmsError` returned from the provider.
+
+In practice this means: if AWS KMS returns `AccessDenied`,
+`Throttled`, `ServiceUnavailable`, `KeyNotFound`, or the SDK surfaces
+a network failure during a hot-path `Writer::append`, the process
+will **abort**, not return an `Err`. Concretely:
+
+- The audit chain on disk is intact (no half-written record — the
+  panic happens before the encoded record reaches the writer's
+  staging buffer).
+- The supervisor (systemd / k8s / launchd) restarts the process.
+- The next boot runs the crash-recovery scan, which verifies the
+  chain through the last durable record and resumes from there.
+
+This is **deliberate for v0.1**, not an oversight. The alternative —
+silently degrading to no-MAC or stale-MAC — would break the
+court-defensibility invariant (every byte on disk has a verifiable
+HMAC chained to its predecessor). A panic is louder than a silent
+gap.
+
+**Operational checklist before production:**
+
+- [ ] Pre-sign at boot. Issue one `KeyHandle::sign(b"liveness")`
+      call before serving traffic. If it returns, your IAM policy,
+      region routing, network path, and IAM credential chain are all
+      good. After that, runtime panics for non-throttling reasons are
+      vanishingly unlikely.
+- [ ] Tune retries on the underlying SDK client. `AwsKmsProvider`
+      defaults to the SDK's 3-attempt exponential backoff; if you
+      need more aggressive retry, construct an `aws_sdk_kms::Client`
+      with a custom `RetryConfig` and pass it via
+      `AwsKmsProvider::from_client(...)`.
+- [ ] Use a supervisor with restart-on-panic + sane backoff. Your
+      audit-emitting process must be supervised. Treat the panic as
+      a crash-loop signal — it WILL stop your hot path.
+- [ ] Do NOT `catch_unwind`. The panic exists precisely so that a
+      KMS-side outage cannot silently degrade the audit chain.
+      Catching it defeats the safety property; let the process die
+      and let your supervisor handle the restart.
+
+**v0.2 migration path** (filed as
+[OGE-644](https://linear.app/ogenticai/issue/OGE-644)):
+
+- `ogentic-audit-core` will gain a fallible `KeyHandle::try_sign`
+  method. The infallible `sign` becomes a default-implemented
+  convenience method (`self.try_sign(msg).expect("…")`) for the
+  in-memory case where panics are still correct.
+- `KmsKey<P>` will route through `try_sign`, surfacing `KmsError`
+  as a `Writer::append` error variant. Supervisors then react to
+  ordinary errors instead of process crashes.
+- This is a **major-version bump** on `ogentic-audit-core` (breaking
+  change to the trait surface). v0.1 keys remain readable; only
+  writer code that implements `KeyHandle` needs the new method.
+
 ## Per-org isolation pattern
 
 Each tenant (org) gets its own KMS key.  A single compromised IAM credential
