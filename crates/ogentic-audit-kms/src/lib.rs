@@ -46,7 +46,8 @@
 //!
 //! ## MSRV
 //!
-//! Rust 1.85 (edition 2021).
+//! Rust 1.88 (edition 2021). Forced by `aws-sdk-kms` transitive deps
+//! (`time-core`, `idna_adapter`, `icu_provider`); see `Cargo.toml`.
 //!
 //! ## Links
 //!

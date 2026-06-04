@@ -61,9 +61,19 @@ fn debug_redacts_key_but_shows_key_id() {
     );
 }
 
-/// Tracing / logging: neither the ARN nor MAC bytes appear in the Debug output.
+/// Belt-and-suspenders: both `Display` and `Debug` outputs scrub the ARN
+/// in the same pass, with the same sentinel ARN as the per-formatter tests
+/// above. Catches a regression where one formatter is fixed but the other
+/// drifts.
+///
+/// NOTE on the AC "no leakage through `tracing` logs": this crate has zero
+/// `tracing::` instrumentation calls — see `Cargo.toml` for the
+/// security-invariant note. The leakage surface is therefore vacuous,
+/// proved by inspection of the source rather than by capture. If OGE-644
+/// later adds `tracing::warn!` on the `try_sign` error path, a real
+/// `tracing_subscriber`-capture test belongs here.
 #[test]
-fn tracing_no_leak() {
+fn display_and_debug_both_redact_arn() {
     let key = make_key(SENTINEL_ARN.as_bytes());
     let debug_str = format!("{key:?}");
     let display_str = format!("{key}");

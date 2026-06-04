@@ -51,10 +51,19 @@ async fn org_isolation_wrong_arn_same_region() {
     }
 }
 
-/// Using KEY_B's ARN with a client expecting KEY_A — the MACs must differ
-/// and the operation must either succeed with a different key_id projection
-/// or return an access-denied error.  An `Ok` response with the same MAC as
-/// KEY_A would be a correctness failure.
+/// Cross-region ARN — pointing at a key in a region the client is not
+/// configured for must fail; the library must NOT silently route the request
+/// to the wrong region.
+///
+/// LOCALSTACK LIMITATION: localstack KMS runs as a single endpoint and does
+/// not validate region routing. With localstack as the test backend, this
+/// test exercises the same code path as `org_isolation_wrong_arn_same_region`
+/// — the request fails because no key with that ARN exists, not because of
+/// region-mismatch routing. Real cross-region routing failure is exercised
+/// by the `aws_smoke_*` tests in `localstack.rs`, which run against actual
+/// AWS via `kms-smoke.yml`. The accepted-error set below is therefore a
+/// superset that includes both the localstack KeyNotFound case and the
+/// real-AWS region-routing failure modes.
 #[tokio::test]
 #[ignore = "requires OGENTIC_KMS_TEST_ENDPOINT; run in kms-integration CI job"]
 async fn org_isolation_wrong_region() {

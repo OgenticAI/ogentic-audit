@@ -24,10 +24,20 @@ ogentic-audit-core = { path = "../ogentic-audit-core", version = "0.1.0-alpha.0"
 async-trait = "0.1"
 tokio = { version = "1", default-features = false, features = ["rt", "rt-multi-thread", "macros"] }
 thiserror = "1"
-zeroize = { version = "1", features = ["derive"] }
-subtle = "2"
 blake3 = "1"
-tracing = "0.1"
+# Security-invariant note: the OGE-431 hardening checklist (constant-time
+# byte comparison via `subtle::ConstantTimeEq`; `ZeroizeOnDrop` on secret
+# auth state; no leakage through `tracing` logs) is delegated for this
+# crate. The kms crate intentionally holds NO key material — signing
+# happens HSM-side via `KmsProvider::sign` and the result is returned
+# to the writer, which routes byte-comparisons through `subtle` in
+# `ogentic-audit-core`. The `AwsKmsProvider` holds the public ARN
+# string (not secret) and the AWS SDK client (which owns auth state
+# under its own zeroization policy). There is also no `tracing::`
+# instrumentation in this crate — the leakage surface is vacuous.
+# Hence no `subtle` / `zeroize` / `tracing` deps in this crate. If
+# OGE-644 adds `try_sign` and a `tracing::warn!` on the error path, the
+# `tracing` dep + a real `tracing_subscriber` capture test return here.
 # Workspace MSRV is 1.88 — see workspace Cargo.toml. aws-sdk-kms's
 # transitive closure (time-core, idna_adapter, icu_provider, etc.)
 # requires ≥1.86–1.88, so 1.88 is the floor for this crate.
@@ -35,7 +45,6 @@ aws-sdk-kms = { version = "1", default-features = false, features = ["rustls"], 
 aws-config = { version = "1", optional = true }
 
 [dev-dependencies]
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 hex = "0.4"
 hmac = "0.12"
