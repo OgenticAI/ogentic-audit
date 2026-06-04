@@ -180,3 +180,87 @@ When this brief moves out of draft, counsel should resolve at least:
 5. Specific language for a "verifier output is admissible without further foundation" pattern — i.e. how to package the structured violation report as a self-authenticating exhibit.
 6. Discovery-production guidance — when an `ogentic-audit` log is produced in discovery, what accompanying documentation does the producing party owe (spec link, key custody attestation, verifier binary version)?
 7. Privilege concerns when the audit log payload contains attorney-client communications or work product (deferred until C3 / OGE-438 PDF export defines the redaction story).
+
+## Server-side / KMS-backed deployments
+
+The analysis above applies to single-user desktop deployments.  This section
+extends it to server-side deployments that use AWS KMS `GenerateMac` as the
+signing primitive (see `docs/adr/0002-server-side-kms-key-sourcing.md` and
+`docs/integrations/server-side-kms.md`).
+
+### CloudTrail as a parallel chain-of-custody artefact
+
+Every `GenerateMac` call is logged by AWS CloudTrail with:
+
+- **Timestamp** — UTC, millisecond precision.
+- **IAM principal** — the identity that made the request (role, user, or
+  assumed-role session).
+- **Key ID** — the KMS key ARN (the managed key identifier, not the HMAC output).
+- **AWS Request ID** — a unique identifier for the API call.
+
+This produces a parallel chain-of-custody record alongside the audit log itself.
+A custodian can attest: "This MAC was produced by IAM principal `arn:aws:iam::...`
+at this time under key `arn:aws:kms:...`, as evidenced by the attached CloudTrail
+record."
+
+Paired with the audit log's own HMAC chain, the combined artefact supports a
+strengthened FRE 902(13)/(14) self-authentication argument: the custodian can
+certify both the HMAC chain (the audit log's internal integrity) and the
+CloudTrail record (the external evidence of which principal signed what and when).
+
+### Implications for the FRE 902 certification
+
+The existing FRE 902(13)/(14) path (see §2 above) required a certification that
+the system produced the records in the ordinary course of its operation.  For KMS
+deployments, the certification now spans two systems:
+
+1. The audit library (`ogentic-audit-core` + `ogentic-audit-kms`) — which produced
+   the on-disk log file.
+2. AWS KMS + CloudTrail — which produced the parallel key-use log.
+
+Counsel must confirm that the certification language covers both sources.  The
+CloudTrail log lives in AWS-controlled storage with its own retention semantics
+(default 90 days for Management Events; configurable via S3 lifecycle policies).
+Operators must ensure CloudTrail is retained for at least as long as the audit log
+itself may be subpoenaed.
+
+### Concrete caveat: chain-of-custody spans two systems
+
+The v0.1 desktop threat model permitted a "single-party, single-device" chain of
+custody: the user's laptop holds the log and the key.  In KMS deployments, the
+chain of custody now spans:
+
+- The log files (operator-controlled storage).
+- The CloudTrail log (AWS-controlled storage, S3 bucket in the operator's account).
+
+An opposing expert will scrutinise both.  If CloudTrail records are missing
+(retention expired, trail disabled, bucket policy overridden), the parallel
+chain-of-custody claim weakens to the audit log's internal HMAC chain alone,
+which is still valid but loses the external-witness component.
+
+**Recommendation:** Enable CloudTrail with a dedicated S3 bucket for audit key
+usage events, with Object Lock (WORM) and a lifecycle policy matching your
+document retention requirements.  Document this in your certification of process.
+
+### What AWS KMS adds and does not add
+
+**Adds:**
+
+- HSM-grade key residency — key material never in process memory.
+- IAM scoping — per-key, per-action, per-principal access control.
+- CloudTrail audit of every signing event — the parallel chain-of-custody artefact.
+
+**Does not add:**
+
+- Protection from an attacker who has gained `kms:GenerateMac`-capable IAM
+  credentials.  An adversary with valid IAM credentials for the audit key can forge
+  records that verify, just as a desktop attacker with the HMAC key can.  The
+  recommended mitigation is tight IAM scoping:
+  one key, one action, condition on `kms:MacAlgorithm = HMAC_SHA_256`, no wildcards.
+- Protection from the KMS service itself — operators must trust AWS as a custodian
+  for the key residency claim.
+
+**Legal so-what:** the court-defensibility argument for KMS deployments adds a
+layer of external attestation (CloudTrail) that the desktop deployment lacks.  It
+also adds an external trust dependency (AWS).  Counsel should weigh both sides
+when advising on the certification of process.

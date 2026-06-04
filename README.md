@@ -22,6 +22,7 @@ Regulated industries and audit-grade AI tooling need an audit log that:
 - [`crates/ogentic-audit-core`](crates/ogentic-audit-core) — Rust core library (writer, reader, verifier, key handle, crash recovery)
 - [`crates/ogentic-audit-cli`](crates/ogentic-audit-cli) — `ogentic-audit` CLI binary (`verify` / `show` / `head` / `export`)
 - [`crates/ogentic-audit-keychain`](crates/ogentic-audit-keychain) — optional OS-keychain key source (macOS / Linux / Windows)
+- [`crates/ogentic-audit-kms`](crates/ogentic-audit-kms) — optional KMS-backed key source (AWS KMS in v0.1; GCP / Azure in v0.2)
 - [`python/ogentic_audit`](python/ogentic_audit) — PyO3-based Python bindings (`pip install ogentic-audit`)
 
 ## Quickstart
@@ -222,6 +223,24 @@ The legal narrative is documented in [`docs/legal/court-defensibility.md`](docs/
 - **MSRV:** Rust 1.85 (edition 2024).
 - **Python:** 3.9 + (abi3 wheels per `pyo3`'s abi3-py39 feature).
 
+## Choose your key source
+
+Three options, all implementing the same `KeyHandle` trait:
+
+| Source | Crate | Best for |
+|--------|-------|----------|
+| **In-memory** | `ogentic-audit-core` | Tests, CI, transient workloads |
+| **OS keychain** | `ogentic-audit-keychain` | Desktop apps (macOS / Linux / Windows) |
+| **KMS (server-side)** | `ogentic-audit-kms` | Server-side, containerised, multi-tenant deployments |
+
+```rust,no_run
+// KMS (server-side):
+// let key = KmsKey::new(AwsKmsProvider::from_arn(arn).await?)?;
+```
+
+Full integration guide for the KMS option:
+[`docs/integrations/server-side-kms.md`](docs/integrations/server-side-kms.md).
+
 ## Documentation
 
 - [`docs/spec/v0.1.md`](docs/spec/v0.1.md) — language-agnostic on-disk format spec
@@ -230,8 +249,10 @@ The legal narrative is documented in [`docs/legal/court-defensibility.md`](docs/
 - [`docs/security/key-rotation.md`](docs/security/key-rotation.md) — customer-facing rotation policy
 - [`docs/legal/court-defensibility.md`](docs/legal/court-defensibility.md) — court-defensibility brief (draft)
 - [`docs/adr/0001-on-disk-format.md`](docs/adr/0001-on-disk-format.md) — on-disk format rationale (ADR)
+- [`docs/adr/0002-server-side-kms-key-sourcing.md`](docs/adr/0002-server-side-kms-key-sourcing.md) — KMS key sourcing rationale (ADR)
 - [`tests/vectors/v0.1/README.md`](tests/vectors/v0.1/README.md) — golden-vector layout + procedure for adding new vectors
 - [`docs/integrations/sotto-desktop.md`](docs/integrations/sotto-desktop.md) — embedding `ogentic-audit-core` inside the Sotto Desktop Tauri shell
+- [`docs/integrations/server-side-kms.md`](docs/integrations/server-side-kms.md) — KMS integration guide (AWS KMS `GenerateMac`)
 - [`examples/sotto-desktop-tauri/`](examples/sotto-desktop-tauri/) — minimal Tauri sample code
 
 ## License
