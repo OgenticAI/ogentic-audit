@@ -32,6 +32,15 @@ impl KmsProvider for FakeKmsProvider {
         arr.copy_from_slice(&out);
         Ok(HmacBytes::from(arr))
     }
+
+    // Test fixtures override `provider_name()` per ADR-0002 §iv to namespace
+    // test `key_id`s away from production AWS `key_id`s. Two `FakeKmsProvider`
+    // instances continue to produce identical `key_id`s (descriptor-determinism
+    // test below); they only differ from an `AwsKmsProvider` that happened to
+    // have the same descriptor.
+    fn provider_name(&self) -> &str {
+        "fake"
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -92,4 +101,37 @@ async fn key_handle_object_safe() {
 async fn key_id_is_stable() {
     let key = KmsKey::new(FakeKmsProvider { key: [5u8; 32] }).unwrap();
     assert_eq!(key.key_id().as_bytes(), key.key_id().as_bytes());
+}
+
+/// Two providers with the SAME `key_descriptor()` bytes but DIFFERENT
+/// `provider_name()` strings produce DIFFERENT `key_id`s. Guarantees
+/// cross-provider namespace separation (AWS vs GCP vs Azure vs test fixture).
+/// Regression check on ADR-0002 §iv's namespace contract.
+#[tokio::test]
+async fn key_id_namespace_separates_providers() {
+    #[derive(Debug)]
+    struct SameDescriptorDifferentNamespace;
+    #[async_trait::async_trait]
+    impl KmsProvider for SameDescriptorDifferentNamespace {
+        fn key_descriptor(&self) -> &[u8] {
+            // EXACT same bytes as `FakeKmsProvider`.
+            b"fake-provider/test-key-1"
+        }
+        async fn sign(&self, _msg: &[u8]) -> Result<HmacBytes, KmsError> {
+            Ok(HmacBytes::from([0u8; HMAC_LEN]))
+        }
+        fn provider_name(&self) -> &str {
+            // Distinct from `FakeKmsProvider::provider_name()`.
+            "different-cloud"
+        }
+    }
+
+    let fake = KmsKey::new(FakeKmsProvider { key: [0u8; 32] }).unwrap();
+    let other = KmsKey::new(SameDescriptorDifferentNamespace).unwrap();
+    assert_ne!(
+        fake.key_id().as_bytes(),
+        other.key_id().as_bytes(),
+        "providers sharing a descriptor must still produce distinct key_ids \
+         when their provider_name() differs (BLAKE3 namespace separation)"
+    );
 }

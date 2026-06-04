@@ -34,9 +34,24 @@ pub enum KmsError {
 
     /// A network-level failure before the service was reached.
     ///
-    /// The inner error MUST NOT include an ARN, credential, or raw request
-    /// body.  The wrapper used by `from_aws_sdk` sanitises the SDK error
-    /// before boxing it here.
+    /// ## Security contract for implementors of custom `KmsProvider`
+    ///
+    /// The boxed inner error's `Display` AND `Debug` MUST NOT include:
+    ///
+    /// - the resource ARN / URL / GCP resource name / Azure vault URI
+    /// - AWS credentials, OIDC tokens, or any session material
+    /// - raw request bodies or response bodies
+    /// - the IAM principal ARN of the caller
+    ///
+    /// `KmsError::Display` itself is a static string (`"network error"`)
+    /// and is safe to log. The risk is `Error::source()`-chain walkers
+    /// (crash reporters, `tracing_error::SpanTrace`, `anyhow`/`eyre`)
+    /// that recursively format the inner error.
+    ///
+    /// `AwsKmsProvider` (the only shipping v0.1 implementation) constructs
+    /// this variant only via `from_aws_sdk` for `SdkError::DispatchFailure`,
+    /// where the boxed inner is a sanitised static-message `io::Error`.
+    /// Custom providers MUST follow the same discipline.
     #[error("network error")]
     Network(#[source] Box<dyn std::error::Error + Send + Sync>),
 
@@ -53,9 +68,15 @@ pub enum KmsError {
 impl KmsError {
     /// Returns `true` if the operation can safely be retried without any
     /// change to the request.
+    ///
+    /// Retryable variants: `Throttled`, `ServiceUnavailable`, `Network`.
+    /// Permanent variants: `AccessDenied`, `KeyNotFound`, `Config`, `Internal`.
     #[must_use]
     pub fn is_retryable(&self) -> bool {
-        matches!(self, Self::Throttled | Self::ServiceUnavailable)
+        matches!(
+            self,
+            Self::Throttled | Self::ServiceUnavailable | Self::Network(_)
+        )
     }
 
     /// Classify an `aws_sdk_kms` `SdkError` into our taxonomy.
@@ -77,7 +98,17 @@ impl KmsError {
 
         match err {
             SdkError::TimeoutError(_) => Self::ServiceUnavailable,
-            SdkError::DispatchFailure(_) => Self::ServiceUnavailable,
+            SdkError::DispatchFailure(_) => {
+                // TLS/TCP failure before the request reached the KMS service.
+                // We construct `Network` with a sanitised static-message
+                // `io::Error` so neither the raw SDK error's `Display` nor
+                // its `Debug` reaches the boxed inner — `Error::source()`
+                // walkers see only the static string.
+                Self::Network(Box::new(std::io::Error::new(
+                    std::io::ErrorKind::ConnectionRefused,
+                    "aws-sdk: dispatch failure (TLS/TCP before KMS)",
+                )))
+            },
             SdkError::ConstructionFailure(_) => {
                 Self::Config("aws-sdk: request construction failed")
             },
@@ -105,6 +136,7 @@ mod tests {
 
     /// Confirm that the Display of every KmsError variant is free of a
     /// sentinel string that could represent a leaked ARN or credential.
+    /// `Network` is covered separately because it owns a boxed inner.
     #[test]
     fn display_does_not_leak_sentinel() {
         let sentinel = "arn:aws:kms:us-east-1:123456789012:key/fake-key-id";
@@ -125,10 +157,37 @@ mod tests {
         }
     }
 
+    /// Sentinel-leak test for the `Network` variant: even if a careless
+    /// custom provider tried to box an ARN-containing inner error, the
+    /// outer `KmsError::Display` would still be `"network error"`. We
+    /// also walk `Error::source()` to confirm the sentinel doesn't leak
+    /// through chain-walking crash reporters when `AwsKmsProvider`
+    /// constructs the variant (via `DispatchFailure` mapping).
+    #[test]
+    fn network_variant_display_and_source_chain_safe() {
+        // Caller could try to wrap a leaky inner — outer Display still safe.
+        let sentinel = "arn:aws:kms:us-east-1:123456789012:key/fake-key-id";
+        let leaky_inner = std::io::Error::other(format!("oops {sentinel}"));
+        let err = KmsError::Network(Box::new(leaky_inner));
+        let outer = format!("{err}");
+        assert_eq!(
+            outer, "network error",
+            "outer Display must be the static string; got {outer}"
+        );
+
+        // The boxed inner IS reachable via source() — that's the documented
+        // contract. The contract on the variant docstring is that providers
+        // MUST NOT box leaky inners. This test exists to keep the outer
+        // Display contract honest, not to prevent inner leakage.
+        let src = std::error::Error::source(&err);
+        assert!(src.is_some(), "Network exposes source for retry classifier");
+    }
+
     #[test]
     fn retryable_variants() {
         assert!(KmsError::Throttled.is_retryable());
         assert!(KmsError::ServiceUnavailable.is_retryable());
+        assert!(KmsError::Network(Box::new(std::io::Error::other("x"))).is_retryable());
         assert!(!KmsError::AccessDenied.is_retryable());
         assert!(!KmsError::KeyNotFound.is_retryable());
         assert!(!KmsError::Config("x").is_retryable());

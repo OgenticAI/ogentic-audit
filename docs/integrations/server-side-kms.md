@@ -102,6 +102,22 @@ other MAC algorithm, even if AWS KMS introduces new ones later.
 
 ## Rust quickstart
 
+`Cargo.toml`:
+
+```toml
+[dependencies]
+ogentic-audit-core = "0.1"
+ogentic-audit-kms  = { version = "0.2.0-pre", features = ["aws"] }
+tokio              = { version = "1", features = ["macros", "rt-multi-thread"] }
+
+# Used by the example below — replace with your own time + session-id sources
+# if you prefer:
+chrono = "0.4"
+uuid   = { version = "1", features = ["v4"] }
+```
+
+`src/main.rs`:
+
 ```rust,no_run
 use ogentic_audit_kms::{AwsKmsProvider, KmsKey};
 use ogentic_audit_core::{Writer, PayloadValue};
@@ -129,6 +145,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 ```
+
+Pre-sign at boot before serving traffic — see the "v0.1 panic posture" section
+below; one liveness sign on startup catches IAM/credential misconfiguration
+loudly instead of on the first real audit record.
 
 ## Node.js quickstart
 
@@ -186,7 +206,11 @@ Use `GenerateMac` for v0.1.  Envelope mode is reserved via
 | `Config` | No | Invalid configuration | Fix at startup; cannot recover at runtime |
 | `Internal` | No | SDK version mismatch or unexpected response | Update SDK; file a bug |
 
-`KmsError::is_retryable()` returns `true` for `Throttled` and `ServiceUnavailable`.
+`KmsError::is_retryable()` returns `true` for `Throttled`,
+`ServiceUnavailable`, and `Network`. All three are operationally retryable
+(rate-limit, transient 5xx, transient TCP/TLS) — caller should back off and
+retry without modifying the request. `AccessDenied`, `KeyNotFound`,
+`Config`, and `Internal` are permanent and require operator intervention.
 
 ## ⚠️ v0.1 panic posture (read before production rollout)
 

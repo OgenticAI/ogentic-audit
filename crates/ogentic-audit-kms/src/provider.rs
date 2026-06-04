@@ -42,4 +42,27 @@ pub trait KmsProvider: Send + Sync + std::fmt::Debug {
     /// process memory.  The MAC bytes are returned after being transmitted
     /// over TLS from the KMS service.
     async fn sign(&self, msg: &[u8]) -> Result<HmacBytes, KmsError>;
+
+    /// Provider-namespace string mixed into the `key_id` BLAKE3 hash.
+    ///
+    /// Two providers that happen to produce the same `key_descriptor` bytes
+    /// (e.g. an AWS KMS key whose ARN string-matches a GCP Cloud KMS resource
+    /// name — pathological but possible) still produce distinct `key_id`s
+    /// because this string differs.  Implementors override to namespace their
+    /// own provider domain.
+    ///
+    /// Defaults to `"aws-kms"` to preserve v0.1 `key_id` byte-stability for
+    /// the only shipping provider (`AwsKmsProvider`).  GCP, Azure, and
+    /// custom-provider implementations MUST override:
+    ///
+    /// - `GcpKmsProvider` → `"gcp-kms"`
+    /// - `AzureKeyVaultProvider` → `"azure-kv"`
+    /// - test fixtures → a unique non-`"aws-kms"` namespace (e.g. `"fake"`)
+    ///
+    /// The string is mixed into the BLAKE3 input as a length-delimited token
+    /// (`provider_name || "\n"`), so namespace strings of different lengths
+    /// cannot collide.
+    fn provider_name(&self) -> &str {
+        "aws-kms"
+    }
 }

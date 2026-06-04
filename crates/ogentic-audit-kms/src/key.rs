@@ -75,7 +75,7 @@ impl<P: KmsProvider> KmsKey<P> {
     /// `key_id` is derived from `provider.key_descriptor()` via BLAKE3-256;
     /// it does not require a network call.
     pub fn new(provider: P) -> Result<Self, KmsError> {
-        let key_id = derive_key_id(provider.key_descriptor(), "aws-kms");
+        let key_id = derive_key_id(provider.key_descriptor(), provider.provider_name());
         Ok(Self {
             provider,
             key_id,

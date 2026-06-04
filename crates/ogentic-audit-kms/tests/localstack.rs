@@ -82,6 +82,45 @@ async fn localstack_key_id_deterministic_across_clients() {
     );
 }
 
+/// Per-org isolation: two distinct KMS keys (org A + org B) produce
+/// DIFFERENT MACs for the SAME plaintext, and DIFFERENT `key_id`s. This is
+/// the property that makes the "one tenant cannot forge another's audit
+/// record" claim cryptographic, not just IAM-policy-shaped.
+///
+/// Uses both `OGENTIC_KMS_TEST_KEY_A` and `OGENTIC_KMS_TEST_KEY_B` seeded
+/// by `kms-integration.yml`. Without this test, KEY_B would be unused
+/// CI seeding overhead.
+#[tokio::test]
+#[ignore = "requires OGENTIC_KMS_TEST_ENDPOINT + KEY_A + KEY_B; run in kms-integration CI job"]
+async fn localstack_cross_key_mac_isolation() {
+    let Some(ep) = endpoint() else {
+        return;
+    };
+    let arn_a = std::env::var("OGENTIC_KMS_TEST_KEY_A").expect("KEY_A seeded by CI");
+    let arn_b = std::env::var("OGENTIC_KMS_TEST_KEY_B").expect("KEY_B seeded by CI");
+
+    let key_a = KmsKey::new(AwsKmsProvider::from_client(make_client(&ep).await, &arn_a)).unwrap();
+    let key_b = KmsKey::new(AwsKmsProvider::from_client(make_client(&ep).await, &arn_b)).unwrap();
+
+    // Distinct ARNs → distinct `key_id`s (BLAKE3 projection of the descriptor).
+    assert_ne!(
+        key_a.key_id().as_bytes(),
+        key_b.key_id().as_bytes(),
+        "two distinct KMS keys must project to distinct key_ids"
+    );
+
+    // Same plaintext, different keys → distinct MACs. This is the HMAC-SHA256
+    // tenant-isolation property; the test proves the keys are genuinely
+    // distinct in the HSM (not just distinct ARNs pointing at the same key).
+    let mac_a = KeyHandle::sign(&key_a, b"the same plaintext payload");
+    let mac_b = KeyHandle::sign(&key_b, b"the same plaintext payload");
+    assert_ne!(
+        mac_a.as_bytes(),
+        mac_b.as_bytes(),
+        "MAC of the same plaintext under two distinct KMS keys must differ"
+    );
+}
+
 /// Real AWS smoke test — runs against actual AWS KMS using OIDC credentials
 /// injected by the `kms-smoke.yml` workflow.
 ///

@@ -214,10 +214,13 @@ signing.  The distinction matters:
 
 ### New failure mode: KMS unavailable
 
-`KmsError::ServiceUnavailable { is_retryable: true }` and
-`KmsError::Throttled { is_retryable: true }` surface when the KMS service is
-reachable but temporarily unable to serve requests.  `KeyHandle::sign` panics
-with the error message in both cases.
+`KmsError::ServiceUnavailable` and `KmsError::Throttled` (unit variants — see
+`KmsError::is_retryable()` for the retryability classifier method) surface
+when the KMS service is reachable but temporarily unable to serve requests.
+`KmsError::Network` surfaces on TLS/TCP failure before the request reaches
+the service; all three return `true` from `is_retryable()`. `KeyHandle::sign`
+panics with the error in every case in v0.1 — see OGE-644 for the v0.2
+`try_sign` fix.
 
 The library does not implicitly retry.  Operators must implement their own
 retry logic (exponential back-off is standard) by wrapping the `Writer::append`
