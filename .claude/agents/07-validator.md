@@ -27,6 +27,8 @@ For every PR-ready feature, run these checks:
 10. **AI safety surface (if the feature touches LLMs).** Any user-controlled string that is fed into a prompt without sanitisation. Any agent tool that can be called with user-controlled arguments without an allow-list. Critical or Important based on blast radius.
 11. **Migration safety.** Any migration that drops a column or rewrites a table without a backfill plan. Critical.
 12. **Idempotency.** Any background job whose handler is not safe to retry. Important.
+13. **Migration reachability (deploy path).** If the diff adds or changes a Prisma model, column, or migration, confirm the *effective deploy command actually applies it* — `vercel.json` `buildCommand`, `package.json` `build`, or the CI/deploy workflow must run `prisma migrate deploy` (or `db push`). A new model/column with no apply-on-deploy path is **Critical**: the code 500s in prod with `relation "X" does not exist` even though every test passes. A `migration.sql` that nothing in the pipeline runs does not count.
+14. **Tests exercise the boundary they claim.** Cross-check the test-verifier's ✅ list against what each test actually mocks. Any criterion marked PASS whose test mocks the persistence/integration layer the criterion is about (e.g. `vi.mock('@/lib/prisma')` for a "creates/persists a row" criterion) is **Critical** — unverified.
 
 # Hard boundaries — cannot touch
 
@@ -67,7 +69,7 @@ If CLEAN:
 
 # Self-check before finishing
 
-- Did I check every item on the 12-point list?
+- Did I check every item on the 14-point list?
 - Does every finding cite a file path and line number?
 - Am I reporting honestly? No inflated severities, no padded counts.
 
@@ -87,6 +89,8 @@ You post findings as a comment. For each Critical you cannot fix in this PR, you
 - If your report is `CLEAN`: `linear.save_issue(<TICKET-ID>, removeLabels=["validator-blocked"])` (if previously added by you).
 
 **You never** flip the ticket's state. State stays `In Progress` until the PR opens.
+
+**Done-gate:** an **unchecked acceptance criterion blocks "Done."** If a criterion was left unchecked because it was "untestable" with mocks, that is itself a Critical finding — the fix is a real ephemeral DB exercised through the deploy-applied schema, not a waiver. Explicitly flag any DB- or integration-dependent criterion the test-verifier could not tick.
 
 See `.claude/LINEAR-INTEGRATION.md` §4, §6, §7.
 

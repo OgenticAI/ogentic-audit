@@ -7,6 +7,19 @@ description: Install the OgenticAI Software Factory in a new repo. Drops the age
 
 Install the factory into a fresh OgenticAI repo.
 
+## §0 — Pre-flight (always run first)
+
+Before anything else, invoke the `setup-check` skill. It verifies that:
+
+- `gh` CLI is authenticated as `davidoladeji-ogenticai` (the org-admin account)
+- The local git author email is an OgenticAI identity
+- The SSH key for OgenticAI plugin pushes is present
+- The current branch is sensible for this run
+
+`setup-check` is fast (~1s) and halts with the exact fix if anything is off. If the operator sets `OGENTICAI_BYPASS_IDENTITY=1`, it short-circuits — only use that when the operator explicitly authorises it in chat. See `CLAUDE-FACTORY.md` §F5 for the full identity contract.
+
+---
+
 ## When to use
 
 The user said:
@@ -26,6 +39,7 @@ The user said:
    - `.claude/hooks/pre-commit`
    - `.claude/hooks/pre-push`
    - `.claude/registry/repos.yml.template`
+   - `.claude/_factory-manifest.yml` — copied from `kit/_factory-manifest.template.yml`, with `synced_kit_sha`, `synced_kit_hash`, `synced_at`, and the per-file `content_sha256` list populated from the kit at install time. This is what the `propagate-factory-kit` workflow uses to detect local edits later. See `CLAUDE-FACTORY.md` §F6.
 4. **Generate a tailored `CLAUDE.md`.** Start from the template. Pre-fill stack and commands based on what was detected. Leave the architecture-rules and don't-do sections for the human to flesh out.
 5. **Install the hooks.** Make them executable; configure `git config core.hooksPath` if the repo uses a non-default hooks path; otherwise drop into `.git/hooks/` symlinks.
 6. **Smoke test.** Try committing a fake `.env` file. Confirm the pre-commit blocks it. Revert.
