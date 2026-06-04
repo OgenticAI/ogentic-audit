@@ -2,7 +2,7 @@
 name = "ogentic-audit-kms"
 version = "0.2.0-pre"
 edition = "2021"
-rust-version = "1.85"
+rust-version = "1.88"
 license = "Apache-2.0"
 description = "Optional KMS key source for ogentic-audit (AWS KMS in v0.1; GCP Cloud KMS, Azure Key Vault in v0.2)"
 repository = "https://github.com/OgenticAI/ogentic-audit"
@@ -28,24 +28,11 @@ zeroize = { version = "1", features = ["derive"] }
 subtle = "2"
 blake3 = "1"
 tracing = "0.1"
-# MSRV note: aws-sdk-kms 1.77.0 is the last release that declared
-# rust-version = "1.85.0". Pinned to =1.77.0 + aws-config =1.8.1
-# (minimum aws-config required by aws-sdk-kms 1.77.0).
-#
-# However, several transitive deps of aws-sdk-kms 1.77.0 (time-core,
-# idna_adapter, icu_provider, etc.) have also raised their MSRVs to
-# 1.86–1.88 in their latest releases.  The `cargo +1.85 check` gate
-# therefore still fails in practice; the Cargo.lock must be pinned with
-# `cargo update <dep> --precise <ver>` for each offending transitive dep.
-# This is a known limitation of the AWS SDK's MSRV management.
-#
-# The stable toolchain (1.93.1) builds and all tests pass.  The MSRV
-# gate can be satisfied by raising the workspace rust-version to 1.88 or
-# by pinning transitive deps one-by-one in Cargo.lock.
-# Tracked: raise workspace MSRV to 1.88 to unblock aws-sdk-kms version
-# range bump (remove the = pin below when done).
-aws-sdk-kms = { version = "=1.77.0", default-features = false, features = ["rustls"], optional = true }
-aws-config = { version = "=1.8.1", optional = true }
+# Workspace MSRV is 1.88 — see workspace Cargo.toml. aws-sdk-kms's
+# transitive closure (time-core, idna_adapter, icu_provider, etc.)
+# requires ≥1.86–1.88, so 1.88 is the floor for this crate.
+aws-sdk-kms = { version = "1", default-features = false, features = ["rustls"], optional = true }
+aws-config = { version = "1", optional = true }
 
 [dev-dependencies]
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
