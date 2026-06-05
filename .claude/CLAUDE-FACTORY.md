@@ -37,6 +37,8 @@ The factory grounds every run in a Linear ticket. No exceptions. These are the O
 **Linear team key:** `OGE`
 **Primary project for this repo:** TODO — fill in. Match the `linear_project` field for this repo in `.claude/registry/repos.yml`.
 
+**Linear identity (factory bot).** All factory Linear writes — every `[factory:*]` comment, state change, and label — MUST be authored by the dedicated factory bot (`factory-bot@ogenticai.com` / "OgenticAI Factory Bot"), never a human account. This is the Linear analogue of the §F5 git-identity gate: factory work is attributed to the factory, not to whoever ran it. `setup-check` (check #6) verifies the active Linear connector's actor — warn-mode until the bot connector is provisioned, then a hard gate. Provisioning runbook: `docs/LINEAR-BOT-SETUP.md`. Full contract: `LINEAR-INTEGRATION.md` §14.
+
 **State machine.** The factory walks tickets through:
 ```
 Backlog → In Progress → In Review → Done
