@@ -7,6 +7,13 @@
 
 set -euo pipefail
 
+# Paths that LOOK like secrets but are canonical templates and must be allowed
+# through. Checked BEFORE FORBIDDEN_PATHS so `.env.example` etc. aren't blocked
+# by the broader `\.env\.` rule.
+ALLOWED_PATHS=(
+  '(^|/)\.env(\.[^/]+)*\.(example|sample|template)$'
+)
+
 # Files we never want committed, period.
 FORBIDDEN_PATHS=(
   '\.env$'
@@ -43,8 +50,20 @@ errors=0
 staged_paths="$(git diff --cached --name-only --diff-filter=ACM || true)"
 if [[ -n "$staged_paths" ]]; then
   while IFS= read -r path; do
+    # Allowlist: canonical templates (.env.example, .env.local.example, etc.)
+    # short-circuit before forbidden-path checks. Use `--` so patterns that
+    # start with a dash don't get parsed as flags by BSD grep on macOS.
+    allowed=0
+    for pat in "${ALLOWED_PATHS[@]}"; do
+      if echo "$path" | grep -E -q -- "$pat"; then
+        allowed=1
+        break
+      fi
+    done
+    [[ $allowed -eq 1 ]] && continue
+
     for pat in "${FORBIDDEN_PATHS[@]}"; do
-      if echo "$path" | grep -E -q "$pat"; then
+      if echo "$path" | grep -E -q -- "$pat"; then
         echo "🚫 BLOCKED: $path matches forbidden path pattern /$pat/"
         errors=$((errors+1))
       fi
@@ -61,7 +80,10 @@ if [[ -n "$staged_paths" ]]; then
       continue
     fi
     for pat in "${FORBIDDEN_CONTENT[@]}"; do
-      if git diff --cached "$path" | grep -E -q "$pat"; then
+      # `--` terminates option parsing so patterns that start with a dash
+      # (e.g. the PEM `-----BEGIN ... KEY-----` regex) aren't mistaken for
+      # flags by BSD grep on macOS.
+      if git diff --cached "$path" | grep -E -q -- "$pat"; then
         echo "🚫 BLOCKED: $path contains content matching /$pat/"
         errors=$((errors+1))
       fi

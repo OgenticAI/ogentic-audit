@@ -19,6 +19,35 @@ The operator (or `feature-factory` §9) said:
 
 If the ask is a single feature or a bugfix, do **not** engage. Hand back to `feature-factory` instead.
 
+## 0. Pre-flight — check org-knowledge first
+
+Before you ask the operator anything, look for prior discussion of this initiative.
+
+If `factory.knowledge_enabled` is true for the surface(s) involved (see `.claude/CLAUDE-FACTORY.md` §F7), call:
+
+```
+orgknowledge_search(
+  q   = <one-sentence paraphrase of the ask the operator just made>,
+  since = (today - P60D).isoformat() + "Z",   # last 60 days only
+  limit = 10,
+  threshold = 0.5
+)
+```
+
+Three outcomes:
+
+| Hit pattern | What you do |
+|---|---|
+| Any hit ≥ 0.80 that points to an **existing Linear project** | Halt before drafting. Tell the operator: "On reflection this fits `<existing project>` (cited: `<source_url>`). Want me to fold this in as a new milestone there, or are you sure it's a new project?" If yes-still-new, continue; otherwise hand back to `feature-factory`. |
+| Hits 0.65–0.79 referencing decisions, prior specs, customer asks | Pull them into the intake. Reference them in the draft's OUTCOME / SUCCESS METRIC / NON-GOALS so the project is grounded in what the team has already said. |
+| All hits < 0.65, or `code: NO_CONTENT`, or `code: UNREACHABLE` | Note "no prior org-knowledge above 0.65" in the draft's preamble and proceed normally. |
+
+Do not gate the human checkpoint on this step — it just enriches the intake. The only hard halt is the **"already-fits-an-existing-project"** case above.
+
+If `factory.knowledge_enabled=false`, skip silently and move to §1.
+
+---
+
 ## 1. Intake — collect the brief
 
 Ask the operator the following, one at a time (or in a single message if context supplies them already):
@@ -141,6 +170,7 @@ Next step: pick the first seed issue and run it through the factory:
 
 ## 7. Cross-references
 
+- Calls `orgknowledge_search` in §0 before any drafting — see `mcp-orgknowledge` plugin and CLAUDE-FACTORY §F7.
 - Triggered by `feature-factory` §9 when the project-decision heuristic fires "Option A — create a new project".
 - Pairs with `repo-create` when the initiative needs its own repo *and* its own project — call `repo-create` first to get the repo + registry entry, then call `project-planner` with the new repo as the surface.
 - The seed issues land in `Backlog` with the `from-project-planner` label so they're easy to audit later. `feature-factory` runs them as normal.
