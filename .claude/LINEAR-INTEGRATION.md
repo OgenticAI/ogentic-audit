@@ -20,6 +20,8 @@ A free-form description is still allowed, but the orchestrator will refuse to pr
 
 The kit refers to Linear tools by logical name. The actual MCP namespace depends on which Linear connector is installed locally; current OgenticAI installs use `mcp__plugin_engineering_linear__*` or a UUID-prefixed server. Map the logical names to whatever your install exposes.
 
+> **Identity (critical).** The connector you map these to MUST authenticate as the factory bot (`factory-bot@ogenticai.com`), not a human — see §14. Linear attributes every comment and state change to the connector's actor; a human-authed connector signs the audit trail with the wrong person. Until the bot connector exists, the factory does not post `[factory:*]` comments through a human connector.
+
 | Logical name | What it does | Tools that need it |
 |---|---|---|
 | `linear.get_issue` | Read a ticket + its acceptance criteria + description | **All agents** |
@@ -362,5 +364,21 @@ Open any ticket the factory has touched. You see:
 - State at every milestone, owned by the agent that flipped it
 
 No off-ticket Slack threads. No mysterious "ask Claude in chat" history. The ticket is the run.
+
+---
+
+## 14. Linear identity — the factory bot
+
+Linear attributes every comment, state change, and label to whoever the active connector authenticates as. The audit trail in §5 and §13 is only trustworthy if that actor is the **factory bot**, not a human — the same principle as OGE-333 ("record the actor who triggered it") and the §F5 git-identity gate on the GitHub side.
+
+**Required identity:** `factory-bot@ogenticai.com` — display name "OgenticAI Factory Bot".
+
+**How it's wired:** a dedicated Linear MCP connector authenticated as the bot. The factory uses that connector for **all** writes; a human's personal connector is never used for `[factory:*]` comments. Two connectors for the same workspace is fine — the factory uses the bot one.
+
+- **Provisioning** (one-time, admin): `docs/LINEAR-BOT-SETUP.md`.
+- **Enforcement:** `setup-check` check #6 resolves the connector's actor and **warns** (then hard-fails, once the bot connector is provisioned) if it's a human address.
+- **Acceptable interim:** ticket *creation* and state moves may run through a human connector if the bot isn't available yet — but **comments are the audit record and must be the bot.**
+
+Until the bot connector exists, the factory MUST NOT post `[factory:*]` comments through a human connector. It buffers them to chat (degraded-mode style, §9) and replays them once the bot identity is live.
 
 — end —
