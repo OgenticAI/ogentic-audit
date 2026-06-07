@@ -20,7 +20,7 @@ A free-form description is still allowed, but the orchestrator will refuse to pr
 
 The kit refers to Linear tools by logical name. The actual MCP namespace depends on which Linear connector is installed locally; current OgenticAI installs use `mcp__plugin_engineering_linear__*` or a UUID-prefixed server. Map the logical names to whatever your install exposes.
 
-> **Identity (critical).** The connector you map these to MUST authenticate as the factory bot (`factory-bot@ogenticai.com`), not a human — see §14. Linear attributes every comment and state change to the connector's actor; a human-authed connector signs the audit trail with the wrong person. Until the bot connector exists, the factory does not post `[factory:*]` comments through a human connector.
+> **Identity (critical).** `[factory:*]` **comments** MUST be authored by the factory bot, not the human connector — see §14. Because Claude caps Linear connectors at two (both human), the bot has no connector: comments are posted via the Linear API with `LINEAR_FACTORY_TOKEN` (the bot's personal API key), out-of-band from `linear.save_comment`. Reads and ticket state may use the human connector. Until `LINEAR_FACTORY_TOKEN` is set, the factory does not post `[factory:*]` comments as a human — it buffers them (§9).
 
 | Logical name | What it does | Tools that need it |
 |---|---|---|
@@ -373,12 +373,13 @@ Linear attributes every comment, state change, and label to whoever the active c
 
 **Required identity:** `factory-bot@ogenticai.com` — display name "OgenticAI Factory Bot".
 
-**How it's wired:** a dedicated Linear MCP connector authenticated as the bot. The factory uses that connector for **all** writes; a human's personal connector is never used for `[factory:*]` comments. Two connectors for the same workspace is fine — the factory uses the bot one.
+**How it's wired:** Claude caps Linear connectors at **two** per install, and at OgenticAI both are needed for human workspaces — so the bot gets **no connector**. It posts comments via the **Linear API** using `LINEAR_FACTORY_TOKEN` — a Linear **personal API key** belonging to `factory-bot@ogenticai.com` — out-of-band from the MCP connector (the same pattern as OgenticAI Reviewer's `LINEAR_API_TOKEN`). Reads, ticket state, and labels still flow through the operator's human connector; only `[factory:*]` **comments** route through the bot token.
 
-- **Provisioning** (one-time, admin): `docs/LINEAR-BOT-SETUP.md`.
-- **Enforcement:** `setup-check` check #6 resolves the connector's actor and **warns** (then hard-fails, once the bot connector is provisioned) if it's a human address.
-- **Acceptable interim:** ticket *creation* and state moves may run through a human connector if the bot isn't available yet — but **comments are the audit record and must be the bot.**
+- **Provisioning** (one-time, admin): `docs/LINEAR-BOT-SETUP.md` — create the bot member, mint its personal API key, expose it as `LINEAR_FACTORY_TOKEN` (1Password → env/secret, off-disk; org/repo Actions secret for CI).
+- **Posting:** `kit/scripts/factory-linear-comment.sh --issue OGE-NNN --body <md>` (or `--project <id>`) calls Linear's GraphQL `commentCreate` with the token. Agents route `linear.save_comment` for `[factory:*]` comments through this helper.
+- **Enforcement:** `setup-check` check #6 confirms `LINEAR_FACTORY_TOKEN` is set and its Linear `viewer` resolves to the bot — **hard-fails** otherwise (skip with `OGENTICAI_BYPASS_IDENTITY`).
+- **Acceptable interim:** ticket creation + state moves may run through the human connector; only comments are gated.
 
-Until the bot connector exists, the factory MUST NOT post `[factory:*]` comments through a human connector. It buffers them to chat (degraded-mode style, §9) and replays them once the bot identity is live.
+Until `LINEAR_FACTORY_TOKEN` is set, the factory MUST NOT post `[factory:*]` comments as a human — it buffers them to chat (degraded-mode, §9) and replays them once the token is live.
 
 — end —
