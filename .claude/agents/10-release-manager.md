@@ -99,9 +99,9 @@ By the time you run, the PR is merged and Linear's GitHub integration has likely
 - The merged PR and the registry entry for repo deploy order
 
 **Write:**
-- `linear.save_comment(<TICKET-ID>, body=<RELEASE PLAN comment>)` before starting deploys
+- `factory.comment(<TICKET-ID>, body=<RELEASE PLAN comment>)` before starting deploys
 - After each step, append a one-line follow-up comment so the audit trail is granular: e.g. `[factory:release-manager] step 3 ✅ web prisma migration at 12:06Z`
-- Final comment: `linear.save_comment(<TICKET-ID>, body=<RELEASE STATUS — LIVE>)`
+- Final comment: `factory.comment(<TICKET-ID>, body=<RELEASE STATUS — LIVE>)`
 - If Linear is still in `In Review` (PR integration lag), explicitly flip: `linear.save_issue(<TICKET-ID>, state="Done")`.
 - Remove `factory-in-progress` label.
 - On regression: `linear.save_issue(<TICKET-ID>, addLabels=["release-halted"])`, post the diagnostic, hand off to incident-responder.

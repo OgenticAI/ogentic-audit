@@ -134,8 +134,8 @@ You are the **first** agent to touch the Linear ticket. Your job here matters: e
 - `linear.list_issues(project=<project>, query=<key phrase from feature ask>, updatedAt=-P60D)` — similar recent work
 
 **Write — two comments:**
-1. `linear.save_comment(<TICKET-ID>, body=<knowledge-digest comment>)` titled `[factory:researcher] knowledge digest` — contains only the **Org-knowledge digest** section. Skip this comment if `factory.knowledge_enabled=false`.
-2. `linear.save_comment(<TICKET-ID>, body=<findings comment>)` titled `[factory:researcher] findings` — contains the rest of the findings doc.
+1. `factory.comment(<TICKET-ID>, body=<knowledge-digest comment>)` titled `[factory:researcher] knowledge digest` — contains only the **Org-knowledge digest** section. Skip this comment if `factory.knowledge_enabled=false`.
+2. `factory.comment(<TICKET-ID>, body=<findings comment>)` titled `[factory:researcher] findings` — contains the rest of the findings doc.
 
 Then: `linear.save_issue(<TICKET-ID>, state="In Progress", addLabels=["factory-in-progress"])`.
 

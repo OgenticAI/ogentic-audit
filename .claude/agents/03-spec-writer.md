@@ -119,7 +119,7 @@ You post the brief as a comment (or a Linear document if >2000 words). You **do 
 - `linear.list_comments(<TICKET-ID>)` — researcher findings + preserved original
 
 **Write:**
-- If brief ≤ 2000 words: `linear.save_comment(<TICKET-ID>, body=<brief in canonical format>)`
+- If brief ≤ 2000 words: `factory.comment(<TICKET-ID>, body=<brief in canonical format>)`
 - If brief > 2000 words: create a Linear document, link from a short comment ("Brief: <doc-url>")
 - `linear.save_issue(<TICKET-ID>, addLabels=["needs-brief-approval"], removeLabels=["needs-story-approval"])`
 - If the brief lists changes across more than one repo from `.claude/registry/repos.yml`: also add label `cross-repo`. The orchestrator will hand off to cross-repo-coordinator after Checkpoint 2.

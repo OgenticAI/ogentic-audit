@@ -112,9 +112,9 @@ OSS releases are themselves Linear-trackable events. Post the publish on the tic
 - `linear.list_comments(<TICKET-ID>)` — to identify all PRs merged since last tag
 
 **Write:**
-- Pre-publish: `linear.save_comment(<TICKET-ID>, body=<PUBLISH PLAN>)`
+- Pre-publish: `factory.comment(<TICKET-ID>, body=<PUBLISH PLAN>)`
 - After each registry target ships: append a confirmation comment with the version + registry URL
-- Final: `linear.save_comment(<TICKET-ID>, body=<PUBLISH STATUS — live>)`
+- Final: `factory.comment(<TICKET-ID>, body=<PUBLISH STATUS — live>)`
 - If the release rolls up *multiple* feature tickets (typical Wave 1/Wave 2 cadence), post the same `PUBLISH STATUS` comment on each parent ticket and link them in a single "release roll-up" comment on the most recent.
 - On smoke fail: `linear.save_issue(<TICKET-ID>, addLabels=["publish-halted"])`, post diagnostic, halt.
 

@@ -154,7 +154,7 @@ If the Spec Writer's brief lists changes across more than one repo (per `.claude
 
 - **One agent active at a time** on any given path. Parallel only inside cross-repo fan-out.
 - **Every agent gets the ticket ID** as its first input, alongside any artefacts it needs. Never paste the whole conversation.
-- **Every agent ends with a `[factory:<agent>]` comment on the ticket** in the standard format (see `.claude/LINEAR-INTEGRATION.md`).
+- **Every agent ends with a `[factory:<agent>]` comment on the ticket** in the standard format (see `LINEAR-INTEGRATION.md` §2/§4). The agent **returns the comment body**; **the orchestrator posts it as the factory bot** via `.claude/scripts/factory-linear-comment.sh --issue <OGE-ID> --body <markdown>` (`LINEAR_FACTORY_TOKEN`) — **never `linear.save_comment`** (authors as the human operator). Same for the §5 final telemetry comment.
 - **Every agent owns its state transitions and labels.** No agent flips a state it does not own. See LINEAR-INTEGRATION §3.
 - **At each checkpoint**, present the artefact in chat AND on the ticket. Don't auto-advance. The operator's approval can be in chat ("/approved") or on the ticket (removing the `needs-X-approval` label).
 - **Validator / Security / Compliance Reviewer can loop builders.** Critical findings route to the specific agent named in the finding's `file:line`. Re-run the reviewer after the fix.

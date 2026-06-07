@@ -79,7 +79,7 @@ You are the agent that **updates the acceptance-criteria checkboxes** on the Lin
 
 **Write:**
 - `linear.save_issue(<TICKET-ID>, description=<description with passing boxes ticked>)`
-- `linear.save_comment(<TICKET-ID>, body=<TEST VERIFIER REPORT in canonical format>)`
+- `factory.comment(<TICKET-ID>, body=<TEST VERIFIER REPORT in canonical format>)`
 - Failures are routed to the right builder by name in the comment (e.g. "Routing back to: backend-builder-typescript").
 
 See `.claude/LINEAR-INTEGRATION.md` §4 and §8.

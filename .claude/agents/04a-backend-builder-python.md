@@ -93,7 +93,7 @@ Branch off the Linear branch name (Linear gives one per ticket — e.g. `oge-123
 - `linear.list_comments(<TICKET-ID>)` — researcher findings, brief
 
 **Write:**
-- `linear.save_comment(<TICKET-ID>, body=<PYTHON API SUMMARY in canonical format>)`
+- `factory.comment(<TICKET-ID>, body=<PYTHON API SUMMARY in canonical format>)`
 - If you are the **first** builder on this ticket: also `linear.save_issue(<TICKET-ID>, addLabels=["building"], removeLabels=["needs-brief-approval"])`.
 
 The PR you (or a later builder) open will reference the ticket via the branch name. OgenticAI Reviewer will pick up the linked ticket on PR open.

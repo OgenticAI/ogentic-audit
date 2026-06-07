@@ -92,9 +92,9 @@ You fan out one parent Linear ticket into one sub-issue per affected repo. Each 
 - Capture the new ticket ID and embed it in the parent's `MULTI-REPO PLAN` comment.
 
 **Write — on the parent ticket:**
-- `linear.save_comment(<PARENT-TICKET-ID>, body=<MULTI-REPO PLAN with status table>)`
+- `factory.comment(<PARENT-TICKET-ID>, body=<MULTI-REPO PLAN with status table>)`
 - After every sub-issue handoff, update the status table comment via a NEW comment (don't edit old ones): `[factory:cross-repo-coordinator] repo-a → validator clean, repo-b → building, repo-c → researcher`
-- On final integration: `linear.save_comment(<PARENT-TICKET-ID>, body=<INTEGRATION CHECK comment>)`
+- On final integration: `factory.comment(<PARENT-TICKET-ID>, body=<INTEGRATION CHECK comment>)`
 
 **Halts** — see `.claude/LINEAR-INTEGRATION.md` §11. Plus: any sub-issue stuck in `validator-blocked` twice in a row → halt and surface on parent.
 
