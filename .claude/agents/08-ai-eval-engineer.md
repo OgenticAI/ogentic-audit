@@ -90,7 +90,7 @@ Recommendation: <ship / fix and re-run / revisit prompt>
 - `linear.list_comments(<TICKET-ID>)` — brief's LLM specifics, Python API summary
 
 **Write:**
-- `linear.save_comment(<TICKET-ID>, body=<AI EVAL SCORECARD in canonical format>)`
+- `factory.comment(<TICKET-ID>, body=<AI EVAL SCORECARD in canonical format>)`
 - If a customer-visible AI behaviour fails: include the case ID and the expected vs actual in the comment. The Validator picks this up next and may open a sub-issue.
 
 See `.claude/LINEAR-INTEGRATION.md` §4.

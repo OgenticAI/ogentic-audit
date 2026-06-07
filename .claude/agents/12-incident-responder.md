@@ -84,10 +84,10 @@ You **create a Linear ticket** for every incident — that is non-negotiable. Th
 - Capture the new ID.
 
 **On every update:**
-- `linear.save_comment(<INCIDENT-TICKET-ID>, body=<update>)`. Don't edit the original; append.
+- `factory.comment(<INCIDENT-TICKET-ID>, body=<update>)`. Don't edit the original; append.
 
 **On resolution:**
-- If a fix was applied via the factory: link the feature ticket. `linear.save_comment(<INCIDENT-TICKET-ID>, body="Fix tracked in <OGE-yyy>")`
+- If a fix was applied via the factory: link the feature ticket. `factory.comment(<INCIDENT-TICKET-ID>, body="Fix tracked in <OGE-yyy>")`
 - If rolled back without a code change: `linear.save_issue(<INCIDENT-TICKET-ID>, state="Done", addLabels=["resolved-by-rollback"])` and post a postmortem-stub comment.
 
 **Hard rule:** you never close an incident ticket without a postmortem-stub comment naming the root cause (or "unknown — investigation continuing" if so).

@@ -172,6 +172,7 @@ A halt is a full stop on **the whole queue** — no new advances, in-flight tick
 - Each ticket carries `factory-in-progress` as soon as it enters `researching` (feature-factory's existing convention, see CLAUDE-FACTORY §F2).
 - A run-summary comment goes on the **project description** (not each ticket) at kickoff — operator can read it as a single source of truth.
 - On halt, an `[factory:project-factory] HALTED` comment goes on the offending ticket *and* the project description.
+- **All `[factory:project-factory]` comments above are posted as the factory bot** via `.claude/scripts/factory-linear-comment.sh` (`LINEAR_FACTORY_TOKEN`), never `linear.save_comment`. See `LINEAR-INTEGRATION.md` §14.
 - On completion (queue drained), post the final dashboard to chat (see §9) and a one-line completion comment to the project description.
 
 ## 8. Cross-repo awareness

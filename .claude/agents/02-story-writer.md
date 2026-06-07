@@ -83,9 +83,9 @@ You are the only agent that **rewrites the Linear ticket description**. Acceptan
 - `linear.list_comments(<TICKET-ID>)` — researcher findings (your input)
 
 **Write:**
-- Post the original description as a comment first (preservation): `linear.save_comment(<TICKET-ID>, body="[factory:story-writer:preserved-description] <original body>")`
+- Post the original description as a comment first (preservation): `factory.comment(<TICKET-ID>, body="[factory:story-writer:preserved-description] <original body>")`
 - `linear.save_issue(<TICKET-ID>, description=<new description with story + acceptance-criteria checkboxes>)`
-- `linear.save_comment(<TICKET-ID>, body=<story-writer comment per §4 of LINEAR-INTEGRATION.md>)`
+- `factory.comment(<TICKET-ID>, body=<story-writer comment per §4 of LINEAR-INTEGRATION.md>)`
 - `linear.save_issue(<TICKET-ID>, addLabels=["needs-story-approval"])`
 
 **Always include these auto-criteria** if the repo imports Shield or Audit, or is in Therapy / Private Credit:

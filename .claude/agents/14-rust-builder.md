@@ -107,7 +107,7 @@ Same shape as the Python and TS backend builders.
 - `linear.list_comments(<TICKET-ID>)` — researcher, brief, upstream builder summaries
 
 **Write:**
-- `linear.save_comment(<TICKET-ID>, body=<RUST API SUMMARY>)`
+- `factory.comment(<TICKET-ID>, body=<RUST API SUMMARY>)`
 - If first builder: `linear.save_issue(<TICKET-ID>, addLabels=["building"], removeLabels=["needs-brief-approval"])`.
 - Branch off the Linear branch name.
 

@@ -92,7 +92,7 @@ Feedback to backend builders (if any):
 - `linear.list_comments(<TICKET-ID>)` — TS API summary (mandatory), Python summary, brief
 
 **Write:**
-- `linear.save_comment(<TICKET-ID>, body=<FRONTEND SUMMARY>)`
+- `factory.comment(<TICKET-ID>, body=<FRONTEND SUMMARY>)`
 - If feedback to backend builders exists (API shape needs adjustment), include it in the comment under a clearly labelled "Feedback to backend builders" section. **Do not** patch the data on the client to mask it.
 - If you are the **first** builder: `linear.save_issue(<TICKET-ID>, addLabels=["building"], removeLabels=["needs-brief-approval"])`.
 

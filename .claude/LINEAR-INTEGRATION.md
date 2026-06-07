@@ -26,7 +26,7 @@ The kit refers to Linear tools by logical name. The actual MCP namespace depends
 |---|---|---|
 | `linear.get_issue` | Read a ticket + its acceptance criteria + description | **All agents** |
 | `linear.list_comments` | Read prior agent outputs and human responses | All agents |
-| `linear.save_comment` | Post the agent's output as a comment | Every agent that produces an artefact |
+| `factory.comment` | Post a `[factory:*]` comment **as the factory bot** — the subagent returns the body; the **orchestrator** posts it via `.claude/scripts/factory-linear-comment.sh` (`LINEAR_FACTORY_TOKEN`). NEVER use MCP `linear.save_comment` for `[factory:*]` comments (authors as the human). | Orchestrator, for every agent |
 | `linear.save_issue` | Update title, description, state, assignee, labels, parent | Story Writer, Spec Writer, Validator, Security Reviewer, Compliance Reviewer, Release Manager, Cross-Repo Coordinator, Incident Responder |
 | `linear.list_issues` | Search related tickets in the same project / similar features | Researcher, Story Writer |
 | `linear.list_projects` | Cross-reference project metadata | Researcher, Spec Writer, Cross-Repo Coordinator |
@@ -91,6 +91,8 @@ Done
 ## 4. Comment templates
 
 Every agent writes a comment in a standard shape so a human can scan a ticket and see the run history. Open the ticket, scroll the comments — the full chain.
+
+> **How these are posted (MANDATORY).** Subagents do **not** call a Linear tool — they return their `[factory:*]` body in their sign-off. The **orchestrator** posts each one **as the factory bot** via `.claude/scripts/factory-linear-comment.sh --issue <OGE-ID> --body <markdown>` (`LINEAR_FACTORY_TOKEN`). The MCP `linear.save_comment` is **never** used for `[factory:*]` comments — it authors as the human operator. See §2, §14, and `setup-check` #6.
 
 All comments start with a single-line header:
 
@@ -376,7 +378,7 @@ Linear attributes every comment, state change, and label to whoever the active c
 **How it's wired:** Claude caps Linear connectors at **two** per install, and at OgenticAI both are needed for human workspaces — so the bot gets **no connector**. It posts comments via the **Linear API** using `LINEAR_FACTORY_TOKEN` — a Linear **personal API key** belonging to `factory-bot@ogenticai.com` — out-of-band from the MCP connector (the same pattern as OgenticAI Reviewer's `LINEAR_API_TOKEN`). Reads, ticket state, and labels still flow through the operator's human connector; only `[factory:*]` **comments** route through the bot token.
 
 - **Provisioning** (one-time, admin): `docs/LINEAR-BOT-SETUP.md` — create the bot member, mint its personal API key, expose it as `LINEAR_FACTORY_TOKEN` (1Password → env/secret, off-disk; org/repo Actions secret for CI).
-- **Posting:** `kit/scripts/factory-linear-comment.sh --issue OGE-NNN --body <md>` (or `--project <id>`) calls Linear's GraphQL `commentCreate` with the token. Agents route `linear.save_comment` for `[factory:*]` comments through this helper.
+- **Posting:** the **orchestrator** posts each `[factory:*]` comment by running `.claude/scripts/factory-linear-comment.sh --issue OGE-NNN --body <md>` (or `--project <id>`) — `commentCreate` via the token. Subagents return their comment body and never call `linear.save_comment` (human-authed).
 - **Enforcement:** `setup-check` check #6 confirms `LINEAR_FACTORY_TOKEN` is set and its Linear `viewer` resolves to the bot — **hard-fails** otherwise (skip with `OGENTICAI_BYPASS_IDENTITY`).
 - **Acceptable interim:** ticket creation + state moves may run through the human connector; only comments are gated.
 

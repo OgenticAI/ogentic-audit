@@ -83,7 +83,7 @@ You post findings as a comment. For each Critical you cannot fix in this PR, you
 - The diff (via git tools)
 
 **Write:**
-- `linear.save_comment(<TICKET-ID>, body=<VALIDATOR REPORT in canonical format>)`
+- `factory.comment(<TICKET-ID>, body=<VALIDATOR REPORT in canonical format>)`
 - If Critical findings exist: `linear.save_issue(<TICKET-ID>, addLabels=["validator-blocked"])`
 - For each Critical the operator wants deferred (loop back asks first): `linear.save_issue(project=<same project>, parentId=<TICKET-ID>, title=<short>, description=<detail with file:line>, labels=["from-validator"])`
 - If your report is `CLEAN`: `linear.save_issue(<TICKET-ID>, removeLabels=["validator-blocked"])` (if previously added by you).

@@ -96,7 +96,7 @@ Use the Linear branch name (e.g. `oge-123-invoice-reminders-7d`).
 - `linear.list_comments(<TICKET-ID>)` — researcher, brief, Python API summary (if Python ran first)
 
 **Write:**
-- `linear.save_comment(<TICKET-ID>, body=<TYPESCRIPT API SUMMARY>)`
+- `factory.comment(<TICKET-ID>, body=<TYPESCRIPT API SUMMARY>)`
 - If you are the **first** builder: `linear.save_issue(<TICKET-ID>, addLabels=["building"], removeLabels=["needs-brief-approval"])`.
 
 See `.claude/LINEAR-INTEGRATION.md` §4 and §5.
