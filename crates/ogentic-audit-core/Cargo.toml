@@ -26,7 +26,9 @@ rustdoc-args = ["--cfg", "docsrs"]
 hmac = { workspace = true }
 sha2 = { workspace = true }
 blake3 = { workspace = true }
-ciborium = { workspace = true }
+# `ciborium` is intentionally NOT a dep here — the CBOR codec in
+# `src/cbor.rs` is hand-rolled (see the file's module docs for why).
+# OGE-838 removed the previously-unused workspace dep.
 crc32fast = { workspace = true }
 memmap2 = { workspace = true }
 rustix = { workspace = true }

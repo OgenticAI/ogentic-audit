@@ -200,6 +200,17 @@ pub enum CborError {
     },
 }
 
+/// Maximum CBOR nesting depth accepted by the decoder.
+///
+/// The v0.1 record schema's deepest legitimate nesting is ~4 (record map →
+/// payload map → arrays/maps inside payload values). 16 leaves comfortable
+/// headroom for future schema evolution while preventing a malicious log
+/// producer (who, per the threat model, holds the HMAC key and can mint
+/// records that pass the HMAC gate) from minting a deeply-nested payload
+/// that would otherwise blow the verifier's stack — particularly under
+/// Linux musl's ~80 KiB default thread stack. See OGE-833.
+pub const MAX_CBOR_DEPTH: usize = 16;
+
 /// Decode a single canonical CBOR item from `bytes`. The whole input
 /// must be consumed; trailing bytes yield [`CborError::TrailingBytes`].
 pub fn decode(bytes: &[u8]) -> Result<Value, CborError> {
@@ -215,6 +226,16 @@ pub fn decode(bytes: &[u8]) -> Result<Value, CborError> {
 }
 
 fn decode_value(bytes: &[u8], cursor: &mut usize) -> Result<Value, CborError> {
+    decode_value_inner(bytes, cursor, 0)
+}
+
+fn decode_value_inner(bytes: &[u8], cursor: &mut usize, depth: usize) -> Result<Value, CborError> {
+    if depth >= MAX_CBOR_DEPTH {
+        return Err(CborError::Unsupported {
+            offset: *cursor,
+            message: format!("CBOR nesting depth exceeded MAX_CBOR_DEPTH={MAX_CBOR_DEPTH}"),
+        });
+    }
     if *cursor >= bytes.len() {
         return Err(CborError::Truncated {
             offset: *cursor,
@@ -263,7 +284,7 @@ fn decode_value(bytes: &[u8], cursor: &mut usize) -> Result<Value, CborError> {
             let len = decode_argument(bytes, cursor, additional)? as usize;
             let mut items = Vec::with_capacity(len.min(1024));
             for _ in 0..len {
-                items.push(decode_value(bytes, cursor)?);
+                items.push(decode_value_inner(bytes, cursor, depth + 1)?);
             }
             Ok(Value::Array(items))
         },
@@ -273,7 +294,7 @@ fn decode_value(bytes: &[u8], cursor: &mut usize) -> Result<Value, CborError> {
             let mut prev_key_encoded: Option<Vec<u8>> = None;
             for _ in 0..len {
                 let key_start = *cursor;
-                let key = decode_value(bytes, cursor)?;
+                let key = decode_value_inner(bytes, cursor, depth + 1)?;
                 let key_encoded = bytes[key_start..*cursor].to_vec();
                 if let Some(prev) = prev_key_encoded.as_ref() {
                     if !key_order_canonical(prev, &key_encoded) {
@@ -281,7 +302,7 @@ fn decode_value(bytes: &[u8], cursor: &mut usize) -> Result<Value, CborError> {
                     }
                 }
                 prev_key_encoded = Some(key_encoded);
-                let value = decode_value(bytes, cursor)?;
+                let value = decode_value_inner(bytes, cursor, depth + 1)?;
                 items.push((key, value));
             }
             Ok(Value::Map(items))
@@ -536,6 +557,63 @@ mod tests {
         bytes.extend_from_slice(&uint(10));
         let err = decode(&bytes).unwrap_err();
         assert!(matches!(err, CborError::MapKeyOrder { .. }), "got {err:?}");
+    }
+
+    /// OGE-833 regression: a CBOR depth bomb that previously would
+    /// have run the recursive decoder all the way to stack-overflow
+    /// must now reject cleanly with a structured `Unsupported` error
+    /// after `MAX_CBOR_DEPTH` levels — no panic, no SIGABRT.
+    #[test]
+    fn decoder_rejects_deeply_nested_arrays() {
+        // 32 levels of array(1) — well past MAX_CBOR_DEPTH=16 — followed
+        // by a terminating uint(0). CBOR encoding of array(1) with one
+        // element is 0x81, so the bytes are `0x81 * 32` then `0x00`.
+        let mut bytes = vec![0x81u8; 32];
+        bytes.push(0x00);
+        let err = decode(&bytes).expect_err("32-deep CBOR must be rejected, not decoded");
+        match err {
+            CborError::Unsupported { message, .. } => {
+                assert!(
+                    message.contains("MAX_CBOR_DEPTH"),
+                    "expected depth-exceeded error, got: {message}"
+                );
+            },
+            other => panic!("expected Unsupported {{ depth }}, got {other:?}"),
+        }
+    }
+
+    /// And the upper limit itself: a 16-deep nest hits the cap exactly,
+    /// so it should still be rejected (the guard fires *at* the limit,
+    /// before recursing into the 17th frame).
+    #[test]
+    fn decoder_rejects_at_max_depth() {
+        let mut bytes = vec![0x81u8; MAX_CBOR_DEPTH];
+        bytes.push(0x00);
+        let err = decode(&bytes).expect_err("at-limit CBOR must be rejected");
+        assert!(matches!(err, CborError::Unsupported { .. }), "got {err:?}");
+    }
+
+    /// Negative-control: a legitimately shallow nesting (4 levels deep,
+    /// matching the deepest the v0.1 schema actually uses) must still
+    /// decode cleanly — confirms the depth cap doesn't break real logs.
+    #[test]
+    fn decoder_accepts_shallow_nesting_below_cap() {
+        // 4 levels of array(1) then uint(0) — well under MAX_CBOR_DEPTH.
+        let mut bytes = vec![0x81u8; 4];
+        bytes.push(0x00);
+        let value = decode(&bytes).expect("4-deep CBOR must decode");
+        // Walk the structure: Array([Array([Array([Array([Uint(0)])])])])
+        fn unwrap_array(v: &Value) -> &Vec<Value> {
+            match v {
+                Value::Array(items) => items,
+                other => panic!("expected Array, got {other:?}"),
+            }
+        }
+        let l1 = unwrap_array(&value);
+        let l2 = unwrap_array(&l1[0]);
+        let l3 = unwrap_array(&l2[0]);
+        let l4 = unwrap_array(&l3[0]);
+        assert!(matches!(l4[0], Value::Uint(0)));
     }
 
     #[test]

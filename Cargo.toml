@@ -27,7 +27,6 @@ ogentic-audit-keychain = { version = "0.1.0", path = "crates/ogentic-audit-keych
 hmac = "0.12"
 sha2 = "0.10"
 blake3 = "1.5"
-ciborium = "0.2"
 crc32fast = "1.4"
 subtle = "2.6"
 zeroize = { version = "1.7", features = ["zeroize_derive"] }
