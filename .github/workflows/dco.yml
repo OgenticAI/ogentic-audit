@@ -1,0 +1,74 @@
+# Developer Certificate of Origin (DCO) check.
+#
+# OgenticAI OSS policy is Apache-2.0 + DCO sign-off (never a CLA), per
+# CONTRIBUTING.md. This workflow blocks PRs to `main` whose commits
+# lack a `Signed-off-by:` trailer matching the commit author.
+#
+# Sign off with: `git commit -s` (or `--signoff`).
+#
+# The repo-side switch that makes this a *required* check is in
+# Settings → Branches → main → Branch protection rules. The workflow's
+# job name (`DCO`) is what the branch-protection setting names.
+#
+# Implementation note: this check is intentionally an inline shell
+# script rather than a third-party action. `tim-actions/dco` is
+# unmaintained (last release 2021) and the prior pinned SHA crashed
+# with "Unexpected end of JSON input" on push events. Inline shell
+# has zero supply-chain surface and no SHA drift — preferred per
+# OGE-837 compliance review.
+
+name: DCO
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, edited]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  DCO:
+    name: DCO
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check DCO sign-off on every commit
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${BASE_SHA:-}" ] || [ -z "${HEAD_SHA:-}" ]; then
+            echo "::error::Missing base/head SHA — this workflow only runs on pull_request events."
+            exit 1
+          fi
+
+          echo "Checking DCO sign-off on commits ${BASE_SHA}..${HEAD_SHA}"
+
+          failed=0
+          checked=0
+          while IFS= read -r commit; do
+            checked=$((checked + 1))
+            msg=$(git log -1 "$commit" --pretty=format:'%B')
+            if ! printf '%s\n' "$msg" | grep -qE '^Signed-off-by: .+ <.+@.+>'; then
+              short=$(git log -1 "$commit" --pretty=format:'%h %s')
+              echo "::error::Commit ${short} is missing a 'Signed-off-by:' trailer."
+              echo "  Sign off with: git commit --amend --signoff (then force-push)."
+              failed=1
+            fi
+          done < <(git log --no-merges --format='%H' "${BASE_SHA}..${HEAD_SHA}")
+
+          if [ "$checked" -eq 0 ]; then
+            echo "No non-merge commits in range — nothing to check."
+          else
+            echo "Checked ${checked} commit(s)."
+          fi
+
+          exit $failed

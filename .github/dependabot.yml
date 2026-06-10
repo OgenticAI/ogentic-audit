@@ -1,0 +1,22 @@
+# Dependabot keeps the SHA-pinned third-party GitHub Actions
+# (`.github/workflows/*.yml`, see OGE-837) fresh. When an upstream
+# action publishes a new release that moves its floating-tag pointer,
+# Dependabot opens a PR to bump the pinned SHA so the human review
+# gate stays meaningful and the pins don't rot into stale code paths.
+#
+# Cargo + pip dependency tracking is intentionally out of scope here —
+# those run through `cargo audit` / `pip-audit` in CI and are bumped by
+# explicit, audited PRs, not Dependabot.
+
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps)"
+    labels:
+      - "dependencies"
+      - "github-actions"

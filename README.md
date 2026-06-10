@@ -89,12 +89,86 @@ report = verify("./audit-logs", key=key)
 assert report.ok
 ```
 
-### CLI
+### CLI — quick start
+
+#### macOS (Homebrew)
 
 ```sh
-# install via cargo (until prebuilt binaries ship in OGE-439):
-cargo install --path crates/ogentic-audit-cli
+brew install ogenticai/tap/ogentic-audit
+```
 
+#### Linux / cross-platform (Cargo)
+
+```sh
+cargo install ogentic-audit
+```
+
+#### Codesigning status (v0.1.0)
+
+macOS binaries are **sigstore-keyless-signed** (cosign + GitHub OIDC)
+but **not** Apple Developer ID signed in v0.1.0. First launch on macOS
+may show a Gatekeeper dialog — right-click → Open to bypass. Apple
+Developer ID + notarization lands in v0.1.1.
+
+#### Verify the sample log shipped with the project
+
+The sample uses the public all-zeros fixture key; the CLI reads it
+from `OGENTIC_AUDIT_KEY_HEX` under the default `--key-source=env`. Set
+it first, then run the verify:
+
+```sh
+export OGENTIC_AUDIT_KEY_HEX=0000000000000000000000000000000000000000000000000000000000000000
+ogentic-audit verify ./samples/matter-2024-CV-3047/matter-2024-CV-3047.log/ --summary
+# ✓ Verified · 4 events · chain head 5c643f56
+```
+
+A tampered companion is also shipped — same four events with one byte
+flipped inside record 2's HMAC field — so you can see a failing
+verification end-to-end:
+
+```sh
+ogentic-audit verify ./samples/matter-2024-CV-3047-tampered/matter-2024-CV-3047.log/ --summary
+# ✗ Verification failed · HmacMismatch at segment 0 record 2
+echo $?
+# 1
+```
+
+Exit codes (CI-friendly): `0` success, `1` verification failed, `2` I/O
+error, `3` argument error, `64` clap usage error.
+
+> The `samples/` directory ships inside the release tarball
+> (`ogentic-audit-<target>.tar.gz`) and inside the source repo.
+> `brew install` and `cargo install` users get the binary only; either
+> download the tarball, or `git clone` the repo, to follow the demo
+> block above against the shipped sample.
+
+#### Verify cosign signatures on the released binaries
+
+Every release artifact is sigstore-keyless-signed (cosign + GitHub
+OIDC). The workflow uploads a split `.sig` + `.pem` pair alongside
+each tarball/zip; the certificate anchors the signature back to the
+GitHub Actions workflow that built it.
+
+For the macOS arm64 build of v0.1.0:
+
+```sh
+cosign verify-blob \
+  --certificate-identity "https://github.com/OgenticAI/ogentic-audit/.github/workflows/release-cli.yml@refs/tags/v0.1.0" \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --signature ogentic-audit-macos-arm64.tar.gz.sig \
+  --certificate ogentic-audit-macos-arm64.tar.gz.pem \
+  ogentic-audit-macos-arm64.tar.gz
+```
+
+Swap the artifact filename for the target you downloaded:
+`ogentic-audit-macos-arm64.tar.gz`, `ogentic-audit-macos-x86_64.tar.gz`,
+`ogentic-audit-linux-x86_64.tar.gz`, `ogentic-audit-linux-aarch64.tar.gz`,
+or `ogentic-audit-windows-x86_64.zip`. Each ships with a sibling
+`.sig` + `.pem`.
+
+#### Daily-driver subcommands
+
+```sh
 # verify a vault's log (64 hex chars = 32 raw bytes)
 export OGENTIC_AUDIT_KEY_HEX=$(openssl rand -hex 32)
 ogentic-audit verify ./audit-logs            # exit 0 verified, 1 violation
@@ -105,8 +179,6 @@ ogentic-audit show ./audit-logs --from 0 --to 100
 # spot-check the chain head
 ogentic-audit head ./audit-logs --format json
 ```
-
-Exit codes (CI-friendly): `0` success, `1` verification failed, `2` I/O error, `3` argument error, `64` clap usage error.
 
 ## Design
 

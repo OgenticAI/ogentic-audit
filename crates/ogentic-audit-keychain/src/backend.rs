@@ -4,6 +4,7 @@ use core::fmt;
 
 use keyring::Entry;
 use ogentic_audit_core::{HmacBytes, InMemoryKey, KeyError, KeyHandle, KeyId, HMAC_LEN};
+use zeroize::Zeroizing;
 
 /// A signing key sourced from the host OS keychain.
 ///
@@ -40,9 +41,16 @@ impl KeychainKey {
     /// Load an existing key from the OS keychain.
     pub fn load(service: &str, account: &str) -> Result<Self, Error> {
         let entry = entry(service, account)?;
-        let bytes = entry
-            .get_secret()
-            .map_err(|e| classify(e, service, account))?;
+        // OGE-836: `keyring::Entry::get_secret` returns a bare
+        // `Vec<u8>`. Wrap it in `Zeroizing` so the intermediate copy is
+        // wiped on drop — `InMemoryKey` already zeroizes its own copy,
+        // but the platform-backend allocation must not be left behind
+        // in the heap free-list.
+        let bytes = Zeroizing::new(
+            entry
+                .get_secret()
+                .map_err(|e| classify(e, service, account))?,
+        );
         let inner = InMemoryKey::from_slice(&bytes).map_err(Error::InvalidKey)?;
         Ok(Self {
             inner,
@@ -85,7 +93,11 @@ impl KeychainKey {
         match Self::load(service, account) {
             Ok(k) => Ok(k),
             Err(Error::NotFound { .. }) => {
-                let key = generate_key()?;
+                // OGE-836: wrap the freshly-generated key in `Zeroizing`
+                // so the local copy is wiped after it's been stored to
+                // the platform keychain; the subsequent `Self::load`
+                // reads its own zeroizing copy back.
+                let key = Zeroizing::new(generate_key()?);
                 Self::store(service, account, &key)?;
                 Self::load(service, account)
             },

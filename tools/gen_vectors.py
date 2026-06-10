@@ -46,6 +46,7 @@ except ImportError as exc:  # pragma: no cover
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 VECTORS_DIR = REPO_ROOT / "tests" / "vectors" / "v0.1"
+SAMPLES_DIR = REPO_ROOT / "samples"
 
 FORMAT_VERSION = 0x0001
 HEADER_BODY_LEN = 72
@@ -672,16 +673,39 @@ def main() -> int:
         help="exit non-zero if any vector output would change",
     )
     parser.add_argument(
+        "--samples",
+        action="store_true",
+        help="operate on samples/ (homepage-grade fixtures) instead of "
+        "tests/vectors/v0.1/ (conformance vectors). Same generator, "
+        "different output root.",
+    )
+    parser.add_argument(
         "vectors",
         nargs="*",
-        help="optional vector directory names; defaults to all under tests/vectors/v0.1",
+        help="optional directory names; defaults to all under the selected root",
     )
     args = parser.parse_args()
 
+    root = SAMPLES_DIR if args.samples else VECTORS_DIR
+
     if args.vectors:
-        targets = [VECTORS_DIR / name for name in args.vectors]
+        targets = [root / name for name in args.vectors]
     else:
-        targets = sorted(p for p in VECTORS_DIR.iterdir() if p.is_dir())
+        # Samples may nest one level deeper than vectors do (e.g.
+        # `samples/matter-2024-CV-3047/matter-2024-CV-3047.log/inputs.json`)
+        # so that the human-facing directory carries a `.log` suffix.
+        # Discover any directory under `root` (one or two levels deep)
+        # that contains an `inputs.json`.
+        targets = []
+        for top in sorted(root.iterdir()):
+            if not top.is_dir():
+                continue
+            if (top / "inputs.json").exists():
+                targets.append(top)
+                continue
+            for child in sorted(top.iterdir()):
+                if child.is_dir() and (child / "inputs.json").exists():
+                    targets.append(child)
 
     overall_drift = False
     for vec_dir in targets:
@@ -692,7 +716,7 @@ def main() -> int:
             return 2
         overall_drift = overall_drift or drift
         action = "would update" if (drift and args.check) else ("updated" if drift else "ok")
-        print(f"  {vec_dir.name:<24}  {action}")
+        print(f"  {vec_dir.name:<40}  {action}")
 
     if args.check and overall_drift:
         return 1

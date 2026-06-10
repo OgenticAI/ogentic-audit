@@ -64,6 +64,70 @@ fn verify_missing_record_vector_reports_chain_break() {
 }
 
 #[test]
+fn verify_summary_clean_vector_prints_one_line_verified() {
+    let key_hex = vector_key_hex("single-record");
+    let assert = cmd()
+        .env("OGENTIC_AUDIT_KEY_HEX", key_hex)
+        .arg("verify")
+        .arg("--summary")
+        .arg(vectors_dir().join("single-record"))
+        .assert()
+        .success();
+    let stdout = String::from_utf8(assert.get_output().stdout.clone()).unwrap();
+    // Exactly one non-empty line, starts with "✓ Verified · ", contains
+    // the event count and the chain head prefix.
+    let lines: Vec<&str> = stdout.lines().filter(|l| !l.is_empty()).collect();
+    assert_eq!(lines.len(), 1, "expected exactly one line, got {stdout:?}");
+    let line = lines[0];
+    assert!(line.starts_with("✓ Verified · "), "got {line:?}");
+    assert!(line.contains("1 events"), "got {line:?}");
+    assert!(line.contains("chain head "), "got {line:?}");
+}
+
+#[test]
+fn verify_summary_tampered_vector_prints_failure_line() {
+    let key_hex = vector_key_hex("tampered-byte");
+    let assert = cmd()
+        .env("OGENTIC_AUDIT_KEY_HEX", key_hex)
+        .arg("verify")
+        .arg("--summary")
+        .arg(vectors_dir().join("tampered-byte"))
+        .assert()
+        .code(1);
+    let stdout = String::from_utf8(assert.get_output().stdout.clone()).unwrap();
+    let lines: Vec<&str> = stdout.lines().filter(|l| !l.is_empty()).collect();
+    assert_eq!(lines.len(), 1, "expected exactly one line, got {stdout:?}");
+    let line = lines[0];
+    assert!(line.starts_with("✗ Verification failed · "), "got {line:?}");
+    assert!(line.contains("HmacMismatch"), "got {line:?}");
+    assert!(
+        line.contains("segment 0 record 2"),
+        "expected violation coords in summary line, got {line:?}"
+    );
+}
+
+#[test]
+fn verify_summary_and_format_json_are_mutually_exclusive() {
+    // clap's `conflicts_with` rejects this combination at parse time —
+    // before any I/O — and exits non-zero with the conflict on stderr.
+    let key_hex = vector_key_hex("single-record");
+    let assert = cmd()
+        .env("OGENTIC_AUDIT_KEY_HEX", key_hex)
+        .arg("verify")
+        .arg("--summary")
+        .arg("--format")
+        .arg("json")
+        .arg(vectors_dir().join("single-record"))
+        .assert()
+        .failure();
+    let stderr = String::from_utf8(assert.get_output().stderr.clone()).unwrap();
+    assert!(
+        stderr.contains("cannot be used with"),
+        "expected clap conflict error, got stderr={stderr:?}"
+    );
+}
+
+#[test]
 fn verify_json_format_emits_parseable_object() {
     let key_hex = vector_key_hex("single-record");
     let assert = cmd()

@@ -1,5 +1,5 @@
 [package]
-name = "ogentic-audit-cli"
+name = "ogentic-audit"
 description = "ogentic-audit CLI — verify, inspect, and export tamper-evident audit logs"
 version.workspace = true
 edition.workspace = true
@@ -30,6 +30,9 @@ serde_json = { workspace = true }
 hex = { workspace = true }
 thiserror = { workspace = true }
 sha2 = { workspace = true }
+# Used by `keysource` to wipe transient key bytes (env-string, file-bytes,
+# hex-decoded array) before they fall off the stack/heap. See OGE-836.
+zeroize = { workspace = true }
 
 [dev-dependencies]
 assert_cmd = "2"

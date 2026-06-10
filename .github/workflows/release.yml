@@ -1,6 +1,6 @@
 # Release orchestrator (OGE-445 / D3).
 #
-# Triggered by `v*` tag push. Runs `cargo publish` for the three
+# Triggered by `v*` tag push ONLY. Runs `cargo publish` for the three
 # Rust crates in dependency order. The Python wheels + CLI binaries
 # pipelines (wheels.yml / release-cli.yml) trigger on the same tag
 # and run independently — PyPI + crates.io + GitHub Release are
@@ -12,6 +12,16 @@
 #   release-cli.yml   →  GitHub Release with signed CLI binaries
 #   release.yml       →  cargo publish to crates.io  (this file)
 #
+# `workflow_dispatch` is intentionally NOT a trigger here: crates.io
+# publishes are immutable, and we want the only path to `cargo publish`
+# to be a signed tag pointing at a reviewed commit. Manually dispatching
+# a publish from any branch (including a backdoored one with the same
+# `0.1.0` version) would let a contributor with write access poison
+# users running `cargo install ogentic-audit`. The cosign-verify-blob
+# recipe in README only covers the GitHub Release tarball, not the
+# crates.io distribution channel, so the trigger surface is the gate.
+# See OGE-834.
+#
 # Required secrets (one-time, on repo Settings → Secrets):
 #   CARGO_REGISTRY_TOKEN  crates.io publish token
 
@@ -20,7 +30,6 @@ name: release
 on:
   push:
     tags: ["v*"]
-  workflow_dispatch:
 
 permissions:
   contents: read
@@ -29,12 +38,16 @@ jobs:
   publish-crates:
     name: cargo publish (crates.io)
     runs-on: ubuntu-latest
+    # Defense-in-depth: even though `push: tags: ["v*"]` is the only
+    # trigger, gate the publish steps on the ref being a tag — so any
+    # future trigger added by mistake still cannot publish from a branch.
+    if: startsWith(github.ref, 'refs/tags/v')
     steps:
       - uses: actions/checkout@v4
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable — pinned per OGE-837
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2 — pinned per OGE-837
         with:
           shared-key: release-crates
 
@@ -60,11 +73,11 @@ jobs:
           cargo publish --package ogentic-audit-keychain --locked
           sleep 30
 
-      - name: publish ogentic-audit-cli
+      - name: publish ogentic-audit
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
         run: |
-          cargo publish --package ogentic-audit-cli --locked
+          cargo publish --package ogentic-audit --locked
 
   # ----------------------------------------------------------------
   # Update the README badge to point at the released version. Runs

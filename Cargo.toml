@@ -8,7 +8,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.1.0-alpha.0"
+version = "0.1.0"
 edition = "2021"
 rust-version = "1.85"
 license = "Apache-2.0"
@@ -20,14 +20,13 @@ keywords = ["audit", "log", "hmac", "tamper-evident", "compliance"]
 categories = ["cryptography", "data-structures", "filesystem"]
 
 [workspace.dependencies]
-ogentic-audit-core = { version = "0.1.0-alpha.0", path = "crates/ogentic-audit-core" }
-ogentic-audit-keychain = { version = "0.1.0-alpha.0", path = "crates/ogentic-audit-keychain" }
+ogentic-audit-core = { version = "0.1.0", path = "crates/ogentic-audit-core" }
+ogentic-audit-keychain = { version = "0.1.0", path = "crates/ogentic-audit-keychain" }
 
 # Crypto / encoding
 hmac = "0.12"
 sha2 = "0.10"
 blake3 = "1.5"
-ciborium = "0.2"
 crc32fast = "1.4"
 subtle = "2.6"
 zeroize = { version = "1.7", features = ["zeroize_derive"] }

@@ -100,12 +100,14 @@ pub enum Command {
     /// Verify the chain integrity of an audit log.
     ///
     /// Exits 0 on Verified, 1 on any violation. Prints a structured
-    /// report to stdout (text by default, JSON with `--format json`).
+    /// report to stdout (text by default, JSON with `--format json`,
+    /// one-liner with `--summary`).
     #[command(after_long_help = "\
 Examples:
 
   ogentic-audit verify ./logs                           # text report
   ogentic-audit verify ./logs --format json             # machine-readable
+  ogentic-audit verify ./logs --summary                 # one-line verdict
   ogentic-audit verify ./logs --forensic                # do not stop at first violation
 ")]
     Verify(VerifyArgs),
@@ -147,6 +149,11 @@ pub struct VerifyArgs {
     /// Output format.
     #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
     pub format: OutputFormat,
+    /// Emit a single-line verdict suitable for embedding in
+    /// status output (e.g. `✓ Verified · 4 events · chain head 9f3a…`).
+    /// Mutually exclusive with `--format json`.
+    #[arg(long, action = ArgAction::SetTrue, conflicts_with = "format")]
+    pub summary: bool,
     /// Continue scanning past the first violation and report every
     /// failure (R3's `VerifyOptions::forensic_mode`).
     #[arg(long, action = ArgAction::SetTrue)]
