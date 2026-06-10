@@ -18,14 +18,51 @@ pub fn run(global: &GlobalArgs, args: VerifyArgs) -> Result<ExitCodeKind, AppErr
         .verify_with_options(&args.log_dir, opts)
         .map_err(|e| AppError::io(anyhow!("verifier could not open log: {e}")))?;
 
-    match args.format {
-        OutputFormat::Text => print_text(&report, global.quiet),
-        OutputFormat::Json => print_json(&report)?,
+    if args.summary {
+        print_summary(&report);
+    } else {
+        match args.format {
+            OutputFormat::Text => print_text(&report, global.quiet),
+            OutputFormat::Json => print_json(&report)?,
+        }
     }
 
     match report.verdict {
         Verdict::Verified => Ok(ExitCodeKind::Success),
         Verdict::Violation => Ok(ExitCodeKind::VerificationFailed),
+    }
+}
+
+/// One-line verdict output, suitable for embedding in homepage demos
+/// and CI status checks. Mutually exclusive with `--format json`.
+fn print_summary(report: &ogentic_audit_core::VerifyReport) {
+    match (&report.verdict, &report.violation) {
+        (Verdict::Verified, _) => {
+            let head_prefix = report
+                .log
+                .final_hmac_hex
+                .as_deref()
+                .map(|h| &h[..h.len().min(8)])
+                .unwrap_or("-");
+            println!(
+                "✓ Verified · {} events · chain head {}",
+                report.log.records_inspected, head_prefix
+            );
+        },
+        (Verdict::Violation, Some(v)) => {
+            let rid = v
+                .location
+                .record_id
+                .map(|r| r.to_string())
+                .unwrap_or_else(|| "-".to_string());
+            println!(
+                "✗ Verification failed · {:?} at segment {} record {}",
+                v.kind, v.location.segment_index, rid
+            );
+        },
+        (Verdict::Violation, None) => {
+            println!("✗ Verification failed · Unknown violation");
+        },
     }
 }
 

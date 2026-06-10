@@ -1,0 +1,44 @@
+{
+  "expected_verdict": "Verified",
+  "format_version": 1,
+  "key_id_hex": "2ada83c1819a5372dae1238fc1ded123c8104fdaa15862aaee69428a1820fcda",
+  "records": [
+    {
+      "hmac_hex": "c2b7fa5c7d755c81d2a8426ae7efd170480f17dfbefab4d05cc82192a65fec3e",
+      "payload_len": 187,
+      "prev_hash_hex": "21d361240b48895a4247ae9aca4962dca0b4f919d43cc5a76371c70a6ebb988b",
+      "record_id": 0,
+      "segment": 0
+    },
+    {
+      "hmac_hex": "87a6128b91b73105143500aa5b7b811fd0f6c1872af6f58d4ce7cbbb1a99067f",
+      "payload_len": 209,
+      "prev_hash_hex": "c2b7fa5c7d755c81d2a8426ae7efd170480f17dfbefab4d05cc82192a65fec3e",
+      "record_id": 1,
+      "segment": 0
+    },
+    {
+      "hmac_hex": "180e87c37989410e998fdbaf48d216315864ec6f666e8832869c6d5a92dafad8",
+      "payload_len": 228,
+      "prev_hash_hex": "87a6128b91b73105143500aa5b7b811fd0f6c1872af6f58d4ce7cbbb1a99067f",
+      "record_id": 2,
+      "segment": 0
+    },
+    {
+      "hmac_hex": "5c643f562914191b360a1da2c5e5cae4605a5b638a2392c593cca4e677dc66fe",
+      "payload_len": 184,
+      "prev_hash_hex": "180e87c37989410e998fdbaf48d216315864ec6f666e8832869c6d5a92dafad8",
+      "record_id": 3,
+      "segment": 0
+    }
+  ],
+  "segments": [
+    {
+      "chain_start_hex": "21d361240b48895a4247ae9aca4962dca0b4f919d43cc5a76371c70a6ebb988b",
+      "final_hex": "5c643f562914191b360a1da2c5e5cae4605a5b638a2392c593cca4e677dc66fe",
+      "record_count": 4,
+      "segment": 0
+    }
+  ],
+  "session_id_hex": "00000000000000000000000000000000"
+}

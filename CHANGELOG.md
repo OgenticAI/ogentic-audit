@@ -9,9 +9,40 @@ library APIs follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 (no unreleased changes)
 
-## [0.1.0] — TBD
+## [0.1.0] — 2026-06-10
 
 First public release. On-disk format frozen at `0x0001`.
+
+### Changed (publication-readiness)
+
+- **Renamed crates.io package** `ogentic-audit-cli` → `ogentic-audit` so
+  `cargo install ogentic-audit` resolves to the CLI binary. The binary
+  itself was already named `ogentic-audit`; only the crates.io publish
+  name changes. The workspace member directory (`crates/ogentic-audit-cli/`)
+  is unchanged.
+- **`verify --summary` flag** — single-line verdict suitable for the
+  homepage demo (`✓ Verified · N events · chain head <prefix>`) or for
+  embedding in CI status output. Failure form is
+  `✗ Verification failed · <Kind> at segment N record N`. Mutually
+  exclusive with `--format json`.
+- **Sample fixtures under `samples/`** — homepage-grade synthetic logs:
+  - `samples/matter-2024-CV-3047/matter-2024-CV-3047.log/` — four-event
+    civil-litigation flow (vault.unlocked → file.opened →
+    llm.cloud-approved → audit.exported); verifies clean.
+  - `samples/matter-2024-CV-3047-tampered/matter-2024-CV-3047.log/` —
+    same four events with one byte flipped inside record 2's HMAC field;
+    verifier rejects with `HmacMismatch`.
+  Both fixtures are produced deterministically by `tools/gen_vectors.py
+  --samples`. They are NOT conformance vectors; those remain under
+  `tests/vectors/v0.1/`.
+- **DCO enforcement** — `.github/workflows/dco.yml` blocks PRs to `main`
+  whose commits lack a `Signed-off-by:` trailer.
+- **README rewrite** of the CLI quickstart so the install + verify block
+  is copy-paste-true verbatim with the sottotrust.ai homepage demo.
+- **macOS codesigning posture (v0.1.0):** binaries ship
+  sigstore-keyless-signed via cosign + GitHub OIDC, but **not** Apple
+  Developer ID signed. First launch may surface a Gatekeeper dialog.
+  Apple Developer ID + notarization lands in v0.1.1.
 
 ### Added
 

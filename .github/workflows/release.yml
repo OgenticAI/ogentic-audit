@@ -60,11 +60,11 @@ jobs:
           cargo publish --package ogentic-audit-keychain --locked
           sleep 30
 
-      - name: publish ogentic-audit-cli
+      - name: publish ogentic-audit
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
         run: |
-          cargo publish --package ogentic-audit-cli --locked
+          cargo publish --package ogentic-audit --locked
 
   # ----------------------------------------------------------------
   # Update the README badge to point at the released version. Runs

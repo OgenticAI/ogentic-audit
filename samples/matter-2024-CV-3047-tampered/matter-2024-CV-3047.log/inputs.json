@@ -1,0 +1,61 @@
+{
+  "vector": "matter-2024-CV-3047-tampered",
+  "description": "Tampered companion to samples/matter-2024-CV-3047/. Same four civil-litigation events, then a single byte in record 2's HMAC field is XOR'd with 0xff. Demonstrates a failing verification (exit 1, HmacMismatch) for the homepage tamper-evidence demo. NOT a conformance vector — those live under tests/vectors/v0.1/.",
+  "key_hex": "0000000000000000000000000000000000000000000000000000000000000000",
+  "session_id_hex": "00000000000000000000000000000000",
+  "writer_config": {
+    "segment_size_bytes": 67108864
+  },
+  "records": [
+    {
+      "ts_wall": "2026-06-10T14:00:00.000Z",
+      "ts_mono_delta": 0,
+      "actor": "user:counsel-of-record",
+      "event": "vault.unlocked",
+      "schema_version": 1,
+      "payload": {
+        "matter_id": "2024-CV-3047"
+      }
+    },
+    {
+      "ts_wall": "2026-06-10T14:00:07.000Z",
+      "ts_mono_delta": 7000,
+      "actor": "user:counsel-of-record",
+      "event": "file.opened",
+      "schema_version": 1,
+      "payload": {
+        "filename": "plaintiff-deposition-2024-08-15.pdf"
+      }
+    },
+    {
+      "ts_wall": "2026-06-10T14:00:18.000Z",
+      "ts_mono_delta": 18000,
+      "actor": "user:counsel-of-record",
+      "event": "llm.cloud-approved",
+      "schema_version": 1,
+      "payload": {
+        "model": "gpt-4o",
+        "approval_reason": "summarize witness statement"
+      }
+    },
+    {
+      "ts_wall": "2026-06-10T14:00:29.000Z",
+      "ts_mono_delta": 29000,
+      "actor": "user:counsel-of-record",
+      "event": "audit.exported",
+      "schema_version": 1,
+      "payload": {
+        "export_format": "pdf"
+      }
+    }
+  ],
+  "post_process": {
+    "kind": "byte_xor_in_record",
+    "segment": 0,
+    "record_id": 2,
+    "region": "hmac",
+    "byte_in_region": 0,
+    "xor": "0xff"
+  },
+  "expected_verdict": "HmacMismatch@s0r2"
+}

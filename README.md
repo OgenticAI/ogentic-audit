@@ -89,12 +89,72 @@ report = verify("./audit-logs", key=key)
 assert report.ok
 ```
 
-### CLI
+### CLI — quick start
+
+#### macOS (Homebrew)
 
 ```sh
-# install via cargo (until prebuilt binaries ship in OGE-439):
-cargo install --path crates/ogentic-audit-cli
+brew install ogenticai/tap/ogentic-audit
+```
 
+#### Linux / cross-platform (Cargo)
+
+```sh
+cargo install ogentic-audit
+```
+
+#### Verify the sample log shipped with the project
+
+```sh
+ogentic-audit verify ./samples/matter-2024-CV-3047/matter-2024-CV-3047.log/ --summary
+# ✓ Verified · 4 events · chain head 5c643f56
+```
+
+The sample uses the public all-zeros fixture key — set it before
+running the verify against the shipped sample:
+
+```sh
+export OGENTIC_AUDIT_KEY_HEX=0000000000000000000000000000000000000000000000000000000000000000
+```
+
+A tampered companion is also shipped — same four events with one byte
+flipped inside record 2's HMAC field — so you can see a failing
+verification end-to-end:
+
+```sh
+ogentic-audit verify ./samples/matter-2024-CV-3047-tampered/matter-2024-CV-3047.log/ --summary
+# ✗ Verification failed · HmacMismatch at segment 0 record 2
+echo $?
+# 1
+```
+
+Exit codes (CI-friendly): `0` success, `1` verification failed, `2` I/O
+error, `3` argument error, `64` clap usage error.
+
+#### Codesigning status (v0.1.0)
+
+macOS binaries are **sigstore-keyless-signed** (cosign + GitHub OIDC)
+but **not** Apple Developer ID signed in v0.1.0. First launch on macOS
+may show a Gatekeeper dialog — right-click → Open to bypass. Apple
+Developer ID + notarization lands in v0.1.1.
+
+#### Verify cosign signatures on the released binaries
+
+Every release artifact ships with a `.cosign.bundle` carrying the
+sigstore signature + the certificate that anchors it back to the
+GitHub Actions workflow that built it:
+
+```sh
+cosign verify-blob \
+  --certificate-identity "https://github.com/OgenticAI/ogentic-audit/.github/workflows/release-cli.yml@refs/tags/v0.1.0" \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --bundle ogentic-audit-aarch64-apple-darwin.cosign.bundle \
+  ogentic-audit-aarch64-apple-darwin.tar.gz
+```
+
+#### Daily-driver subcommands
+
+```sh
 # verify a vault's log (64 hex chars = 32 raw bytes)
 export OGENTIC_AUDIT_KEY_HEX=$(openssl rand -hex 32)
 ogentic-audit verify ./audit-logs            # exit 0 verified, 1 violation
@@ -105,8 +165,6 @@ ogentic-audit show ./audit-logs --from 0 --to 100
 # spot-check the chain head
 ogentic-audit head ./audit-logs --format json
 ```
-
-Exit codes (CI-friendly): `0` success, `1` verification failed, `2` I/O error, `3` argument error, `64` clap usage error.
 
 ## Design
 

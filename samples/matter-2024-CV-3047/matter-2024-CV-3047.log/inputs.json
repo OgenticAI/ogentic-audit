@@ -1,0 +1,53 @@
+{
+  "vector": "matter-2024-CV-3047",
+  "description": "Homepage-grade synthetic sample — civil-litigation themed audit log demonstrating the four-event canonical flow (vault.unlocked → file.opened → llm.cloud-approved → audit.exported). The case number is invented; the events are fabricated; the key is a public all-zeros fixture key. NOT a conformance vector — those live under tests/vectors/v0.1/.",
+  "key_hex": "0000000000000000000000000000000000000000000000000000000000000000",
+  "session_id_hex": "00000000000000000000000000000000",
+  "writer_config": {
+    "segment_size_bytes": 67108864
+  },
+  "records": [
+    {
+      "ts_wall": "2026-06-10T14:00:00.000Z",
+      "ts_mono_delta": 0,
+      "actor": "user:counsel-of-record",
+      "event": "vault.unlocked",
+      "schema_version": 1,
+      "payload": {
+        "matter_id": "2024-CV-3047"
+      }
+    },
+    {
+      "ts_wall": "2026-06-10T14:00:07.000Z",
+      "ts_mono_delta": 7000,
+      "actor": "user:counsel-of-record",
+      "event": "file.opened",
+      "schema_version": 1,
+      "payload": {
+        "filename": "plaintiff-deposition-2024-08-15.pdf"
+      }
+    },
+    {
+      "ts_wall": "2026-06-10T14:00:18.000Z",
+      "ts_mono_delta": 18000,
+      "actor": "user:counsel-of-record",
+      "event": "llm.cloud-approved",
+      "schema_version": 1,
+      "payload": {
+        "model": "gpt-4o",
+        "approval_reason": "summarize witness statement"
+      }
+    },
+    {
+      "ts_wall": "2026-06-10T14:00:29.000Z",
+      "ts_mono_delta": 29000,
+      "actor": "user:counsel-of-record",
+      "event": "audit.exported",
+      "schema_version": 1,
+      "payload": {
+        "export_format": "pdf"
+      }
+    }
+  ],
+  "expected_verdict": "Verified"
+}

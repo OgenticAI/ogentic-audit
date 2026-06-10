@@ -1,5 +1,5 @@
 [package]
-name = "ogentic-audit-cli"
+name = "ogentic-audit"
 description = "ogentic-audit CLI — verify, inspect, and export tamper-evident audit logs"
 version.workspace = true
 edition.workspace = true
