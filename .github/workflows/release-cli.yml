@@ -171,17 +171,26 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p dist
+          # Stage a per-target directory so the tarball/zip extracts to
+          # `ogentic-audit-<target>/{ogentic-audit,LICENSE,NOTICE,README.md,samples/...}`.
+          # Shipping `samples/` makes the README's verify-the-sample-log
+          # demo runnable directly from a brew/cargo install (no separate
+          # `git clone` needed).
+          STAGE="dist/${{ matrix.artifact_name }}"
+          mkdir -p "$STAGE"
           if [[ "${{ matrix.archive }}" == "zip" ]]; then
-            cp "target/${{ matrix.target }}/release/ogentic-audit.exe" "dist/ogentic-audit.exe"
-            cp LICENSE README.md "dist/"
-            (cd dist && 7z a "${{ matrix.artifact_name }}.zip" ogentic-audit.exe LICENSE README.md)
-            rm dist/ogentic-audit.exe dist/LICENSE dist/README.md
+            cp "target/${{ matrix.target }}/release/ogentic-audit.exe" "$STAGE/ogentic-audit.exe"
           else
-            cp "target/${{ matrix.target }}/release/ogentic-audit" "dist/ogentic-audit"
-            cp LICENSE README.md "dist/"
-            tar -czf "dist/${{ matrix.artifact_name }}.tar.gz" -C dist ogentic-audit LICENSE README.md
-            rm dist/ogentic-audit dist/LICENSE dist/README.md
+            cp "target/${{ matrix.target }}/release/ogentic-audit" "$STAGE/ogentic-audit"
           fi
+          cp LICENSE NOTICE README.md "$STAGE/"
+          cp -R samples "$STAGE/samples"
+          if [[ "${{ matrix.archive }}" == "zip" ]]; then
+            (cd dist && 7z a "${{ matrix.artifact_name }}.zip" "${{ matrix.artifact_name }}")
+          else
+            tar -czf "dist/${{ matrix.artifact_name }}.tar.gz" -C dist "${{ matrix.artifact_name }}"
+          fi
+          rm -rf "$STAGE"
           ls -la dist/
 
       - name: Sign with cosign (keyless, sigstore)

@@ -103,18 +103,23 @@ brew install ogenticai/tap/ogentic-audit
 cargo install ogentic-audit
 ```
 
+#### Codesigning status (v0.1.0)
+
+macOS binaries are **sigstore-keyless-signed** (cosign + GitHub OIDC)
+but **not** Apple Developer ID signed in v0.1.0. First launch on macOS
+may show a Gatekeeper dialog — right-click → Open to bypass. Apple
+Developer ID + notarization lands in v0.1.1.
+
 #### Verify the sample log shipped with the project
 
-```sh
-ogentic-audit verify ./samples/matter-2024-CV-3047/matter-2024-CV-3047.log/ --summary
-# ✓ Verified · 4 events · chain head 5c643f56
-```
-
-The sample uses the public all-zeros fixture key — set it before
-running the verify against the shipped sample:
+The sample uses the public all-zeros fixture key; the CLI reads it
+from `OGENTIC_AUDIT_KEY_HEX` under the default `--key-source=env`. Set
+it first, then run the verify:
 
 ```sh
 export OGENTIC_AUDIT_KEY_HEX=0000000000000000000000000000000000000000000000000000000000000000
+ogentic-audit verify ./samples/matter-2024-CV-3047/matter-2024-CV-3047.log/ --summary
+# ✓ Verified · 4 events · chain head 5c643f56
 ```
 
 A tampered companion is also shipped — same four events with one byte
@@ -131,26 +136,35 @@ echo $?
 Exit codes (CI-friendly): `0` success, `1` verification failed, `2` I/O
 error, `3` argument error, `64` clap usage error.
 
-#### Codesigning status (v0.1.0)
-
-macOS binaries are **sigstore-keyless-signed** (cosign + GitHub OIDC)
-but **not** Apple Developer ID signed in v0.1.0. First launch on macOS
-may show a Gatekeeper dialog — right-click → Open to bypass. Apple
-Developer ID + notarization lands in v0.1.1.
+> The `samples/` directory ships inside the release tarball
+> (`ogentic-audit-<target>.tar.gz`) and inside the source repo.
+> `brew install` and `cargo install` users get the binary only; either
+> download the tarball, or `git clone` the repo, to follow the demo
+> block above against the shipped sample.
 
 #### Verify cosign signatures on the released binaries
 
-Every release artifact ships with a `.cosign.bundle` carrying the
-sigstore signature + the certificate that anchors it back to the
-GitHub Actions workflow that built it:
+Every release artifact is sigstore-keyless-signed (cosign + GitHub
+OIDC). The workflow uploads a split `.sig` + `.pem` pair alongside
+each tarball/zip; the certificate anchors the signature back to the
+GitHub Actions workflow that built it.
+
+For the macOS arm64 build of v0.1.0:
 
 ```sh
 cosign verify-blob \
   --certificate-identity "https://github.com/OgenticAI/ogentic-audit/.github/workflows/release-cli.yml@refs/tags/v0.1.0" \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-  --bundle ogentic-audit-aarch64-apple-darwin.cosign.bundle \
-  ogentic-audit-aarch64-apple-darwin.tar.gz
+  --signature ogentic-audit-macos-arm64.tar.gz.sig \
+  --certificate ogentic-audit-macos-arm64.tar.gz.pem \
+  ogentic-audit-macos-arm64.tar.gz
 ```
+
+Swap the artifact filename for the target you downloaded:
+`ogentic-audit-macos-arm64.tar.gz`, `ogentic-audit-macos-x86_64.tar.gz`,
+`ogentic-audit-linux-x86_64.tar.gz`, `ogentic-audit-linux-aarch64.tar.gz`,
+or `ogentic-audit-windows-x86_64.zip`. Each ships with a sibling
+`.sig` + `.pem`.
 
 #### Daily-driver subcommands
 

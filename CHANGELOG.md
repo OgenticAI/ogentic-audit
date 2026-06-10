@@ -13,6 +13,17 @@ library APIs follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 First public release. On-disk format frozen at `0x0001`.
 
+### Breaking changes
+
+- **Package renamed:** the crates.io publish name moved from
+  `ogentic-audit-cli` to `ogentic-audit`. Anyone with `cargo install
+  ogentic-audit-cli` in a script, Dockerfile, or shell history must
+  switch to `cargo install ogentic-audit`; the old name will not
+  resolve to a v0.1.0 (or later) crate. The installed **binary** name
+  is unchanged (`ogentic-audit` on `$PATH` either way), and the
+  workspace member directory (`crates/ogentic-audit-cli/`) is also
+  unchanged.
+
 ### Changed (publication-readiness)
 
 - **Renamed crates.io package** `ogentic-audit-cli` → `ogentic-audit` so
