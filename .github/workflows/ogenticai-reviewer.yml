@@ -27,7 +27,7 @@ jobs:
     timeout-minutes: 15
     if: github.event.pull_request.draft == false
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - uses: OgenticAI/agent-reviewer/.github/actions/review@v2
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
