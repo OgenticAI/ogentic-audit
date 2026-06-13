@@ -4,13 +4,14 @@ members = [
     "crates/ogentic-audit-core",
     "crates/ogentic-audit-cli",
     "crates/ogentic-audit-keychain",
+    "crates/ogentic-audit-kms",
     "python/ogentic-audit-py",
 ]
 
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
-rust-version = "1.85"
+rust-version = "1.91"
 license = "Apache-2.0"
 repository = "https://github.com/OgenticAI/ogentic-audit"
 homepage = "https://github.com/OgenticAI/ogentic-audit"

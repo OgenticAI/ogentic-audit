@@ -1,0 +1,67 @@
+# Dormant until the operator sets the `AWS_KMS_SMOKE_ROLE_ARN` +
+# `AWS_KMS_SMOKE_KEY_ARN` repository variables. Tracked in D3 / OGE-445.
+# Until then `if: vars.AWS_KMS_SMOKE_ROLE_ARN != ''` causes the job to
+# skip cleanly on every tag push.
+#
+# ## REQUIRED IAM TRUST POLICY SCOPE (OGE-460 security review)
+#
+# Before enabling the smoke job (i.e. before setting the
+# `AWS_KMS_SMOKE_ROLE_ARN` repository variable), the AWS IAM role's
+# trust policy MUST restrict the OIDC `sub` claim to release-tag refs
+# only — NEVER to a wildcard like `repo:OgenticAI/ogentic-audit:*`.
+#
+# Recommended trust-policy `Condition` block:
+#
+#     "Condition": {
+#       "StringLike": {
+#         "token.actions.githubusercontent.com:sub":
+#           "repo:OgenticAI/ogentic-audit:ref:refs/tags/v*"
+#       },
+#       "StringEquals": {
+#         "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
+#       }
+#     }
+#
+# A wildcard subject (or one matching `pull_request`) would allow any
+# PR author — including from forks — to assume the role by modifying
+# this workflow and triggering `workflow_dispatch`, gaining
+# `kms:GenerateMac` on the production smoke key. The tag-restricted
+# subject above ensures only refs/tags/v* (i.e. release tag pushes
+# from a maintainer) can assume the role.
+#
+# The IAM trust policy lives in AWS, not in this repo, so it cannot
+# be audited from the diff that ships this workflow. Operators
+# enabling the job MUST verify the trust policy manually first.
+
+name: kms-smoke
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    if: vars.AWS_KMS_SMOKE_ROLE_ARN != ''
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_KMS_SMOKE_ROLE_ARN }}
+          aws-region: us-east-1
+
+      - name: cargo test (real AWS smoke)
+        env:
+          OGENTIC_KMS_TEST_KEY_A: ${{ vars.AWS_KMS_SMOKE_KEY_ARN }}
+        run: >
+          cargo test -p ogentic-audit-kms --features aws --tests
+          -- --ignored aws_smoke

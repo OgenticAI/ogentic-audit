@@ -62,7 +62,73 @@ After destruction, the old log file is still parseable (the on-disk format is in
 
 ## Rotation in multi-tenant / server-side deployments
 
-This document covers the v0.1 single-user-vault threat model: the key lives in the OS keychain on the user's device. Server-side deployments using a KMS-backed key (tracked under [OGE-460 / R4-ext](https://linear.app/ogenticai/issue/OGE-460)) will have a different operational recipe — KMS-rotate semantics, IAM-policy considerations, etc. — covered in that ticket's documentation.
+Server-side deployments that use `ogentic-audit-kms` with an AWS KMS HMAC key
+have a different operational recipe from the OS-keychain path above.
+
+### KMS rotation means pointing at a new ARN
+
+AWS KMS does not support automatic rotation for HMAC keys (unlike RSA/ECC
+asymmetric keys).  Rotating a KMS-backed audit key means provisioning a new KMS
+HMAC key, obtaining its ARN, and updating the deployment.  There is no
+"rotate in place" operation.
+
+The chain segment boundary is the same as in the OS-keychain case: a new key
+produces a new `key_id`, which roots a fresh segment chain.  The two log
+directories (pre-rotation, post-rotation) are independent chains verified
+independently.
+
+### Rotation recipe for KMS deployments
+
+1. **Create a new HMAC KMS key** — CloudFormation or CLI; obtain the new ARN.
+2. **Update the IAM policy** on your server role to include `kms:GenerateMac`
+   on the new ARN.  Keep the old ARN in the policy until the pre-rotation log
+   is either destroyed or its verification window expires.
+3. **Stop writing** to the current log directory.  Flush the open writer.
+4. **Swap the ARN** in your deployment configuration (`AUDIT_KEY_ARN` env var,
+   SSM parameter, etc.).  Deploy.
+5. **Open a new log directory** with the new `KmsKey`.
+6. **Record the rotation event** in your compliance system: timestamp, old
+   `key_id` hex, new `key_id` hex, old ARN (for your records only — do not
+   log it in the audit log payload; see observability guidance in
+   `docs/integrations/server-side-kms.md`), reason for rotation.
+7. **Retain the old IAM grant** until the pre-rotation log's retention period
+   expires or you make a final verified archive of the old log.
+
+### AWS KMS scheduled-deletion semantics
+
+When you eventually retire the old KMS key, AWS KMS requires a minimum pending
+window of **7 days** (default 30 days) before the key is deleted.  During this
+window the key is disabled but can be re-enabled.  After deletion, it is
+unrecoverable.
+
+Implications for log verification:
+
+- The pre-rotation log remains verifiable as long as the old key is not in
+  `PendingDeletion` or `Deleted` state.
+- Do not schedule deletion until you have made a final independent verification
+  of the pre-rotation log and archived the result (e.g. `export --pdf` to a
+  write-once store).
+- A key in `Disabled` state cannot be used for `GenerateMac`.  If you need to
+  verify an old log after rotating, re-enable the key for the duration of the
+  verification, then disable it again.
+
+### Verification across a rotation boundary
+
+The same principle as OS-keychain rotation applies: each log segment carries its
+`key_id` in the header.  Auditors must present the correct key for each segment.
+With KMS, "present the key" means "hold IAM `kms:GenerateMac` capability on the
+ARN that produced that segment."
+
+```bash
+# Verify pre-rotation log (old KMS key must be enabled and reachable)
+AUDIT_KEY_ARN=<old-arn> ogentic-audit verify old-log-dir/
+
+# Verify post-rotation log
+AUDIT_KEY_ARN=<new-arn> ogentic-audit verify new-log-dir/
+```
+
+(The `--key-arn` CLI flag lands in v0.2 / OGE-603; for v0.1 use the Rust
+API directly.)
 
 ## Threat-model alignment
 

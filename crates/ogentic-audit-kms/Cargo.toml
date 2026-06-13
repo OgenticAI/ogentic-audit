@@ -1,0 +1,51 @@
+[package]
+name = "ogentic-audit-kms"
+version = "0.2.0-pre"
+edition = "2021"
+rust-version = "1.91"
+license = "Apache-2.0"
+description = "Optional KMS key source for ogentic-audit (AWS KMS in v0.1; GCP Cloud KMS, Azure Key Vault in v0.2)"
+repository = "https://github.com/OgenticAI/ogentic-audit"
+homepage = "https://github.com/OgenticAI/ogentic-audit"
+keywords = ["audit", "kms", "hmac", "tamper-evident", "court-defensible"]
+categories = ["cryptography", "authentication"]
+readme = "README.md"
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+[features]
+default = ["aws"]
+aws = ["dep:aws-sdk-kms", "dep:aws-config"]
+
+[dependencies]
+ogentic-audit-core = { path = "../ogentic-audit-core", version = "0.1.0-alpha.0" }
+async-trait = "0.1"
+tokio = { version = "1", default-features = false, features = ["rt", "rt-multi-thread", "macros"] }
+thiserror = "1"
+blake3 = "1"
+# Security-invariant note: the OGE-431 hardening checklist (constant-time
+# byte comparison via `subtle::ConstantTimeEq`; `ZeroizeOnDrop` on secret
+# auth state; no leakage through `tracing` logs) is delegated for this
+# crate. The kms crate intentionally holds NO key material — signing
+# happens HSM-side via `KmsProvider::sign` and the result is returned
+# to the writer, which routes byte-comparisons through `subtle` in
+# `ogentic-audit-core`. The `AwsKmsProvider` holds the public ARN
+# string (not secret) and the AWS SDK client (which owns auth state
+# under its own zeroization policy). There is also no `tracing::`
+# instrumentation in this crate — the leakage surface is vacuous.
+# Hence no `subtle` / `zeroize` / `tracing` deps in this crate. If
+# OGE-644 adds `try_sign` and a `tracing::warn!` on the error path, the
+# `tracing` dep + a real `tracing_subscriber` capture test return here.
+# Workspace MSRV is 1.91 — see workspace Cargo.toml. aws-sdk-kms's
+# transitive smithy closure (aws-smithy-runtime ≥1.11) requires 1.91.1,
+# so 1.91 is the effective floor for this crate when the aws feature is on.
+aws-sdk-kms = { version = "1", default-features = false, features = ["default-https-client", "rt-tokio"], optional = true }
+aws-config = { version = "1", optional = true }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+hex = "0.4"
+hmac = "0.12"
+sha2 = "0.10"

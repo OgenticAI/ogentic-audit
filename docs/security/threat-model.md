@@ -162,3 +162,106 @@ These resolve before v0.1 is tagged Accepted:
 2. **Key-derivation parameters** — Argon2id memory/time/parallelism for the HMAC-key derivation. Inherits Sotto Desktop's vault parameters; documented in `docs/spec/key-derivation.md` (TBD).
 3. **`segment_index` width** — u16 caps at 65,536 segments. At 64 MiB / segment, that's 4 TiB per key. v0.2 may widen to u32 if needed; v0.1 documents the limit.
 4. **Witness signature scheme** for v0.2 — Ed25519 vs ML-DSA (post-quantum). Decision deferred until v0.2 design.
+
+## Server-side / KMS
+
+This section documents the threat surface of `ogentic-audit-kms` — the optional
+KMS-backed `KeyHandle` introduced in v0.1 for server-side deployments.  All
+analysis above applies to the `ogentic-audit-core` and
+`ogentic-audit-keychain` features; this section covers **axiom changes** that
+apply when the `kms` feature is in use.
+
+See `docs/adr/0002-server-side-kms-key-sourcing.md` for the design rationale.
+
+### Axiom change 1: "No network I/O" invariant
+
+The v0.1 main document states that the library performs no network I/O.  That
+invariant is preserved for consumers of `ogentic-audit-core` and
+`ogentic-audit-keychain` — neither makes any network call.
+
+**The `kms` feature deliberately breaks this invariant.**  Every signing
+operation dispatches a TLS-authenticated `GenerateMac` request to AWS KMS.
+Consumers who add `ogentic-audit-kms` to their dependency tree opt into this
+expanded threat surface consciously.
+
+Implications:
+
+- A network outage between the deployment and AWS KMS = audit gap.  The
+  `KeyHandle::sign` method panics if the KMS call fails; the caller is
+  responsible for the application-level handling (retry, queue, alert).
+- KMS availability is now part of the audit log's availability SLA.
+- TLS failure, DNS failure, VPC routing misconfiguration, or AWS region outage
+  are new failure modes.  None of them silently produce a forged MAC; they all
+  surface as a loud failure (panic from `KeyHandle::sign`).
+
+### Axiom change 2: "Signing party = verifying party = vault owner"
+
+In desktop deployments, signing and verification both require presenting the
+same HMAC key (derived from the vault passphrase).  The signing party and the
+verifying party are the same principal — the vault owner.
+
+In server-side KMS deployments, the verifier holds
+`kms:GenerateMac`-capable IAM credentials on the same key.  The signing IAM
+principal (a server role) and the verifying IAM principal (an auditor role)
+may be different.  This is the v0.1 workaround for the absence of asymmetric
+signing.  The distinction matters:
+
+- Two different IAM principals with `kms:GenerateMac` on the same key can
+  both produce valid MACs.  A court expert should verify that access logs
+  (CloudTrail) confirm only the expected principal signed the records under audit.
+- Asymmetric signing — where the verifier holds only a public key and cannot
+  forge records — remains a v0.2+ path.
+
+### New failure mode: KMS unavailable
+
+`KmsError::ServiceUnavailable` and `KmsError::Throttled` (unit variants — see
+`KmsError::is_retryable()` for the retryability classifier method) surface
+when the KMS service is reachable but temporarily unable to serve requests.
+`KmsError::Network` surfaces on TLS/TCP failure before the request reaches
+the service; all three return `true` from `is_retryable()`. `KeyHandle::sign`
+panics with the error in every case in v0.1 — see OGE-644 for the v0.2
+`try_sign` fix.
+
+The library does not implicitly retry.  Operators must implement their own
+retry logic (exponential back-off is standard) by wrapping the `Writer::append`
+call in a retry loop that inspects the panic message, or — better — by ensuring
+the calling code path is itself retried at the application level.
+
+This is an accepted trade-off: the trait `KeyHandle::sign` is infallible by
+design (it must be compatible with both in-memory and KMS backends), so errors
+must surface as panics.  A v0.2 redesign may introduce a fallible
+`KeyHandle::try_sign` for async-native contexts.
+
+### What AWS KMS adds
+
+| Property | AWS KMS `GenerateMac` |
+|----------|----------------------|
+| Key residency | HSM — key material never leaves AWS hardware |
+| IAM scoping | Per-key, per-action, condition on `MacAlgorithm` |
+| Audit of every use | CloudTrail: timestamp, principal, key ID, request ID |
+| Key state management | Disabled, scheduled-deletion, pending-import states |
+
+### What AWS KMS does NOT add
+
+**Protection from an attacker who has gained MAC-capable IAM credentials.**
+An adversary with valid `kms:GenerateMac` credentials for the audit key can
+forge records that will verify successfully — identical to the desktop
+scenario where the attacker has the HMAC key bytes.
+
+The recommended IAM scoping pattern (from `docs/integrations/server-side-kms.md`):
+
+```json
+"Action": "kms:GenerateMac",
+"Resource": "arn:aws:kms:REGION:ACCOUNT:key/KEY-ID",
+"Condition": { "StringEquals": { "kms:MacAlgorithm": "HMAC_SHA_256" } }
+```
+
+One key, one action, one algorithm, no wildcards.
+
+### Side-channel timing
+
+The timing side-channel claim from the v0.1 main doc still holds for
+KMS deployments: `GenerateMac` executes the HMAC inside the HSM, the output
+travels over TLS.  No timing information about the key material leaks at
+the network boundary.  The file-format integrity framing (HMAC chain,
+canonical CBOR) is unchanged and unaffected by the key source.

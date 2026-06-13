@@ -30,7 +30,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        toolchain: [stable, "1.85"]
+        toolchain: [stable, "1.91"]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -51,6 +51,23 @@ jobs:
 
       - name: cargo test (locked)
         run: cargo test --workspace ${{ env.WORKSPACE_EXCLUDE }} --all-features --locked
+
+      # ogentic-audit-kms exposes a `KmsProvider` trait + `KmsKey` type
+      # that compile WITHOUT the `aws` feature (no AWS SDK pulled in).
+      # OGE-460 AC: "Desktop and CLI builds compile and test green with
+      # the feature disabled (verified by an explicit
+      # `--no-default-features` matrix entry in CI)". This step proves
+      # the no-SDK compile path before GCP/Azure providers (OGE-603)
+      # arrive under separate feature flags.
+      - name: cargo build (kms crate, --no-default-features)
+        run: cargo build -p ogentic-audit-kms --no-default-features --locked
+
+      # Doctests in `lib.rs` deliberately exercise the AWS quickstart
+      # surface — they only compile under the `aws` feature. Use --lib
+      # + --tests (not --doc) so we cover unit + integration tests
+      # without the doctest harness picking up the AWS-only example.
+      - name: cargo test  (kms crate, --no-default-features, lib+tests only)
+        run: cargo test  -p ogentic-audit-kms --no-default-features --locked --lib --tests
 
   # ----------------------------------------------------------------
   # Rust: clippy + rustfmt. Uses stable; MSRV is exercised by rust-test.
