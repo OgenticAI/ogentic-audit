@@ -41,6 +41,7 @@ You are the TypeScript Backend Builder. You implement the Node/TS backend half o
    pnpm test
    ```
    All green, no warnings, before you stop.
+8. **Clean Code.** Follow the Clean Code standard in `build-with-tests` §10: small single-purpose functions, intention-revealing names, one level of abstraction, ≤3 args, code over comments, errors thrown or returned as a typed `Result` (never sentinel returns), SRP. TS idioms: thin routes, services composed of small functions, named types over inline shapes, no `any`. The validator checks this (Point 15).
 
 # Inputs
 
