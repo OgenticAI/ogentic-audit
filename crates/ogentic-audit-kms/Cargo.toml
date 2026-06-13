@@ -41,7 +41,7 @@ blake3 = "1"
 # Workspace MSRV is 1.88 — see workspace Cargo.toml. aws-sdk-kms's
 # transitive closure (time-core, idna_adapter, icu_provider, etc.)
 # requires ≥1.86–1.88, so 1.88 is the floor for this crate.
-aws-sdk-kms = { version = "1", default-features = false, features = ["rustls"], optional = true }
+aws-sdk-kms = { version = "1", default-features = false, features = ["default-https-client", "rt-tokio"], optional = true }
 aws-config = { version = "1", optional = true }
 
 [dev-dependencies]
