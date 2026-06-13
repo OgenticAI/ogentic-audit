@@ -47,6 +47,7 @@ You are a sibling of the Python and TypeScript backend builders, not a replaceme
    cargo test --all
    ```
    All green. Warnings are errors.
+8. **Clean Code.** Follow the Clean Code standard in `build-with-tests` §10: small single-purpose functions, intention-revealing names, errors as types (never `panic!`/sentinel), SRP. Rust idioms: small functions; composition and small traits over large `impl` blocks; prefer iterators and `?` over deep nesting. The validator checks this (Point 15).
 
 # Inputs
 

@@ -4,15 +4,17 @@
 manifest_version: 1
 factory_source: "https://github.com/OgenticAI/agent-factory"
 
-synced_kit_sha: "1a6c88325d3e2a807bf966d78358a33c0111ad62"
-synced_kit_hash: "c3d854a56c82d26b797167a083f0eba412a8f83d7a3fec54238097c747213542"
-synced_at: "2026-06-07T12:53:06.005913+00:00"
+synced_kit_sha: "0a755e15c992f64bee3c631c001c40230dc5ac1c"
+synced_kit_hash: "67ba39f0942cf8c6544802dd1d902601c38982c8005e93f420e887a86747d1d0"
+synced_at: "2026-06-13T11:29:46.398836+00:00"
 
 files:
   - path: .claude/CLAUDE-FACTORY.md
     content_sha256: 0f3e9b32e283c3a03f9ce0ccb142b5c8e784d118eb1a32f99f9a117efdd8f016
   - path: .claude/LINEAR-INTEGRATION.md
     content_sha256: f73eab6158349d4ac954c4299983c5120643fa09f59d17103de8fcbd3c430eab
+  - path: .claude/SKILLS.md
+    content_sha256: 39cabbb918dab87502bf62d2845b11c89d6fc8ab153f10591e23d3db4b024f19
   - path: .claude/agents/01-researcher.md
     content_sha256: 5064bc4eda4498c614e5e7ccbf93209bfa2a3b25f6d92dd6881d68c266277942
   - path: .claude/agents/02-story-writer.md
@@ -20,15 +22,15 @@ files:
   - path: .claude/agents/03-spec-writer.md
     content_sha256: 18680d5b7f04f5ea4661eaebcb6623232d0042726c0e833930d41870dd78c023
   - path: .claude/agents/04a-backend-builder-python.md
-    content_sha256: f4a0c2a9dfcab37a31466888745cad71432266abc4f57486f0bf6b3ebf741d79
+    content_sha256: 0439c227bb276e07f7aefd6615bd44e7ef3286946e2221aaceaa95aa5de2c7a3
   - path: .claude/agents/04b-backend-builder-typescript.md
-    content_sha256: 635aafd0b73f547c0bc0b06be934f4aba24cb244c87cc4c3dba6152074f09698
+    content_sha256: 450d5ab426e8124078fe8f89caca70f2e5fe2d8f3914cc5b1b1c73a595cd4874
   - path: .claude/agents/05-frontend-builder.md
-    content_sha256: 236643462c8ca1926d3bbabd189f1358a61d59a9735407262c29034723434f8d
+    content_sha256: 908c0c02e164e4ae2678c0713a5b81f80d0de0e02420140e78c8d4f1c06925fc
   - path: .claude/agents/06-test-verifier.md
     content_sha256: 0a3ba2edee3306b5b685a38122bf5c04af7bc8b28bfefdf20ab2d0c542faf80e
   - path: .claude/agents/07-validator.md
-    content_sha256: bf0192b21562c5b5a9454d8c78f186fe7ddcab8f9b38885cceabec1ac2e7ebe2
+    content_sha256: bfa7b4ee827fd6ad7e9bca2b49d6433c35fe3f5884454e8b1d493acd25cd295c
   - path: .claude/agents/08-ai-eval-engineer.md
     content_sha256: e19c4a7ed2cebbed1b00133e34decfcb2de3127f35de2abc5c9dc37899a77d25
   - path: .claude/agents/09-security-reviewer.md
@@ -42,7 +44,7 @@ files:
   - path: .claude/agents/13-library-publisher.md
     content_sha256: ca7d0bbc3662ca397d3d4c2d7b10e704c233af9ec4cf8c14b4f956cdd4a11d67
   - path: .claude/agents/14-rust-builder.md
-    content_sha256: 3e69e38b76dd172cff9c015d1617ffbee4b39e55c644a70192734be26df6d0c4
+    content_sha256: c1cb7380eeee069cba74277a8e2e7a3606e6c796181aecb94f9ef5ec5afd999f
   - path: .claude/agents/15-compliance-reviewer.md
     content_sha256: 14ba08c8751e05201ebafc36d4cfecf5045fefa113f302678d4a1c4a1efe13da
   - path: .claude/hooks/pre-commit
@@ -54,7 +56,7 @@ files:
   - path: .claude/scripts/factory-linear-comment.sh
     content_sha256: 928962f6ab2eb9e5919fcef596f90fb665bf3bc82ae8bd34969d0050f182d9eb
   - path: .claude/skills/build-with-tests/SKILL.md
-    content_sha256: d63fb0406236822ce12999cb58e85c36217bcb3256984569bf6b20d6d5ddf221
+    content_sha256: 9d22f3160139e9a5631b1e71e23fdd377d349e49c1a1d38a6dfe186cc24f5d97
   - path: .claude/skills/feature-factory/SKILL.md
     content_sha256: 878ecdd976f0a15f8466b76caecfa5b756ab57806e676816cc989430a4164471
   - path: .claude/skills/fleet-onboarding/SKILL.md

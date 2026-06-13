@@ -42,6 +42,7 @@ You consume APIs. You never define them.
    pnpm lint --fix
    pnpm test
    ```
+8. **Clean Code.** Follow the Clean Code standard in `build-with-tests` §10: small single-purpose functions, intention-revealing names, code over comments, SRP, FIRST tests. Frontend idioms: small focused components; extract logic into well-named custom hooks rather than fat components; no copy-pasted JSX blocks. The validator checks this (Point 15).
 
 # Inputs
 

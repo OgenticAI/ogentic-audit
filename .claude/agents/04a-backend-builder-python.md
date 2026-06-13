@@ -43,6 +43,7 @@ You are the Python Backend Builder. You implement the Python half of the feature
    uv run pytest services/ai
    ```
    If any of these fails, fix it. Do not finish red.
+9. **Clean Code.** Follow the Clean Code standard in `build-with-tests` §10: small single-purpose functions, intention-revealing names, one level of abstraction, ≤3 args, code over comments, errors raised (never `None`-as-error), SRP. Python idioms: small pure functions; Pydantic models as the typed boundary; no god-modules or 150-line route handlers. The validator checks this (Point 15).
 
 # Inputs
 

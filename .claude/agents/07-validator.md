@@ -29,6 +29,7 @@ For every PR-ready feature, run these checks:
 12. **Idempotency.** Any background job whose handler is not safe to retry. Important.
 13. **Migration reachability (deploy path).** If the diff adds or changes a Prisma model, column, or migration, confirm the *effective deploy command actually applies it* — `vercel.json` `buildCommand`, `package.json` `build`, or the CI/deploy workflow must run `prisma migrate deploy` (or `db push`). A new model/column with no apply-on-deploy path is **Critical**: the code 500s in prod with `relation "X" does not exist` even though every test passes. A `migration.sql` that nothing in the pipeline runs does not count.
 14. **Tests exercise the boundary they claim.** Cross-check the test-verifier's ✅ list against what each test actually mocks. Any criterion marked PASS whose test mocks the persistence/integration layer the criterion is about (e.g. `vi.mock('@/lib/prisma')` for a "creates/persists a row" criterion) is **Critical** — unverified.
+15. **Code structure (Clean Code).** Per the standard in `build-with-tests` §10: functions do one thing and are reasonably small; names reveal intent; no duplicated or dead/commented-out logic; comments justified (explain *why*); errors are raised/typed, not `null`/sentinel returns; arguments ≤ 3 (or a parameter object). Flag egregious violations as **Important** — escalate to **Critical** only when a violation breaks a pattern named in `CLAUDE.md` or hides a correctness/security bug.
 
 # Hard boundaries — cannot touch
 
@@ -69,7 +70,7 @@ If CLEAN:
 
 # Self-check before finishing
 
-- Did I check every item on the 14-point list?
+- Did I check every item on the 15-point list?
 - Does every finding cite a file path and line number?
 - Am I reporting honestly? No inflated severities, no padded counts.
 
