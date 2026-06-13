@@ -62,7 +62,7 @@ pub fn verify(
             report
         )));
     }
-    Ok(PyVerifyReport::from_core(py, report)?)
+    PyVerifyReport::from_core(py, report)
 }
 
 /// Python-facing verify report.

@@ -30,6 +30,10 @@ use pyo3::exceptions::PyTypeError;
 use pyo3::prelude::*;
 use pyo3::types::{PyAny, PyBool, PyBytes, PyDict, PyFloat, PyInt, PyString};
 
+// pyo3 0.29: `downcast` renamed to `cast` on `Bound<T>`.  Both the fallible
+// per-type cast and the error type changed name (DowncastError → CastError).
+// We map errors with `|_|` everywhere so the error-type change is transparent.
+
 // PyO3 0.28 uses `Py<PyAny>` for the type historically named PyObject.
 type PyObject = Py<PyAny>;
 
@@ -63,8 +67,8 @@ impl PyWriter {
         if let Some(size) = segment_size_bytes {
             config.segment_size_bytes = size;
         }
-        let writer = Writer::with_config(log_dir, key_box, session_id, config)
-            .map_err(|e| map_writer_error(e))?;
+        let writer =
+            Writer::with_config(log_dir, key_box, session_id, config).map_err(map_writer_error)?;
         Ok(Self {
             inner: Some(writer),
         })
@@ -76,8 +80,9 @@ impl PyWriter {
             .inner
             .as_mut()
             .ok_or_else(|| ArgumentError::new_err("Writer is closed"))?;
+        // pyo3 0.29: `downcast` → `cast` (fallible type cast on Bound<T>).
         let dict = record
-            .downcast::<PyDict>()
+            .cast::<PyDict>()
             .map_err(|_| PyTypeError::new_err("Writer.append expects a dict"))?;
         let input = dict_to_input(py, dict)?;
         writer.append(input).map_err(map_writer_error)
@@ -174,8 +179,9 @@ fn dict_to_input(py: Python<'_>, dict: &Bound<'_, PyDict>) -> PyResult<RecordInp
         .unwrap_or(1);
     let payload = match dict.get_item("payload")? {
         Some(value) => {
+            // pyo3 0.29: `downcast` → `cast`.
             let payload_dict = value
-                .downcast::<PyDict>()
+                .cast::<PyDict>()
                 .map_err(|_| PyTypeError::new_err("'payload' must be a dict if provided"))?;
             payload_dict_to_map(py, payload_dict)?
         },
@@ -195,8 +201,9 @@ fn require_string(dict: &Bound<'_, PyDict>, key: &str) -> PyResult<String> {
     let value = dict.get_item(key)?.ok_or_else(|| {
         ArgumentError::new_err(format!("record dict is missing required key {key:?}"))
     })?;
+    // pyo3 0.29: `downcast` → `cast`.
     value
-        .downcast::<PyString>()
+        .cast::<PyString>()
         .map_err(|_| PyTypeError::new_err(format!("record[{key:?}] must be a str")))?
         .extract::<String>()
 }
@@ -204,8 +211,9 @@ fn require_string(dict: &Bound<'_, PyDict>, key: &str) -> PyResult<String> {
 fn optional_string(dict: &Bound<'_, PyDict>, key: &str) -> PyResult<Option<String>> {
     match dict.get_item(key)? {
         Some(value) => Ok(Some(
+            // pyo3 0.29: `downcast` → `cast`.
             value
-                .downcast::<PyString>()
+                .cast::<PyString>()
                 .map_err(|_| PyTypeError::new_err(format!("record[{key:?}] must be a str")))?
                 .extract::<String>()?,
         )),
@@ -216,8 +224,9 @@ fn optional_string(dict: &Bound<'_, PyDict>, key: &str) -> PyResult<Option<Strin
 fn optional_uint(dict: &Bound<'_, PyDict>, key: &str) -> PyResult<Option<u64>> {
     match dict.get_item(key)? {
         Some(value) => Ok(Some(
+            // pyo3 0.29: `downcast` → `cast`.
             value
-                .downcast::<PyInt>()
+                .cast::<PyInt>()
                 .map_err(|_| PyTypeError::new_err(format!("record[{key:?}] must be an int")))?
                 .extract::<u64>()?,
         )),
@@ -231,8 +240,9 @@ fn payload_dict_to_map(
 ) -> PyResult<BTreeMap<String, PayloadValue>> {
     let mut out = BTreeMap::new();
     for (k, v) in dict.iter() {
+        // pyo3 0.29: `downcast` → `cast`.
         let key_str = k
-            .downcast::<PyString>()
+            .cast::<PyString>()
             .map_err(|_| PyTypeError::new_err("payload keys must be str"))?
             .extract::<String>()?;
         let value = python_to_payload(py, &v)?;
@@ -244,10 +254,13 @@ fn payload_dict_to_map(
 fn python_to_payload(py: Python<'_>, value: &Bound<'_, PyAny>) -> PyResult<PayloadValue> {
     // Order matters — `bool` is a subclass of `int` in Python, so check
     // bool first.
-    if let Ok(b) = value.downcast::<PyBool>() {
+    // pyo3 0.29: `downcast` → `cast`; `cast` returns `Result<&Bound<T>, CastError>`.
+    // `PyBoolMethods::is_true()` is still available on `&Bound<PyBool>`.
+    if let Ok(b) = value.cast::<PyBool>() {
+        use pyo3::types::PyBoolMethods as _;
         return Ok(PayloadValue::Bool(b.is_true()));
     }
-    if let Ok(i) = value.downcast::<PyInt>() {
+    if let Ok(i) = value.cast::<PyInt>() {
         // u64 first; fall back to i64 for negative.
         if let Ok(n) = i.extract::<u64>() {
             return Ok(PayloadValue::Uint(n));
@@ -260,21 +273,23 @@ fn python_to_payload(py: Python<'_>, value: &Bound<'_, PyAny>) -> PyResult<Paylo
             i.repr()?
         )));
     }
-    if value.downcast::<PyFloat>().is_ok() {
+    if value.cast::<PyFloat>().is_ok() {
         return Err(PyTypeError::new_err(
             "payload floats are not supported in v0.1 (per spec § Canonical encoding rules)",
         ));
     }
-    if let Ok(s) = value.downcast::<PyString>() {
+    if let Ok(s) = value.cast::<PyString>() {
         return Ok(PayloadValue::Text(s.extract::<String>()?));
     }
-    if let Ok(b) = value.downcast::<PyBytes>() {
+    if let Ok(b) = value.cast::<PyBytes>() {
+        use pyo3::types::PyBytesMethods as _;
         return Ok(PayloadValue::Bytes(b.as_bytes().to_vec()));
     }
-    if let Ok(d) = value.downcast::<PyDict>() {
+    if let Ok(d) = value.cast::<PyDict>() {
         return Ok(PayloadValue::Map(payload_dict_to_map(py, d)?));
     }
-    if let Ok(seq) = value.downcast::<pyo3::types::PyList>() {
+    if let Ok(seq) = value.cast::<pyo3::types::PyList>() {
+        use pyo3::types::PyListMethods as _;
         let mut items = Vec::with_capacity(seq.len());
         for item in seq.iter() {
             items.push(python_to_payload(py, &item)?);

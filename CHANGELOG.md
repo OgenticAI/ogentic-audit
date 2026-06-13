@@ -9,7 +9,7 @@ library APIs follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 (no unreleased changes)
 
-## [0.1.0] — 2026-06-10
+## [0.1.0] — 2026-06-13
 
 First public release. On-disk format frozen at `0x0001`.
 

@@ -6,7 +6,7 @@
 
 HMAC-SHA256 chained, append-only audit log library. Court-defensible, tamper-evident, language-agnostic on-disk format.
 
-> **Status:** v0.1 in development (alpha). The on-disk format is specified in [`docs/spec/v0.1.md`](docs/spec/v0.1.md) and the wire bytes are pinned by [committed golden vectors](tests/vectors/v0.1). The library is alpha — don't pin to it from production storage yet. The format itself is the stable surface; the Rust / Python APIs may change up to the v0.1.0 tag. See [Status & versioning](#status--versioning).
+> **Status:** v0.1.0 released. The on-disk format is specified in [`docs/spec/v0.1.md`](docs/spec/v0.1.md) and the wire bytes are pinned by [committed golden vectors](tests/vectors/v0.1). The format is the stable surface; the Rust / Python APIs follow semantic versioning from this tag forward. See [Status & versioning](#status--versioning).
 
 ## Why
 
@@ -15,7 +15,7 @@ Regulated industries and audit-grade AI tooling need an audit log that:
 - **Cannot be silently rewritten** — every record is HMAC-chained to the previous, so any tamper is detectable. The verifier reports the exact `(segment, record_id)` of the first violation, with a structured evidence payload an auditor can act on.
 - **Survives crashes** — append-only with atomic flush + `F_FULLFSYNC` on macOS; partial writes never produce a half-record. On reopen, the writer detects any torn tail (`len_trailer != len_prefix`) and truncates to the last fully-written record, surfacing a structured `RecoveryReport` to the caller.
 - **Travels across languages** — the on-disk format is documented byte-by-byte, with [golden vectors](tests/vectors/v0.1) that conforming implementations MUST round-trip. v0.1 ships Rust + Python; the format is intentionally implementable in any language that has HMAC-SHA256.
-- **Is court-defensible** — paired [threat model](docs/security/threat-model.md) and [court-defensibility brief](docs/legal/court-defensibility.md); the CLI ships an `export --pdf` command for self-contained evidence packages (PDF generator lands with v0.1.0; tracked in [OGE-438](https://linear.app/ogenticai/issue/OGE-438)).
+- **Is court-defensible** — paired [threat model](docs/security/threat-model.md) and [court-defensibility brief](docs/legal/court-defensibility.md); the CLI ships a bit-reproducible `export --pdf` command for self-contained evidence packages.
 
 ## Components
 
