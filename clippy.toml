@@ -1,8 +1,8 @@
 avoid-breaking-exported-api = true
 # clippy.toml `msrv` is the API-suggestion floor: clippy won't suggest
 # rewrites to APIs stabilized after this version. We keep this at 1.85
-# even though the workspace Cargo.toml `rust-version` is 1.88 — the
-# 1.88 bump was forced by aws-sdk-kms transitive deps (OGE-460), not
+# even though the workspace Cargo.toml `rust-version` is 1.91 — the
+# 1.91 ceiling is imposed by aws-sdk-kms transitive deps (OGE-460), not
 # by code wanting newer APIs. Keeping clippy's suggestion floor at 1.85
 # preserves the option to drop the workspace MSRV again later if the
 # transitive deps relax. A soft "MSRV differs" warning is expected.

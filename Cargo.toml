@@ -11,7 +11,7 @@ members = [
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
-rust-version = "1.88"
+rust-version = "1.91"
 license = "Apache-2.0"
 repository = "https://github.com/OgenticAI/ogentic-audit"
 homepage = "https://github.com/OgenticAI/ogentic-audit"

@@ -2,7 +2,7 @@
 name = "ogentic-audit-kms"
 version = "0.2.0-pre"
 edition = "2021"
-rust-version = "1.88"
+rust-version = "1.91"
 license = "Apache-2.0"
 description = "Optional KMS key source for ogentic-audit (AWS KMS in v0.1; GCP Cloud KMS, Azure Key Vault in v0.2)"
 repository = "https://github.com/OgenticAI/ogentic-audit"
@@ -38,9 +38,9 @@ blake3 = "1"
 # Hence no `subtle` / `zeroize` / `tracing` deps in this crate. If
 # OGE-644 adds `try_sign` and a `tracing::warn!` on the error path, the
 # `tracing` dep + a real `tracing_subscriber` capture test return here.
-# Workspace MSRV is 1.88 — see workspace Cargo.toml. aws-sdk-kms's
-# transitive closure (time-core, idna_adapter, icu_provider, etc.)
-# requires ≥1.86–1.88, so 1.88 is the floor for this crate.
+# Workspace MSRV is 1.91 — see workspace Cargo.toml. aws-sdk-kms's
+# transitive smithy closure (aws-smithy-runtime ≥1.11) requires 1.91.1,
+# so 1.91 is the effective floor for this crate when the aws feature is on.
 aws-sdk-kms = { version = "1", default-features = false, features = ["default-https-client", "rt-tokio"], optional = true }
 aws-config = { version = "1", optional = true }
 
