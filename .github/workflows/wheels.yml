@@ -4,8 +4,10 @@
 # Two trigger surfaces:
 #
 # * Pushed tags `v*` → build wheels + sdist for every (OS, arch, Python)
-#   combination in the matrix, then publish to PyPI via Trusted
-#   Publishers (no API token in the repo — set up at PyPI side).
+#   combination in the matrix, then publish to PyPI using the org-level
+#   `PYPI_API_TOKEN` secret (shared across every ogentic-* package; "All
+#   repositories" access at the GitHub org level, "All projects" scope on
+#   the PyPI side). Same auth path as ogentic-shield and ogentic-router.
 #
 # * Manual `workflow_dispatch` → build everything, upload as a GitHub
 #   Actions artifact, but skip the PyPI publish step. Useful for dry
@@ -19,16 +21,19 @@
 # from pyproject.toml's `tool.maturin` block) and the result is
 # `abi3-py39` for every platform.
 #
-# Trusted Publisher setup (one-time, on PyPI side):
+# Prerequisites (one-time, on GitHub side):
 #
-#   PyPI → Account → Publishing → Add a new publisher
-#     Owner:        OgenticAI
-#     Repository:   ogentic-audit
-#     Workflow:     wheels.yml
-#     Environment:  pypi
+#   1. Org secret `PYPI_API_TOKEN` exists with `ogentic-audit` in its
+#      repository-access list (already set "All repositories"; nothing
+#      to do).
+#   2. Repo Environment `pypi` exists (Settings → Environments). No
+#      protection rules required for v0.1.x — environment binding gives
+#      us a per-release audit trail.
 #
-# Until that's configured, the `publish-to-pypi` job will fail at the
-# trusted-publish step. Wheels and sdist build successfully regardless.
+# Switching to PyPI Trusted Publishers (OIDC) later is straightforward:
+# delete the `password:` line below, add `permissions: id-token: write`
+# back to the job, configure the publisher on the PyPI project page.
+# Deferred for v0.2.x in line with the cross-primitive auth pattern.
 
 name: wheels
 
@@ -152,10 +157,6 @@ jobs:
     environment:
       name: pypi
       url: https://pypi.org/p/ogentic-audit
-    permissions:
-      # Trusted Publishers needs id-token: write to mint the OIDC token
-      # PyPI verifies against the configured publisher.
-      id-token: write
     steps:
       - uses: actions/download-artifact@v4
         with:
@@ -178,8 +179,10 @@ jobs:
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b # v1.14.0 (release/v1 HEAD) — pinned per OGE-837
         with:
-          # `password` is omitted on purpose — Trusted Publishers
-          # supplies a short-lived OIDC token via id-token: write.
+          # Org-level `PYPI_API_TOKEN` (shared across every ogentic-* OSS
+          # publish). Header comment documents the OIDC migration path.
+          user: __token__
+          password: ${{ secrets.PYPI_API_TOKEN }}
           packages-dir: dist/
           skip-existing: false
           verbose: true
