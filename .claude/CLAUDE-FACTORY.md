@@ -156,7 +156,43 @@ OGENTICAI_BYPASS_IDENTITY=1 git push ...
 
 **Verification** — agents that touch the network may call the `setup-check` skill at the top of their run to fail fast on identity drift. The `feature-factory`, `repo-bootstrap`, `repo-create`, and `fleet-onboarding` skills do this automatically.
 
+---
 
+### §F5a — Multi-account machines: flip-proof git identity
+
+On a machine that carries **two GitHub accounts on `github.com`** — one personal, one OgenticAI work account (e.g. personal `denkodes` + work `den-ogenticai`) — `gh`'s single "active account" per host **silently flips back to the personal account**. Since that account has no OgenticAI access, every OgenticAI `git push/pull/clone` and `gh` call then 404s. `gh auth switch` is a manual band-aid that drifts again.
+
+**The durable fix (machine-local, no SSH required):** pin all git auth under `~/OgenticAI/` to the work account via a directory-scoped credential helper, independent of the active account. `gh auth token -u <work-account>` returns that account's token **even when it is not active** — that is the lever.
+
+1. `~/.gitconfig` routes by directory:
+   ```
+   [includeIf "gitdir:~/OgenticAI/"]
+       path = ~/.config/git/ogenticai.inc
+   ```
+2. `~/.config/git/ogenticai.inc` clears the inherited active-account helper and pins the work account (replace `den-ogenticai` / `<you>@ogenticai.com` with the operator's):
+   ```
+   [user]
+       email = <you>@ogenticai.com
+       name  = <You>
+   [credential "https://github.com"]
+       helper =                                                   # clears !gh auth git-credential (follows active account)
+       helper = ~/.config/git/ogenticai-credential-helper.sh      # always serves the work account
+       username = den-ogenticai
+   ```
+3. `~/.config/git/ogenticai-credential-helper.sh` (chmod +x):
+   ```sh
+   #!/bin/sh
+   [ "$1" = "get" ] || exit 0
+   tok=$(gh auth token -u den-ogenticai 2>/dev/null) || exit 0
+   [ -n "$tok" ] || exit 0
+   echo "username=den-ogenticai"; echo "password=$tok"
+   ```
+
+Result: every repo under `~/OgenticAI/` authenticates as the work account regardless of `gh`'s active account; personal repos outside that path are untouched. **Acid test:** force the personal account active, then `git ls-remote` an OgenticAI repo — it must still succeed.
+
+**Still bind the SSH key to the work account.** The `ssh-add ~/.ssh/ogenticai_plugins` step above only helps if that key's public half is **registered to the work account** on GitHub (`github.com/settings/ssh/new`, logged in as the work account → `ssh -T git@github.com` returns `Hi <work-account>`). The HTTPS pin covers plain `git`/`gh`; the `ogenticai-git` plugin and any SSH-remote flow need the registered key.
+
+**`gh` CLI commands** (`gh pr`, `gh api`) still follow the active account — keep it on the work account (`gh auth switch -u <work-account>`), but the critical git push/pull/clone path no longer depends on it.
 
 ---
 
