@@ -4,13 +4,13 @@
 manifest_version: 1
 factory_source: "https://github.com/OgenticAI/agent-factory"
 
-synced_kit_sha: "0a755e15c992f64bee3c631c001c40230dc5ac1c"
-synced_kit_hash: "67ba39f0942cf8c6544802dd1d902601c38982c8005e93f420e887a86747d1d0"
-synced_at: "2026-06-13T11:29:46.398836+00:00"
+synced_kit_sha: "41cdd4bad184fdcc1584d4c23802b3b61ae0e1b9"
+synced_kit_hash: "56f40e361da6d94789b47b4a5f43ca104ed27571483a8d96be5bc0cf32ec078e"
+synced_at: "2026-06-17T19:21:01.720436+00:00"
 
 files:
   - path: .claude/CLAUDE-FACTORY.md
-    content_sha256: 0f3e9b32e283c3a03f9ce0ccb142b5c8e784d118eb1a32f99f9a117efdd8f016
+    content_sha256: b69aa19c4f811bae88e22dbbf3fa07e2c4d7ab6cb3a1b1bb307f685b00c58522
   - path: .claude/LINEAR-INTEGRATION.md
     content_sha256: f73eab6158349d4ac954c4299983c5120643fa09f59d17103de8fcbd3c430eab
   - path: .claude/SKILLS.md
