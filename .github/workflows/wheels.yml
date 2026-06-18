@@ -87,7 +87,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable — pinned per OGE-837
 
       - name: Build wheels with cibuildwheel
-        uses: pypa/cibuildwheel@7940a4c0e76eb2030e473a5f864f291f63ee879b # v2.21.3 — pinned per OGE-837
+        uses: pypa/cibuildwheel@f03ac7617d6cff873ccf24cc0d567ef5ba5a9e6d # v2.21.3 — pinned per OGE-837
         env:
           # abi3 wheels cover every supported CPython once built.
           # We still iterate one build per ABI tag, but cibuildwheel
