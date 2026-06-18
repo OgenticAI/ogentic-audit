@@ -50,7 +50,7 @@ jobs:
     runs-on: ubuntu-latest
     if: vars.AWS_KMS_SMOKE_ROLE_ARN != ''
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - uses: dtolnay/rust-toolchain@stable
 
