@@ -4,9 +4,9 @@
 manifest_version: 1
 factory_source: "https://github.com/OgenticAI/agent-factory"
 
-synced_kit_sha: "24b74a662d3fd3fa1fcf5b5bb9754b9d84ce3914"
-synced_kit_hash: "f9d59824f0cbe48dd1eaa6114aff4258d53d5686c61b671a9830de0877e30935"
-synced_at: "2026-06-24T10:18:31.030958+00:00"
+synced_kit_sha: "dbf9757e261c5a6647d8f37d80d89d9fd4d095d0"
+synced_kit_hash: "150f65e24276bbbd4b68f8f1a75bb67585200c9365eec179f037a8b758a82b50"
+synced_at: "2026-06-24T16:22:47.195028+00:00"
 
 files:
   - path: .claude/CLAUDE-FACTORY.md
@@ -47,6 +47,8 @@ files:
     content_sha256: c1cb7380eeee069cba74277a8e2e7a3606e6c796181aecb94f9ef5ec5afd999f
   - path: .claude/agents/15-compliance-reviewer.md
     content_sha256: 14ba08c8751e05201ebafc36d4cfecf5045fefa113f302678d4a1c4a1efe13da
+  - path: .claude/agents/16-backlog-groomer.md
+    content_sha256: 9b39b3036b7eb4dcebb0c378ce34cda73f5c72c34d55c4438cbb6894f4079363
   - path: .claude/hooks/pre-commit
     content_sha256: 4620e26e07112561a3c0d8c2225c72f7f6c2dad55bc1028e4b995c4f41b1ea6f
   - path: .claude/hooks/pre-push
