@@ -4,9 +4,9 @@
 manifest_version: 1
 factory_source: "https://github.com/OgenticAI/agent-factory"
 
-synced_kit_sha: "c7198f399b57afc437a20a54280238079cce3438"
-synced_kit_hash: "dbc9cca965d8f8e56a3a515ecd2ab8f6bfb8a507796d0edbbd17260c3039d07f"
-synced_at: "2026-06-24T04:56:30.876299+00:00"
+synced_kit_sha: "24b74a662d3fd3fa1fcf5b5bb9754b9d84ce3914"
+synced_kit_hash: "f9d59824f0cbe48dd1eaa6114aff4258d53d5686c61b671a9830de0877e30935"
+synced_at: "2026-06-24T10:18:31.030958+00:00"
 
 files:
   - path: .claude/CLAUDE-FACTORY.md
@@ -36,7 +36,7 @@ files:
   - path: .claude/agents/09-security-reviewer.md
     content_sha256: 9e238e5e0f7dfe1c325d0651449864e065c5a24c610de2207e8aa12876b68b76
   - path: .claude/agents/10-release-manager.md
-    content_sha256: aae0e982af48eacf17da9d57c5f89392065e6c0b237ea85cc6e287e10a798fe5
+    content_sha256: acde548bc39088bdcf590de4c87f367053b770a089200887065711b7b56253cf
   - path: .claude/agents/11-cross-repo-coordinator.md
     content_sha256: 4c384107930e5e65296b45aa5a01947f81ad728c9ee042a8a60d90b018516068
   - path: .claude/agents/12-incident-responder.md
