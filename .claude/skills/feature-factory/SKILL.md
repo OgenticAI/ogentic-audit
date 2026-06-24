@@ -20,6 +20,40 @@ Before anything else, invoke the `setup-check` skill. It verifies that:
 
 ---
 
+## §0.5 — Headless mode (auto-loop driver)
+
+When the env var `FACTORY_HEADLESS=true` is set (the multi-repo auto-loop driver sets this in `auto-loop/scripts/per_repo_run.sh`), the three human checkpoints in §2 are replaced by **programmatic gates**. The chain runs to completion without operator approval; failures escalate to a `needs-human-review` label instead of blocking on a wait.
+
+**Headless mode trigger.** The orchestrator MUST check `os.environ.get("FACTORY_HEADLESS")` (or the equivalent shell `$FACTORY_HEADLESS`) at the start of every run. If `true`, skip every "wait for /approved" block in §2 and use the gate replacements below.
+
+### Programmatic gate replacements
+
+| Old human gate (§2) | Headless replacement |
+| --- | --- |
+| **Checkpoint 1 — story approval** | Linear ticket must have label `auto-eligible` AND `description.length >= 200` AND contain ≥1 acceptance criterion (a line matching `Acceptance criteria` / `AC:` / a numbered `1.` list under that header). |
+| **Checkpoint 2 — brief approval** | spec-writer's brief must (a) pass the project's `gate_lint` + `gate_typecheck` from `factories.yml`, and (b) include both a `Files` section and an `Acceptance criteria` section. Heuristic-graded. |
+| **Checkpoint 3 — PR approval** | **CI green + branch protection.** PR opens with `gh pr merge --auto --squash`; auto-merge fires on green. If CI red after 3 retries, escalate. |
+
+### Escalation pattern (used by all three gates)
+
+Whenever a programmatic gate FAILS in headless mode, the chain MUST:
+
+1. Add Linear label `needs-human-review` to the ticket.
+2. Post a `[factory:auto-loop]` comment explaining which gate failed and why.
+3. Emit the final sentinel `FACTORY_BLOCKED <ticket-id> <reason>` so `per_repo_run.sh` records exit 2 (blocked, not crashed).
+
+The ticket then sits in the operator's queue. The loop won't pick it up again until David either removes `needs-human-review` or the gate-failure cause is fixed.
+
+### Per-agent headless behaviour
+
+- **story-writer** — in headless mode, skip the "wait for approval" block; emit `[factory:story-writer] DONE — AC count: N` and continue.
+- **spec-writer** — same; emit `[factory:spec-writer] DONE — brief posted, Files: N, AC: N` and continue. If the brief fails the heuristic compile-clean check, follow the escalation pattern above.
+- **release-manager** — open the PR with `gh pr merge --auto --squash` instead of waiting for operator merge. On CI red after 3 retries, escalate.
+
+When `FACTORY_HEADLESS=false` (default), the existing operator-driven behaviour described in §2 is unchanged.
+
+---
+
 ## When to invoke this skill
 
 The user said something like:
