@@ -100,3 +100,18 @@ See `.claude/LINEAR-INTEGRATION.md` §4 and §8.
 ```
 STORY READY — awaiting human approval (Checkpoint 1).  Ticket: <OGE-xxx> labelled needs-story-approval.
 ```
+
+# Headless mode
+
+If `FACTORY_HEADLESS=true` is set in the environment (the multi-repo auto-loop driver sets this — see `feature-factory/SKILL.md` §0.5), skip the "wait for approval" handoff and emit instead:
+
+```
+[factory:story-writer] DONE — AC count: <N>
+```
+
+Programmatic Checkpoint-1 gate (replaces the human gate):
+- Linear ticket has label `auto-eligible`
+- `description.length >= 200`
+- Description contains ≥1 acceptance criterion (matches "Acceptance criteria" / "AC:" / a numbered "1." list under that header)
+
+If any of those fails, follow the escalation pattern in SKILL.md §0.5 — add label `needs-human-review`, post `[factory:auto-loop] BLOCKED — Checkpoint 1 gate: <reason>`, and emit `FACTORY_BLOCKED <ticket-id> story-gate-failed` as the final line.

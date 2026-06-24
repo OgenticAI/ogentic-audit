@@ -4,9 +4,9 @@
 manifest_version: 1
 factory_source: "https://github.com/OgenticAI/agent-factory"
 
-synced_kit_sha: "41cdd4bad184fdcc1584d4c23802b3b61ae0e1b9"
-synced_kit_hash: "56f40e361da6d94789b47b4a5f43ca104ed27571483a8d96be5bc0cf32ec078e"
-synced_at: "2026-06-17T19:21:01.720436+00:00"
+synced_kit_sha: "c7198f399b57afc437a20a54280238079cce3438"
+synced_kit_hash: "dbc9cca965d8f8e56a3a515ecd2ab8f6bfb8a507796d0edbbd17260c3039d07f"
+synced_at: "2026-06-24T04:56:30.876299+00:00"
 
 files:
   - path: .claude/CLAUDE-FACTORY.md
@@ -18,9 +18,9 @@ files:
   - path: .claude/agents/01-researcher.md
     content_sha256: 5064bc4eda4498c614e5e7ccbf93209bfa2a3b25f6d92dd6881d68c266277942
   - path: .claude/agents/02-story-writer.md
-    content_sha256: 38b9a567e048c9e4d4d9e71f37c4c6ac97eec78e49435af52d27b30410240b92
+    content_sha256: 7b0b5081317983624fc1ef1ca40f2142e9d4ea580839854dd7d6826533546539
   - path: .claude/agents/03-spec-writer.md
-    content_sha256: 18680d5b7f04f5ea4661eaebcb6623232d0042726c0e833930d41870dd78c023
+    content_sha256: e2d6be06cc91201beb97b88dc9640176017d1494f5b843030283ca8246be4bfe
   - path: .claude/agents/04a-backend-builder-python.md
     content_sha256: 0439c227bb276e07f7aefd6615bd44e7ef3286946e2221aaceaa95aa5de2c7a3
   - path: .claude/agents/04b-backend-builder-typescript.md
@@ -36,7 +36,7 @@ files:
   - path: .claude/agents/09-security-reviewer.md
     content_sha256: 9e238e5e0f7dfe1c325d0651449864e065c5a24c610de2207e8aa12876b68b76
   - path: .claude/agents/10-release-manager.md
-    content_sha256: 0b406a8debca36b62a433c16ee731a6c438640d1096a15d39cbf98b550dfecb3
+    content_sha256: aae0e982af48eacf17da9d57c5f89392065e6c0b237ea85cc6e287e10a798fe5
   - path: .claude/agents/11-cross-repo-coordinator.md
     content_sha256: 4c384107930e5e65296b45aa5a01947f81ad728c9ee042a8a60d90b018516068
   - path: .claude/agents/12-incident-responder.md
@@ -58,7 +58,7 @@ files:
   - path: .claude/skills/build-with-tests/SKILL.md
     content_sha256: 9d22f3160139e9a5631b1e71e23fdd377d349e49c1a1d38a6dfe186cc24f5d97
   - path: .claude/skills/feature-factory/SKILL.md
-    content_sha256: 878ecdd976f0a15f8466b76caecfa5b756ab57806e676816cc989430a4164471
+    content_sha256: c627e279a6c7c1a43c3aa7a5b48b8369a30462393465d82e77e114d093ccec5f
   - path: .claude/skills/fleet-onboarding/SKILL.md
     content_sha256: b5359ed469b8005203d4970c4e973381a0f6bd564d5299d7ef8633524ff42d62
   - path: .claude/skills/multi-repo-coordinator/SKILL.md

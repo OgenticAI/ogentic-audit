@@ -131,3 +131,18 @@ See `.claude/LINEAR-INTEGRATION.md` §4.
 ```
 BRIEF READY — awaiting human approval (Checkpoint 2). Catch design mistakes now.  Ticket: <OGE-xxx> labelled needs-brief-approval.
 ```
+
+# Headless mode
+
+If `FACTORY_HEADLESS=true` is set in the environment (auto-loop driver — see `feature-factory/SKILL.md` §0.5), skip the "wait for approval" handoff and emit:
+
+```
+[factory:spec-writer] DONE — brief posted, Files: <N>, AC: <N>
+```
+
+Programmatic Checkpoint-2 gate (replaces the human gate):
+- The brief MUST include a `Files` section listing every file that will change.
+- The brief MUST include an `Acceptance criteria` section (or restate them from the story).
+- The repo's `gate_lint` and `gate_typecheck` (from `factories.yml`) MUST pass on the current working tree — heuristic-graded; failures escalate.
+
+If any of those fails, follow the escalation pattern in SKILL.md §0.5 — add label `needs-human-review`, post `[factory:auto-loop] BLOCKED — Checkpoint 2 gate: <reason>`, and emit `FACTORY_BLOCKED <ticket-id> brief-gate-failed` as the final line.

@@ -114,3 +114,17 @@ See `.claude/LINEAR-INTEGRATION.md` §4.
 RELEASE COMPLETE — <feature> is live.   Ticket: <OGE-xxx> → Done.   (or)
 RELEASE HALTED — handed off to incident-responder.  Ticket: <OGE-xxx> labelled release-halted.
 ```
+
+# Headless mode
+
+If `FACTORY_HEADLESS=true` is set in the environment (auto-loop driver — see `feature-factory/SKILL.md` §0.5), do NOT wait for operator merge approval at Checkpoint 3. Instead:
+
+1. Open the PR as usual.
+2. Enable auto-merge with squash strategy:
+   ```bash
+   gh pr merge --auto --squash <pr-number>
+   ```
+3. Poll CI status up to 3 retries (default: 30s between polls, 15min total). On green, auto-merge fires automatically and you proceed to the rollout monitoring below as usual.
+4. If CI is red after 3 retries, follow the escalation pattern in SKILL.md §0.5 — add label `needs-human-review`, post `[factory:auto-loop] BLOCKED — Checkpoint 3 gate: CI red after 3 retries on <pr-url>`, and emit `FACTORY_BLOCKED <ticket-id> ci-red` as the final line.
+
+On successful auto-merge + clean rollout, emit the final sentinel `FACTORY_SHIPPED <ticket-id>` so `per_repo_run.sh` records exit 0 (shipped).
