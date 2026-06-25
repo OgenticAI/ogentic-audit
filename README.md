@@ -1,6 +1,8 @@
 # ogentic-audit
 
 [![CI](https://github.com/OgenticAI/ogentic-audit/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/OgenticAI/ogentic-audit/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/ogentic-audit)](https://pypi.org/project/ogentic-audit/)
+[![Crates.io](https://img.shields.io/crates/v/ogentic-audit)](https://crates.io/crates/ogentic-audit)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Format v0.1](https://img.shields.io/badge/on--disk%20format-v0.1-informational)](docs/spec/v0.1.md)
 
