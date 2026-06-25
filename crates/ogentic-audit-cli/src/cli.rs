@@ -109,6 +109,7 @@ Examples:
   ogentic-audit verify ./logs --format json             # machine-readable
   ogentic-audit verify ./logs --summary                 # one-line verdict
   ogentic-audit verify ./logs --forensic                # do not stop at first violation
+  ogentic-audit verify ./logs --segment 0               # verify only segment 0
 ")]
     Verify(VerifyArgs),
 
@@ -158,6 +159,11 @@ pub struct VerifyArgs {
     /// failure (R3's `VerifyOptions::forensic_mode`).
     #[arg(long, action = ArgAction::SetTrue)]
     pub forensic: bool,
+    /// Verify only the named segment index (0–65535). Exits 2 if the
+    /// segment does not exist in the log directory. `--segment 0` is
+    /// valid and verifies segment 0 only.
+    #[arg(long)]
+    pub segment: Option<u64>,
 }
 
 #[derive(Debug, Args)]

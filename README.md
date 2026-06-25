@@ -174,12 +174,70 @@ or `ogentic-audit-windows-x86_64.zip`. Each ships with a sibling
 export OGENTIC_AUDIT_KEY_HEX=$(openssl rand -hex 32)
 ogentic-audit verify ./audit-logs            # exit 0 verified, 1 violation
 
+# verify only segment 0 (useful for spot-checking a specific segment)
+ogentic-audit verify ./audit-logs --segment 0
+
+# machine-readable output (see "verify JSON output" below)
+ogentic-audit verify ./audit-logs --format json
+
 # pretty-print the last 100 records
 ogentic-audit show ./audit-logs --from 0 --to 100
 
 # spot-check the chain head
 ogentic-audit head ./audit-logs --format json
 ```
+
+#### verify JSON output (v0.2 shape — OGE-1063)
+
+The `--format json` output uses `status` (not `verdict`) and `segments_verified`
+(not `compact`). If you have automation that reads the old keys, update it:
+
+| Old key | New key | Notes |
+|---------|---------|-------|
+| `verdict` | `status` | Values: `"ok"` or `"tampered"` |
+| `compact` | removed | Use `status` instead |
+| — | `segments_verified` | Count of segments walked |
+
+Clean example:
+
+```json
+{
+  "status": "ok",
+  "format_version": 1,
+  "segments_verified": 1,
+  "log": { "segments_inspected": 1, "records_inspected": 1, ... }
+}
+```
+
+Tampered example:
+
+```json
+{
+  "status": "tampered",
+  "format_version": 1,
+  "segments_verified": 1,
+  "violation": { "kind": "HmacMismatch", "segment_index": 0, "record_id": 2, ... },
+  "additional_violations": [],
+  "log": { ... }
+}
+```
+
+Violation detail text (kind, message, coordinates) is written to **stderr**;
+the JSON summary on **stdout** is clean for `jq`-based pipelines.
+
+#### `--segment <id>` flag
+
+Verify a single named segment. Useful for forensic spot-checks on large logs:
+
+```sh
+ogentic-audit verify ./audit-logs --segment 0          # verify segment 0 only
+ogentic-audit verify ./audit-logs --segment 42         # verify segment 42 only
+```
+
+Exit codes for `--segment`:
+- `0` — segment verified clean
+- `1` — segment has a chain violation
+- `2` — segment index `> 65535`, or the segment file does not exist in the log directory
 
 ## Design
 

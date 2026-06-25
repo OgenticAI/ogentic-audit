@@ -140,8 +140,8 @@ fn verify_json_format_emits_parseable_object() {
         .success();
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).unwrap();
     let value: serde_json::Value = serde_json::from_str(&stdout).expect("JSON parses");
-    assert_eq!(value["verdict"], "Verified");
-    assert_eq!(value["compact"], "Verified");
+    assert_eq!(value["status"], "ok");
+    assert!(value["segments_verified"].is_number());
     assert_eq!(value["log"]["segments_inspected"], 1);
 }
 
