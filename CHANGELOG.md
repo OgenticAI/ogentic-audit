@@ -7,6 +7,22 @@ library APIs follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-06-25
+
+### Breaking
+
+- `--format json` output shape changed: `"verdict"` and `"compact"` keys removed; replaced by `"status": "ok"|"tampered"` and `"segments_verified"`. Scripts that parse the old shape must update their field references. (OGE-1063, #48)
+
+### Added
+
+- `ogentic-audit verify --segment <id>`: verify a single segment by zero-based index, returning only that segment's result in both text and JSON output formats. (OGE-1063, #48)
+- 17 new integration tests covering `--segment`, JSON shape, stderr routing, and multi-segment edge cases. (#48)
+
+### Fixed
+
+- Tamper violation detail now correctly routes to stderr in text format (was incorrectly mixed with stdout). (OGE-1063, #48)
+- RUSTSEC-2026-0186: `memmap2` bumped to 0.9.11 to address security advisory. (#48)
+
 ### Added
 
 - **`ogentic-audit-kms` 0.2.0-pre (OGE-460):** optional KMS-backed
@@ -154,5 +170,6 @@ First public release. On-disk format frozen at `0x0001`.
   after the tag they follow semver (breaking changes increment
   major version).
 
-[Unreleased]: https://github.com/OgenticAI/ogentic-audit/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/OgenticAI/ogentic-audit/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/OgenticAI/ogentic-audit/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/OgenticAI/ogentic-audit/releases/tag/v0.1.0
