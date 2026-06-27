@@ -8,7 +8,7 @@
 //! in [`crate::aws`].
 
 use crate::error::KmsError;
-use ogentic_audit_core::HmacBytes;
+use ogentic_audit_core::{HmacBytes, HMAC_LEN};
 
 /// A source of KMS-backed HMAC-SHA256 signing capability.
 ///
@@ -64,5 +64,30 @@ pub trait KmsProvider: Send + Sync + std::fmt::Debug {
     /// cannot collide.
     fn provider_name(&self) -> &str {
         "aws-kms"
+    }
+
+    /// Obtain the raw HMAC key bytes for envelope-encrypted local-HMAC mode.
+    ///
+    /// Called once per [`crate::KmsKey`] instance on the first `sign()` call
+    /// when the key was constructed with [`crate::KmsKey::with_envelope_mode`].
+    /// The returned bytes are immediately wrapped in a `zeroize::Zeroizing` buffer
+    /// and held for the lifetime of the `KmsKey`.
+    ///
+    /// ## Default behaviour
+    ///
+    /// Returns `Err(KmsError::Config(...))`.  Only providers that explicitly
+    /// support envelope mode need to override this method.
+    ///
+    /// ## Implementation contract
+    ///
+    /// - The returned bytes MUST be 32 bytes (`HMAC_LEN`).
+    /// - Implementations may call `GenerateDataKey` (fresh-key flow) or
+    ///   `Decrypt` (existing encrypted DEK flow); the choice is provider-internal.
+    /// - The raw bytes MUST NOT appear in any `Display`, `Debug`, or log output.
+    async fn envelope_unwrap(&self) -> Result<[u8; HMAC_LEN], KmsError> {
+        Err(KmsError::Config(
+            "envelope mode not supported by this provider; \
+             implement KmsProvider::envelope_unwrap",
+        ))
     }
 }

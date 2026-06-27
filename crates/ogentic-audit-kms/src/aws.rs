@@ -8,6 +8,7 @@
 //! would duplicate it is intentionally omitted here.
 
 use ogentic_audit_core::{HmacBytes, HMAC_LEN};
+use zeroize::Zeroizing;
 
 use crate::error::KmsError;
 use crate::provider::KmsProvider;
@@ -111,6 +112,51 @@ impl KmsProvider for AwsKmsProvider {
         let mut arr = [0u8; HMAC_LEN];
         arr.copy_from_slice(bytes);
         Ok(HmacBytes::from(arr))
+    }
+
+    /// Obtain a fresh HMAC DEK via `GenerateDataKey` (envelope mode).
+    ///
+    /// Calls KMS `GenerateDataKey` with `NumberOfBytes = 32` to obtain a
+    /// fresh 256-bit DEK encrypted under this key.  Only the **plaintext**
+    /// bytes are returned; the ciphertext blob is discarded (v0.2 fresh-key
+    /// flow — the DEK is scoped to this `KmsKey` instance lifetime).
+    ///
+    /// ## IAM requirement
+    ///
+    /// The IAM principal must have `kms:GenerateDataKey` on the key ARN.
+    /// A symmetric CMK (AES-256) is required; HMAC KMS keys do NOT support
+    /// `GenerateDataKey`.
+    async fn envelope_unwrap(&self) -> Result<[u8; HMAC_LEN], KmsError> {
+        let out = self
+            .client
+            .generate_data_key()
+            .key_id(&self.key_id)
+            .number_of_bytes(HMAC_LEN as i32)
+            .send()
+            .await
+            .map_err(KmsError::from_aws_sdk)?;
+
+        // `plaintext` is a `SensitiveBlob` — the AWS SDK zeroes it on drop.
+        // We copy out the bytes before that happens and wrap them in our own
+        // Zeroizing buffer immediately after.
+        let plaintext = out.plaintext.ok_or(KmsError::Internal(
+            "aws-sdk: GenerateDataKey returned no plaintext",
+        ))?;
+        let bytes = plaintext.as_ref();
+
+        if bytes.len() != HMAC_LEN {
+            return Err(KmsError::Internal(
+                "aws-sdk: GenerateDataKey returned wrong key length",
+            ));
+        }
+
+        // Wrap in Zeroizing to ensure the stack copy is zeroed before we
+        // return (best-effort; the compiler is not obligated to honour this
+        // for every optimisation level, but the volatile barrier in zeroize
+        // maximises the chance).
+        let mut zk = Zeroizing::new([0u8; HMAC_LEN]);
+        zk.copy_from_slice(bytes);
+        Ok(*zk)
     }
 }
 
