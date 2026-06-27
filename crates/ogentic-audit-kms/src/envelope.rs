@@ -3,13 +3,13 @@
 //! ## Design
 //!
 //! In envelope mode the KMS key acts as a **Key Encryption Key (KEK)**.
-//! On the first [`crate::KmsKey::sign`] call the provider is asked to
+//! On the first `sign()` call the provider is asked to
 //! [`crate::KmsProvider::envelope_unwrap`] a raw 32-byte HMAC key (the
 //! **Data Encryption Key / DEK**) by calling e.g. `GenerateDataKey` or
 //! `Decrypt` on the underlying KMS service.  The DEK is then held in a
 //! [`zeroize::Zeroizing`] buffer for the lifetime of the `KmsKey`.
 //!
-//! All subsequent `sign` calls use [`local_hmac`] — a plain `HMAC-SHA256`
+//! All subsequent `sign` calls use `local_hmac` — a plain `HMAC-SHA256`
 //! computation with the cached DEK — incurring no KMS round-trip.
 //!
 //! ## Security properties
@@ -33,7 +33,7 @@ type HmacSha256 = Hmac<Sha256>;
 
 /// Compute HMAC-SHA256 of `msg` using `key`.
 ///
-/// `key` must be exactly [`HMAC_LEN`] (32) bytes.
+/// `key` must be exactly `HMAC_LEN` (32) bytes.
 ///
 /// The output is byte-for-byte identical to what AWS KMS `GenerateMac`
 /// (`HMAC_SHA_256`) would return for the same key and message, provided

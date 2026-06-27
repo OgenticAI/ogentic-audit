@@ -68,8 +68,8 @@ pub trait KmsProvider: Send + Sync + std::fmt::Debug {
 
     /// Obtain the raw HMAC key bytes for envelope-encrypted local-HMAC mode.
     ///
-    /// Called once per [`crate::KmsKey`] instance on the first [`crate::KmsKey::sign`]
-    /// call when the key was constructed with [`crate::KmsKey::with_envelope_mode`].
+    /// Called once per [`crate::KmsKey`] instance on the first `sign()` call
+    /// when the key was constructed with [`crate::KmsKey::with_envelope_mode`].
     /// The returned bytes are immediately wrapped in a `zeroize::Zeroizing` buffer
     /// and held for the lifetime of the `KmsKey`.
     ///

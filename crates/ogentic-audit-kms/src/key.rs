@@ -96,7 +96,7 @@ impl<P: KmsProvider> KmsKey<P> {
     /// Construct a `KmsKey` using envelope-encrypted local-HMAC mode (v0.2).
     ///
     /// The provider's [`KmsProvider::envelope_unwrap`] is called lazily on
-    /// the first [`KeyHandle::sign`] invocation to obtain the raw HMAC DEK.
+    /// the first `sign()` invocation to obtain the raw HMAC DEK.
     /// The DEK is then cached in a [`zeroize::Zeroizing`] buffer for the
     /// lifetime of this `KmsKey` and zeroed on drop.
     ///
