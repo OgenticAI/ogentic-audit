@@ -186,13 +186,65 @@ HSM-residency for their signing key.
 
 ## GenerateMac vs envelope-encrypted mode
 
-| Mode | v0.1 status | Key residency | Per-call latency | Offline writes |
-|------|-------------|---------------|------------------|----------------|
-| `GenerateMac` (default) | Stable | HSM | ~1–5 ms (TLS RTT) | No |
-| Envelope-encrypted | Reserved (OGE-603, v0.2) | Local (KEK in HSM) | ~0 ms after first call | Yes (cached DEK) |
+| Mode | Status | Key residency | Per-call latency | Offline writes |
+|------|--------|---------------|------------------|----------------|
+| `GenerateMac` (default) | Stable (v0.1+) | HSM | ~1–5 ms (TLS RTT) | No |
+| Envelope-encrypted | Stable (v0.2+) | Local (KEK in HSM) | ~0 ms after first call | Yes (cached DEK) |
 
-Use `GenerateMac` for v0.1.  Envelope mode is reserved via
-`KmsKey::with_envelope_mode` but returns an error until v0.2 ships.
+### When to use envelope mode
+
+Use `KmsKey::with_envelope_mode(provider)` when:
+
+- **Throughput** — you are emitting thousands of audit records per second and
+  the 1–5 ms KMS round-trip per record is unacceptable.  Envelope mode pays
+  the KMS round-trip once per `KmsKey` lifetime (one `GenerateDataKey` call
+  at first `sign()`), then all subsequent signs are local HMAC-SHA256
+  (~microseconds).
+- **Offline or intermittent KMS connectivity** — after the first `sign()`,
+  the cached DEK can sign records even if KMS temporarily becomes unreachable.
+  (The next process restart will require KMS to be up for the initial
+  `GenerateDataKey`.)
+
+Do **not** use envelope mode when:
+
+- **Strict HSM-residency is required** (regulatory audit, court-defensibility
+  posture that requires every signature to be logged in CloudTrail) — use
+  `KmsKey::new` (GenerateMac mode) instead.  Every `GenerateMac` call
+  produces a CloudTrail event; local HMAC does not.
+- **The KMS key is an HMAC key** — AWS HMAC KMS keys do not support
+  `GenerateDataKey`.  You must use a symmetric CMK (AES-256) as the KEK for
+  envelope mode.
+
+### Envelope mode quickstart
+
+```rust,no_run
+use ogentic_audit_kms::{AwsKmsProvider, KmsKey};
+use ogentic_audit_core::Writer;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Use a symmetric CMK ARN (not an HMAC key) for envelope mode.
+    let arn = std::env::var("AUDIT_CMK_ARN")?;
+    let provider = AwsKmsProvider::from_arn(&arn).await?;
+    let key = KmsKey::with_envelope_mode(provider)?;
+
+    // First sign() triggers one GenerateDataKey call; subsequent signs are local.
+    let session_id = [0u8; 16];
+    let mut writer = Writer::open("./audit-logs", Box::new(key), session_id)?;
+    // ...
+    Ok(())
+}
+```
+
+### Security trade-offs
+
+| Property | GenerateMac | Envelope |
+|----------|-------------|---------|
+| Key material in process memory | Never | Yes (zeroized on drop) |
+| CloudTrail entry per sign | Yes | No (only at DEK generation) |
+| Survives KMS outage after init | No | Yes |
+| Requires HMAC KMS key | Yes | No (symmetric CMK) |
+| Court-defensibility | Highest | High (KEK is HSM-resident) |
 
 ## Error taxonomy
 

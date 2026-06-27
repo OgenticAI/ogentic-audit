@@ -36,9 +36,12 @@
 //! `docs/adr/0002-server-side-kms-key-sourcing.md` for the rationale.
 
 use std::fmt;
+use std::sync::OnceLock;
 
-use ogentic_audit_core::{HmacBytes, KeyHandle, KeyId, KEY_ID_LEN};
+use ogentic_audit_core::{HmacBytes, KeyHandle, KeyId, KEY_ID_LEN, HMAC_LEN};
+use zeroize::Zeroizing;
 
+use crate::envelope::local_hmac;
 use crate::error::KmsError;
 use crate::provider::KmsProvider;
 
@@ -47,26 +50,32 @@ use crate::provider::KmsProvider;
 enum Mode {
     /// Direct `GenerateMac` call (v0.1 default).
     Generate,
-    /// Envelope-encrypted local-HMAC (reserved; deferred to OGE-603 / v0.2).
+    /// Envelope-encrypted local-HMAC (OGE-603 / v0.2).
     ///
-    /// The variant is never constructed in v0.1; it exists to lock the API
-    /// surface so v0.2 can add the implementation without a breaking change.
-    #[allow(dead_code)]
+    /// On the first `sign()` call the provider's `envelope_unwrap()` is
+    /// invoked to obtain the raw HMAC key bytes; they are then cached in
+    /// `KmsKey::envelope_key` for the lifetime of this instance.
     Envelope,
 }
 
 /// A [`KeyHandle`] backed by a [`KmsProvider`].
 ///
-/// Construct with [`KmsKey::new`]; [`KmsKey::with_envelope_mode`] reserves
-/// the API surface for v0.2 but returns an error until then.
+/// Construct with [`KmsKey::new`] for direct `GenerateMac` mode (HSM-resident
+/// key material, one KMS call per `sign`) or with
+/// [`KmsKey::with_envelope_mode`] for envelope-encrypted local-HMAC mode
+/// (one KMS `GenerateDataKey`/`Decrypt` call on first `sign`, then local
+/// HMAC for all subsequent calls).
 ///
 /// `Display` and `Debug` are redacted: neither the ARN nor the underlying
 /// MAC bytes appear in formatted output.
 pub struct KmsKey<P: KmsProvider> {
     provider: P,
     key_id: KeyId,
-    #[allow(dead_code)] // Envelope mode is deferred to OGE-603.
     mode: Mode,
+    /// Cached DEK for envelope mode.  Empty in `Generate` mode.
+    /// Initialised lazily on the first `sign()` call via `OnceLock`.
+    /// `Zeroizing` zeroes the buffer on drop.
+    envelope_key: OnceLock<Zeroizing<[u8; HMAC_LEN]>>,
 }
 
 impl<P: KmsProvider> KmsKey<P> {
@@ -80,18 +89,35 @@ impl<P: KmsProvider> KmsKey<P> {
             provider,
             key_id,
             mode: Mode::Generate,
+            envelope_key: OnceLock::new(),
         })
     }
 
-    /// Envelope-mode constructor.  Behaviour deferred to OGE-603 (v0.2).
+    /// Construct a `KmsKey` using envelope-encrypted local-HMAC mode (v0.2).
     ///
-    /// The API surface is locked here for v0.1; calling this constructor
-    /// returns `Err(KmsError::Config(...))` until the v0.2 implementation
-    /// ships.
-    pub fn with_envelope_mode(_provider: P) -> Result<Self, KmsError> {
-        Err(KmsError::Config(
-            "envelope mode not yet implemented; see OGE-603",
-        ))
+    /// The provider's [`KmsProvider::envelope_unwrap`] is called lazily on
+    /// the first [`KeyHandle::sign`] invocation to obtain the raw HMAC DEK.
+    /// The DEK is then cached in a [`zeroize::Zeroizing`] buffer for the
+    /// lifetime of this `KmsKey` and zeroed on drop.
+    ///
+    /// ## Trade-offs vs. `GenerateMac` mode
+    ///
+    /// | Property | GenerateMac | Envelope |
+    /// |----------|-------------|---------|
+    /// | Key residency | HSM (never extracted) | Local (in-process) |
+    /// | Per-call latency | ~1–5 ms (TLS RTT) | ~0 ms after first call |
+    /// | KMS calls per sign | 1 | 1 (init only) |
+    ///
+    /// `key_id` is derived identically to `GenerateMac` mode — both use
+    /// `BLAKE3-256("ogentic-audit-kms/v1\n" || provider_name || "\n" || descriptor)`.
+    pub fn with_envelope_mode(provider: P) -> Result<Self, KmsError> {
+        let key_id = derive_key_id(provider.key_descriptor(), provider.provider_name());
+        Ok(Self {
+            provider,
+            key_id,
+            mode: Mode::Envelope,
+            envelope_key: OnceLock::new(),
+        })
     }
 
     /// First 8 bytes of the `key_id` as lowercase hex, for use in
@@ -103,62 +129,91 @@ impl<P: KmsProvider> KmsKey<P> {
 }
 
 impl<P: KmsProvider> KeyHandle for KmsKey<P> {
-    /// Sign `data` using the KMS-resident key.
+    /// Sign `data`.
     ///
-    /// Internally this runs `KmsProvider::sign` on a blocking tokio
-    /// runtime.  If the provider returns an error, this method panics with
-    /// a descriptive message.  See the module doc for the design rationale.
+    /// - **`Generate` mode** — delegates to `KmsProvider::sign`, which calls
+    ///   KMS `GenerateMac` for every invocation.
+    /// - **`Envelope` mode** — lazily initialises the DEK via
+    ///   `KmsProvider::envelope_unwrap` on the first call (one KMS round-trip),
+    ///   then computes HMAC-SHA256 locally for all subsequent calls.
     ///
-    /// ## Runtime compatibility
+    /// If any KMS call returns an error, this method **panics**.  See the
+    /// module doc and `docs/integrations/server-side-kms.md` §"v0.1 panic
+    /// posture" for the design rationale.
     ///
-    /// - **Multi-thread runtime** — uses `tokio::task::block_in_place` so
-    ///   the async KMS call can run on the current thread without starving
-    ///   the executor.
-    /// - **Current-thread runtime** (e.g. `#[tokio::test]`) — uses
-    ///   `std::thread::scope` to spawn a scoped thread that owns a fresh
-    ///   `current_thread` tokio runtime.  `std::thread::scope` ensures the
-    ///   thread cannot outlive this stack frame, so no `unsafe` is required.
-    /// - **No runtime** — creates a fresh `current_thread` runtime for the
-    ///   duration of the call.
+    /// ## Runtime compatibility (both modes)
+    ///
+    /// - **Multi-thread runtime** — `tokio::task::block_in_place`.
+    /// - **Current-thread runtime** — `std::thread::scope` with a dedicated
+    ///   `current_thread` runtime (no `unsafe` needed).
+    /// - **No runtime** — fresh `current_thread` runtime for the duration.
     fn sign(&self, data: &[u8]) -> HmacBytes {
+        match self.mode {
+            Mode::Generate => self.sign_via_kms(data),
+            Mode::Envelope => {
+                let key = self.envelope_key.get_or_init(|| {
+                    let raw = self.unwrap_envelope_key();
+                    Zeroizing::new(raw)
+                });
+                local_hmac(key, data)
+            },
+        }
+    }
+
+    fn key_id(&self) -> KeyId {
+        self.key_id
+    }
+}
+
+impl<P: KmsProvider> KmsKey<P> {
+    /// Blocking shim for `KmsProvider::sign` (GenerateMac mode).
+    fn sign_via_kms(&self, data: &[u8]) -> HmacBytes {
+        let result = self.block_on_async(self.provider.sign(data));
+        result
+            .unwrap_or_else(|e| panic!("kms: sign failed — KMS unavailable or misconfigured: {e}"))
+    }
+
+    /// Blocking shim for `KmsProvider::envelope_unwrap` (Envelope mode).
+    fn unwrap_envelope_key(&self) -> [u8; HMAC_LEN] {
+        let result = self.block_on_async(self.provider.envelope_unwrap());
+        result.unwrap_or_else(|e| {
+            panic!("kms: envelope_unwrap failed — KMS unavailable or misconfigured: {e}")
+        })
+    }
+
+    /// Run an async future to completion using a blocking shim that is
+    /// compatible with all tokio runtime flavours.
+    ///
+    /// This is the same shim used for both `sign_via_kms` and
+    /// `unwrap_envelope_key`; extracted to avoid duplication.
+    fn block_on_async<F, T>(&self, fut: F) -> T
+    where
+        F: std::future::Future<Output = T> + Send,
+        T: Send,
+    {
         use tokio::runtime::{Handle, RuntimeFlavor};
 
-        let mac = match Handle::try_current() {
-            Ok(handle) => {
-                match handle.runtime_flavor() {
-                    RuntimeFlavor::MultiThread => {
-                        tokio::task::block_in_place(|| handle.block_on(self.provider.sign(data)))
-                    },
-                    // CurrentThread and other flavors cannot use block_in_place.
-                    // Spawn a scoped thread with its own single-thread runtime
-                    // so the KMS future can run without blocking the executor.
-                    _ => {
-                        let provider = &self.provider;
-                        std::thread::scope(|s| {
-                            s.spawn(|| {
-                                tokio::runtime::Builder::new_current_thread()
-                                    .enable_all()
-                                    .build()
-                                    .expect("kms: failed to build scoped signing runtime")
-                                    .block_on(provider.sign(data))
-                            })
-                            .join()
-                            .expect("kms: scoped signing thread panicked")
-                        })
-                    },
-                }
+        match Handle::try_current() {
+            Ok(handle) => match handle.runtime_flavor() {
+                RuntimeFlavor::MultiThread => tokio::task::block_in_place(|| handle.block_on(fut)),
+                _ => std::thread::scope(|s| {
+                    s.spawn(|| {
+                        tokio::runtime::Builder::new_current_thread()
+                            .enable_all()
+                            .build()
+                            .expect("kms: failed to build scoped runtime")
+                            .block_on(fut)
+                    })
+                    .join()
+                    .expect("kms: scoped thread panicked")
+                }),
             },
             Err(_) => tokio::runtime::Builder::new_current_thread()
                 .enable_all()
                 .build()
                 .expect("kms: failed to build current-thread runtime")
-                .block_on(self.provider.sign(data)),
-        };
-        mac.unwrap_or_else(|e| panic!("kms: sign failed — KMS unavailable or misconfigured: {e}"))
-    }
-
-    fn key_id(&self) -> KeyId {
-        self.key_id
+                .block_on(fut),
+        }
     }
 }
 
