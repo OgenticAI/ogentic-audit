@@ -221,9 +221,9 @@ async fn envelope_org_isolation_wrong_region() {
         | KmsError::AccessDenied
         | KmsError::ServiceUnavailable
         | KmsError::Internal(_) => {},
-        other => panic!(
-            "expected structured KmsError for cross-region ARN (envelope); got {other:?}"
-        ),
+        other => {
+            panic!("expected structured KmsError for cross-region ARN (envelope); got {other:?}")
+        },
     }
 }
 
@@ -291,8 +291,8 @@ async fn envelope_org_isolation_missing_creds() {
         | KmsError::ServiceUnavailable
         | KmsError::Config(_)
         | KmsError::Internal(_) => {},
-        other => panic!(
-            "expected a structured KmsError for missing creds (envelope); got {other:?}"
-        ),
+        other => {
+            panic!("expected a structured KmsError for missing creds (envelope); got {other:?}")
+        },
     }
 }

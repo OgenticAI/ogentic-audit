@@ -139,9 +139,9 @@ impl KmsProvider for AwsKmsProvider {
         // `plaintext` is a `SensitiveBlob` — the AWS SDK zeroes it on drop.
         // We copy out the bytes before that happens and wrap them in our own
         // Zeroizing buffer immediately after.
-        let plaintext = out
-            .plaintext
-            .ok_or(KmsError::Internal("aws-sdk: GenerateDataKey returned no plaintext"))?;
+        let plaintext = out.plaintext.ok_or(KmsError::Internal(
+            "aws-sdk: GenerateDataKey returned no plaintext",
+        ))?;
         let bytes = plaintext.as_ref();
 
         if bytes.len() != HMAC_LEN {

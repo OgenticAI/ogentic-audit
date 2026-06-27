@@ -109,7 +109,11 @@ async fn envelope_mode_sign_is_deterministic() {
     let kms_key = KmsKey::with_envelope_mode(FakeKmsProvider { key: key_bytes }).unwrap();
     let sig1 = kms_key.sign(b"same message");
     let sig2 = kms_key.sign(b"same message");
-    assert_eq!(sig1.as_bytes(), sig2.as_bytes(), "envelope sign must be deterministic");
+    assert_eq!(
+        sig1.as_bytes(),
+        sig2.as_bytes(),
+        "envelope sign must be deterministic"
+    );
 
     let sig3 = kms_key.sign(b"different message");
     assert_ne!(

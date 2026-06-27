@@ -38,7 +38,7 @@
 use std::fmt;
 use std::sync::OnceLock;
 
-use ogentic_audit_core::{HmacBytes, KeyHandle, KeyId, KEY_ID_LEN, HMAC_LEN};
+use ogentic_audit_core::{HmacBytes, KeyHandle, KeyId, HMAC_LEN, KEY_ID_LEN};
 use zeroize::Zeroizing;
 
 use crate::envelope::local_hmac;
