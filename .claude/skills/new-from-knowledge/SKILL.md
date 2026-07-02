@@ -78,7 +78,7 @@ Default labels on every created ticket:
 - `from-knowledge-scan`
 - `needs-triage` (so the operator can re-prioritise in the Linear UI)
 
-Default state: `Backlog`. Default assignee: unassigned. Estimate: unset.
+Default state: `Backlog`. Default assignee: **the operator (David)** — never unassigned (see LINEAR-INTEGRATION.md §2a, OGE-1290). Estimate: unset.
 
 ## What this skill is NOT
 

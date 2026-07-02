@@ -111,7 +111,7 @@ Same shape as the Validator. Critical findings = sub-issues + blocking label.
 
 **Write:**
 - `factory.comment(<TICKET-ID>, body=<SECURITY REVIEW REPORT>)`
-- If Critical: `linear.save_issue(<TICKET-ID>, addLabels=["security-blocked"])` and, for each deferred Critical, `linear.save_issue(project=<same>, parentId=<TICKET-ID>, title=<short>, description=<detail with file:line and attack scenario>, labels=["from-security"])`.
+- If Critical: `linear.save_issue(<TICKET-ID>, addLabels=["security-blocked"])` and, for each deferred Critical, `linear.save_issue(project=<same>, parentId=<TICKET-ID>, title=<short>, description=<detail with file:line and attack scenario>, assignee=<operator/David — never null; §2a>, labels=["from-security"])`.
 - If Clean: `linear.save_issue(<TICKET-ID>, removeLabels=["security-blocked"])` (if previously added).
 
 See `.claude/LINEAR-INTEGRATION.md` §4, §6, §7.

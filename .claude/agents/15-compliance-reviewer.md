@@ -109,7 +109,7 @@ Same Linear pattern as the Security Reviewer.
 
 **Write:**
 - `factory.comment(<TICKET-ID>, body=<COMPLIANCE REVIEW REPORT>)`
-- If Critical: `linear.save_issue(<TICKET-ID>, addLabels=["compliance-blocked"])` and, per deferred Critical, `linear.save_issue(project=<same>, parentId=<TICKET-ID>, title=<short>, description=<finding with privilege/consent/audit framing>, labels=["from-compliance"])`.
+- If Critical: `linear.save_issue(<TICKET-ID>, addLabels=["compliance-blocked"])` and, per deferred Critical, `linear.save_issue(project=<same>, parentId=<TICKET-ID>, title=<short>, description=<finding with privilege/consent/audit framing>, assignee=<operator/David — never null; §2a>, labels=["from-compliance"])`.
 - If Clean: `linear.save_issue(<TICKET-ID>, removeLabels=["compliance-blocked"])` (if previously added).
 
 The Therapy and Private Credit workflows in OgenticAI rely on you specifically. Be thorough; the regulator-readiness checklist exists for a reason.
