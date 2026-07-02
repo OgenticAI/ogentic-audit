@@ -38,6 +38,17 @@ If a tool is missing from your local install, the orchestrator should report whi
 
 ---
 
+## 2a. Assignee is MANDATORY on every issue an agent creates
+
+**Any issue an agent creates via `linear.save_issue` MUST have an assignee — never `null`.** Unowned agent tickets pile up invisibly: an org-wide audit (OGE-1290, 2026-07-02) found 374 unassigned issues in OGE, 173 of them agent-created (121 from the project-planner seed backlog alone). Resolve the assignee in this order:
+
+1. **Self** — if the agent authenticates as its own Linear user (the factory bot is `factory-bot@ogenticai.com`, id `d3e2dfa8-7f3d-4db7-ad33-a3ad0b2d4ffd`), assign the created issue to that user.
+2. **The operator** — otherwise assign the operator (**David** by default; `david@ogenticai.com`). An operator may direct issues to **Dennis** or **Craig**; never assign any other human, and never leave it unassigned (see §12).
+
+This is a hard rule for **every** created issue, not just the intake ticket: the project-planner seed backlog, finding sub-issues (Validator / Security / Compliance), decomposition sub-issues (backlog-groomer), and decision-derived issues (new-from-knowledge) all fall under it. `assignee` is a required field on any `save_issue` **create** — if you can't resolve a specific person, default to the operator.
+
+---
+
 ## 3. The state machine
 
 Every Linear ticket touched by the factory moves through this canonical state sequence. The state names below are the OgenticAI team's (OGE) state names. If a state doesn't exist, the closest equivalent is used and the orchestrator logs which state mapping was applied.
