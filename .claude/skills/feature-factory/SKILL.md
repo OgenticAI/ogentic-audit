@@ -5,7 +5,7 @@ description: Master orchestrator for the OgenticAI Software Factory. Runs the fu
 
 # Feature Factory
 
-You are orchestrating the OgenticAI Software Factory. Fifteen specialised agents. Three human checkpoints. One coordinated pipeline. **Linear is the source of truth** — every run is grounded in a Linear ticket, and every artefact flows back to that ticket.
+You are orchestrating the OgenticAI Software Factory. Twenty specialised agents (plus a scheduled backlog-groomer). Three human checkpoints (plus a design gate for UI work). One coordinated pipeline. **Linear is the source of truth** — every run is grounded in a Linear ticket, and every artefact flows back to that ticket.
 
 ## §0 — Pre-flight (always run first)
 
@@ -32,6 +32,7 @@ When the env var `FACTORY_HEADLESS=true` is set (the multi-repo auto-loop driver
 | --- | --- |
 | **Checkpoint 1 — story approval** | Linear ticket must have label `auto-eligible` AND `description.length >= 200` AND contain ≥1 acceptance criterion (a line matching `Acceptance criteria` / `AC:` / a numbered `1.` list under that header). |
 | **Checkpoint 2 — brief approval** | spec-writer's brief must (a) pass the project's `gate_lint` + `gate_typecheck` from `factories.yml`, and (b) include both a `Files` section and an `Acceptance criteria` section. Heuristic-graded. |
+| **Checkpoint 2.5 — design approval** (UI tickets only) | No human eyeballing of mockups. `design-architect` still writes the dossier under `design/<OGE-xxx>/` and proceeds; the fidelity loop is enforced *after* the build by **design-fidelity-checker** (§2 step 17), which renders the implementation and diffs it against that dossier + the Claude Design export. A Critical fidelity mismatch escalates like any reviewer (`design-fidelity-blocked` → `needs-human-review` + `FACTORY_BLOCKED`). Non-UI tickets skip this row entirely. |
 | **Checkpoint 3 — PR approval** | **CI green + branch protection.** PR opens with `gh pr merge --auto --squash`; auto-merge fires on green. If CI red after 3 retries, escalate. |
 
 ### Escalation pattern (used by all three gates)
@@ -126,34 +127,131 @@ Linear-grounded, with state transitions and labels noted next to each step.
 ⏸ CHECKPOINT 2
      - operator approves
         ↓
-4a. backend-builder-python      (if brief lists Python work)
-4b. backend-builder-typescript  (if brief lists TS backend work)
-14. rust-builder                (if brief lists Rust work — Tauri shells, OSS lib cores)
+16. design-architect            (if brief lists user-facing UI)
+     - reads approved brief + tokens (packages/config-tailwind) + packages/ui + ADR-0003 + PRD
+     - generates Claude Design mockups + component map; writes them under design/<OGE-xxx>/
+     - renders them (Claude Preview / screenshots) so review is possible
+     - posts design dossier comment; adds label "needs-design-approval"
+        ↓
+⏸ CHECKPOINT 2.5 — operator approves design (skipped for non-UI tickets)
+     - operator approves; remove "needs-design-approval"; pass dossier + mockup paths to frontend-builder
+     - HEADLESS: no wait; the dossier is the fidelity contract that design-fidelity-checker
+       (step 17) enforces against the built UI after frontend-builder — see §0.5
+        ↓
+4a/4b/14. backend builders — FAN-OUT via Workflow.parallel() when ≥2 stacks touched
+
+     The spec's "Stacks touched" line (or an equivalent signal) determines
+     which backend builders to invoke. The orchestrator MUST inspect this
+     before dispatching.
+
+     Single-stack spec (one of python / ts / rust):
+       Invoke just the one relevant builder. No parallel() ceremony.
+
+     Multi-stack spec (any combination of python + ts + rust):
+       Dispatch the relevant builders concurrently:
+         ```
+         results = Workflow.parallel([
+           *([lambda: invoke("backend-builder-python",     context=python_slice)]
+             if "python" in stacks_touched else []),
+           *([lambda: invoke("backend-builder-typescript", context=ts_slice)]
+             if "ts" in stacks_touched else []),
+           *([lambda: invoke("rust-builder",              context=rust_slice)]
+             if "rust" in stacks_touched else []),
+         ])
+         ```
+       Each builder receives its own slice of the spec (the section of the
+       brief that pertains to its stack). Each posts its own API summary
+       comment. The first builder to be dispatched adds label "building" and
+       removes "needs-brief-approval" (idempotent — if both fire near-
+       simultaneously, last-write-wins on the label, which is harmless).
+
+     Overlap / file-scope guard (Tauri repos):
+       rust-builder and backend-builder-python may both write into crates/
+       in a Tauri repo (e.g. Sotto Desktop). Before dispatching the parallel
+       fan-out, the orchestrator MUST check whether two builders would target
+       the same path. If they would, fall back to serial with python first:
+         1. backend-builder-python (writes its crates/ output)
+         2. backend-builder-typescript (parallel is safe if no overlap)
+         3. rust-builder (reads python's output before writing its own crates/)
+       Call out the fall-back in the ticket comment:
+         "[factory:orchestrator] Falling back to serial builder order — rust
+          and python both write crates/; parallel fan-out skipped to prevent
+          path conflicts."
+
 5.  frontend-builder            (if brief lists frontend work)
-     - each builder posts its API summary as a comment
-     - first builder adds label "building", removes "needs-brief-approval"
+     - ALWAYS runs AFTER all backend builders complete (UI depends on the
+       API surface published by the backend API summary comments)
+     - posts its own API summary as a comment
+     - does NOT run in the backend parallel() fan-out
+        ↓
+17. design-fidelity-checker     (if the ticket has user-facing UI)
+     - renders the IMPLEMENTED UI (Claude Preview MCP) and diffs it against the
+       design-architect dossier (design/<OGE-xxx>/) + the Claude Design export:
+       verbatim copy, real (non-invented) data, tokens/components, all four states
+     - on Critical fidelity mismatch: label "design-fidelity-blocked", sub-issues
+       "from-design-fidelity"; loops back to frontend-builder with the deltas
+     - this is the enforcement half of Checkpoint 2.5; skipped for non-UI tickets
         ↓
 6. test-verifier
      - writes acceptance tests against the story's checkboxes
      - posts pass/fail per criterion; updates the description's checkboxes accordingly
+     - REJECTS false-green tests (existence-only / assertion-free /
+       config-not-behaviour / boundary-mock) — those criteria stay unchecked
      - on fail: routes to the right builder via a comment; loops
         ↓
 8. ai-eval-engineer  (only if feature touches LLMs)
      - posts scorecard
         ↓
-7. validator
-     - posts findings comment
-     - on Critical: opens sub-issues (label "from-validator"), adds label "validator-blocked"
-     - on Clean: removes label
-        ↺ loop back to relevant builder if Critical
-        ↓
-9. security-reviewer
-     - same pattern; labels "security-blocked" / "from-security"
-        ↺ loop back if Critical
-        ↓
-15. compliance-reviewer  (if repo imports Shield/Audit, or is Therapy/Private-Credit/Contractor)
-     - same pattern; labels "compliance-blocked" / "from-compliance"
-        ↺ loop back if Critical
+7/9/18/19/15. reviewer panel — FAN-OUT via Workflow.parallel()
+     Reviewers dispatched concurrently; each gets the same context
+     (story + spec + diff). Results awaited, then synthesized into one
+     severity-grouped report before the human checkpoint.
+
+     Reviewers in the panel:
+       7.  validator          — always invoked
+       9.  security-reviewer  — always invoked
+       18. deploy-fitness-reviewer — always invoked; SELF-SKIPS (reports N/A) if
+                                 the repo is not a serverless/edge deploy target.
+                                 Safe to dispatch unconditionally.
+       19. monorepo-consistency-reviewer — always invoked; SELF-SKIPS (reports
+                                 N/A) if the repo is not an apps/* + packages/*
+                                 monorepo. Safe to dispatch unconditionally.
+       15. compliance-reviewer — only if repo imports ogentic-shield or
+                                 ogentic-audit (preserve existing conditional;
+                                 do NOT make compliance unconditional)
+
+     Fan-out instruction (orchestrator MUST follow):
+       ```
+       findings = Workflow.parallel([
+         lambda: invoke("validator",                    context=review_context),
+         lambda: invoke("security-reviewer",            context=review_context),
+         lambda: invoke("deploy-fitness-reviewer",      context=review_context),
+         lambda: invoke("monorepo-consistency-reviewer", context=review_context),
+         # compliance is conditional:
+         *([lambda: invoke("compliance-reviewer", context=review_context)]
+           if imports_shield_or_audit else []),
+       ])
+       ```
+       deploy-fitness and monorepo-consistency are dispatched every run — they
+       decide their own relevance and return N/A cheaply when they don't apply,
+       so the orchestrator needs no conditional for them (unlike compliance).
+       Then synthesize: collect all findings, group by severity (Critical →
+       High → Medium → Low → Informational), and post one combined
+       "[factory:reviewer-panel] Review complete" comment on the ticket
+       before proceeding to the human checkpoint.
+
+     Loop-back rule: if any reviewer returns Critical findings, route to the
+     specific builder named in the finding's file:line, re-run the full panel
+     after the fix (another parallel() fan-out), up to two consecutive
+     all-Critical rounds before escalating.
+
+     Labels:
+       - Critical from validator   → "validator-blocked"   + sub-issue "from-validator"
+       - Critical from security    → "security-blocked"    + sub-issue "from-security"
+       - Critical from deploy-fit   → "deploy-blocked"      + sub-issue "from-deploy-fitness"
+       - Critical from consistency  → "consistency-blocked" + sub-issue "from-consistency"
+       - Critical from compliance   → "compliance-blocked"  + sub-issue "from-compliance"
+       - All Clean                 → remove those labels if present
         ↓
        PR opens (built off the Linear branch name)
        Linear auto-moves state → "In Review"
@@ -186,12 +284,12 @@ If the Spec Writer's brief lists changes across more than one repo (per `.claude
 
 ## 4. Orchestration rules
 
-- **One agent active at a time** on any given path. Parallel only inside cross-repo fan-out.
+- **One agent active at a time** on any given path, except for the two sanctioned parallel() fan-outs: the reviewer panel (§2 step 7/9/18/19/15) and the multi-stack builder fan-out (§2 steps 4a/4b/14). Both are explicit Workflow.parallel() calls — no other ad-hoc parallelism. (design-fidelity-checker, step 17, runs serially before test-verifier — it needs the rendered UI and gates the acceptance tests, so it is not part of the panel.)
 - **Every agent gets the ticket ID** as its first input, alongside any artefacts it needs. Never paste the whole conversation.
 - **Every agent ends with a `[factory:<agent>]` comment on the ticket** in the standard format (see `LINEAR-INTEGRATION.md` §2/§4). The agent **returns the comment body**; **the orchestrator posts it as the factory bot** via `.claude/scripts/factory-linear-comment.sh --issue <OGE-ID> --body <markdown>` (`LINEAR_FACTORY_TOKEN`) — **never `linear.save_comment`** (authors as the human operator). Same for the §5 final telemetry comment.
 - **Every agent owns its state transitions and labels.** No agent flips a state it does not own. See LINEAR-INTEGRATION §3.
 - **At each checkpoint**, present the artefact in chat AND on the ticket. Don't auto-advance. The operator's approval can be in chat ("/approved") or on the ticket (removing the `needs-X-approval` label).
-- **Validator / Security / Compliance Reviewer can loop builders.** Critical findings route to the specific agent named in the finding's `file:line`. Re-run the reviewer after the fix.
+- **Any reviewer can loop builders.** Validator, security-reviewer, compliance-reviewer, design-fidelity-checker, deploy-fitness-reviewer, and monorepo-consistency-reviewer all route Critical findings to the specific agent named in the finding's `file:line` (fidelity findings → frontend-builder). Re-run the reviewer after the fix. The conditional reviewers self-skip when they don't apply (deploy-fitness on non-serverless repos, monorepo-consistency on single-app repos, design-fidelity on non-UI tickets) — they report `N/A` and never block.
 - **Halt conditions**:
   - Operator disapproval at any checkpoint
   - An agent unable to proceed without an answer (post the question as a ticket comment; halt)
