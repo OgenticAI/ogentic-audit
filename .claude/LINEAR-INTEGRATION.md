@@ -36,6 +36,22 @@ The kit refers to Linear tools by logical name. The actual MCP namespace depends
 
 If a tool is missing from your local install, the orchestrator should report which agents will degrade and ask whether to proceed in **degraded mode** (no Linear writes, just reads) or **halt**.
 
+> **Headless mode has NO MCP connector.** The Linear MCP tools above are interactively authenticated, so they are typically **absent in the auto-loop / cron driver**. Headless agents MUST NOT fall back to hand-rolling an HTTP call with the token pasted in — that leaks the secret (see §15). Use the kit's token-less helpers instead, which read `LINEAR_FACTORY_TOKEN` from the environment and send it only in the Authorization header:
+> - **reads / arbitrary GraphQL** → `.claude/scripts/factory-linear-query.sh --query - --vars '{...}'` (query on stdin or `--query '<gql>'`)
+> - **`[factory:*]` comments** → `.claude/scripts/factory-linear-comment.sh --issue OGE-NNN --body -`
+> These map to `linear.get_issue` / `linear.list_*` (query helper) and `factory.comment` (comment helper).
+
+---
+
+## 2a. Assignee is MANDATORY on every issue an agent creates
+
+**Any issue an agent creates via `linear.save_issue` MUST have an assignee — never `null`.** Unowned agent tickets pile up invisibly: an org-wide audit (OGE-1290, 2026-07-02) found 374 unassigned issues in OGE, 173 of them agent-created (121 from the project-planner seed backlog alone). Resolve the assignee in this order:
+
+1. **Self** — if the agent authenticates as its own Linear user (the factory bot is `factory-bot@ogenticai.com`, id `d3e2dfa8-7f3d-4db7-ad33-a3ad0b2d4ffd`), assign the created issue to that user.
+2. **The operator** — otherwise assign the operator (**David** by default; `david@ogenticai.com`). An operator may direct issues to **Dennis** or **Craig**; never assign any other human, and never leave it unassigned (see §12).
+
+This is a hard rule for **every** created issue, not just the intake ticket: the project-planner seed backlog, finding sub-issues (Validator / Security / Compliance), decomposition sub-issues (backlog-groomer), and decision-derived issues (new-from-knowledge) all fall under it. `assignee` is a required field on any `save_issue` **create** — if you can't resolve a specific person, default to the operator.
+
 ---
 
 ## 3. The state machine
@@ -383,5 +399,20 @@ Linear attributes every comment, state change, and label to whoever the active c
 - **Acceptable interim:** ticket creation + state moves may run through the human connector; only comments are gated.
 
 Until `LINEAR_FACTORY_TOKEN` is set, the factory MUST NOT post `[factory:*]` comments as a human — it buffers them to chat (degraded-mode, §9) and replays them once the token is live.
+
+---
+
+## 15. Secret handling — never put a token on argv
+
+`LINEAR_FACTORY_TOKEN` (and `ANTHROPIC_API_KEY`, `GH_TOKEN`, any `*_TOKEN`/key) is present in the headless agent's **environment** so the sanctioned helpers can use it. Process **arguments are world-readable** on the host (`ps -ef`, `ps eww`), so a secret that lands on a command line — directly, in a heredoc literal, or interpolated into an inline script — is exposed to every local process for the lifetime of that process. This is exactly how a factory run leaked the bot token once (an agent wrote inline python with `key = "lin_api_…"` pasted in).
+
+**Rules (MANDATORY for every agent + the orchestrator):**
+
+1. **Never** write a token as a literal in code, a heredoc, a config/temp file, or any argv element; **never** echo or log it.
+2. For all Linear access use the kit helpers — `factory-linear-query.sh` (reads / arbitrary GraphQL) and `factory-linear-comment.sh` (comments). Both read the token from the environment and pass it **only in the HTTP `Authorization` header** (via `urllib`), so it never touches argv.
+3. If you genuinely must call an API without a helper: read the token from the environment **at runtime** (`os.environ["LINEAR_FACTORY_TOKEN"]`) inside the program and put it in a request header. Do **not** pass it to `curl -H "Authorization: …"` (that header value is visible in `ps`); use a language HTTP client (urllib/requests/fetch) whose headers never appear on argv, or `curl -H @<(…)` / `--config <fd>` so the value stays off the command line.
+4. The same rule covers `gh` (use `GH_TOKEN` from the env; never `--with-token` on a visible command line with the literal) and any model/provider key.
+
+`setup-check` should treat a token literal found in a script or in recent process output as a hard finding.
 
 — end —

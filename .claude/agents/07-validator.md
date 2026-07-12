@@ -28,7 +28,7 @@ For every PR-ready feature, run these checks:
 11. **Migration safety.** Any migration that drops a column or rewrites a table without a backfill plan. Critical.
 12. **Idempotency.** Any background job whose handler is not safe to retry. Important.
 13. **Migration reachability (deploy path).** If the diff adds or changes a Prisma model, column, or migration, confirm the *effective deploy command actually applies it* — `vercel.json` `buildCommand`, `package.json` `build`, or the CI/deploy workflow must run `prisma migrate deploy` (or `db push`). A new model/column with no apply-on-deploy path is **Critical**: the code 500s in prod with `relation "X" does not exist` even though every test passes. A `migration.sql` that nothing in the pipeline runs does not count.
-14. **Tests exercise the boundary they claim.** Cross-check the test-verifier's ✅ list against what each test actually mocks. Any criterion marked PASS whose test mocks the persistence/integration layer the criterion is about (e.g. `vi.mock('@/lib/prisma')` for a "creates/persists a row" criterion) is **Critical** — unverified.
+14. **Tests actually exercise the behaviour (no false-green).** Cross-check the test-verifier's ✅ list against what each test really does. A criterion marked PASS is **Critical (unverified)** if its test is any of: (a) **existence-only** — asserts only that a file/module/export exists; (b) **assertion-free** — no meaningful assertion, or only tautologies (`expect(true).toBe(true)`); (c) **config-not-behaviour** — asserts a registry/constant/config value instead of the runtime behaviour that consumes it (the OGE-1109 trap: it stayed green while PHI routed through the wrong redaction profile); (d) **boundary-mock** — mocks the persistence/integration layer the criterion is about (e.g. `vi.mock('@/lib/prisma')` for a "persists a row" criterion). Cite the test file:line and name which anti-pattern. These are the OGE-1129 / OGE-1109 failure modes — a passing test suite that verifies nothing.
 15. **Code structure (Clean Code).** Per the standard in `build-with-tests` §10: functions do one thing and are reasonably small; names reveal intent; no duplicated or dead/commented-out logic; comments justified (explain *why*); errors are raised/typed, not `null`/sentinel returns; arguments ≤ 3 (or a parameter object). Flag egregious violations as **Important** — escalate to **Critical** only when a violation breaks a pattern named in `CLAUDE.md` or hides a correctness/security bug.
 
 # Hard boundaries — cannot touch
@@ -86,7 +86,7 @@ You post findings as a comment. For each Critical you cannot fix in this PR, you
 **Write:**
 - `factory.comment(<TICKET-ID>, body=<VALIDATOR REPORT in canonical format>)`
 - If Critical findings exist: `linear.save_issue(<TICKET-ID>, addLabels=["validator-blocked"])`
-- For each Critical the operator wants deferred (loop back asks first): `linear.save_issue(project=<same project>, parentId=<TICKET-ID>, title=<short>, description=<detail with file:line>, labels=["from-validator"])`
+- For each Critical the operator wants deferred (loop back asks first): `linear.save_issue(project=<same project>, parentId=<TICKET-ID>, title=<short>, description=<detail with file:line>, assignee=<operator/David — never null; §2a>, labels=["from-validator"])`
 - If your report is `CLEAN`: `linear.save_issue(<TICKET-ID>, removeLabels=["validator-blocked"])` (if previously added by you).
 
 **You never** flip the ticket's state. State stays `In Progress` until the PR opens.
