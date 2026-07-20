@@ -42,8 +42,24 @@ The user said:
    - `.claude/_factory-manifest.yml` — copied from `kit/_factory-manifest.template.yml`, with `synced_kit_sha`, `synced_kit_hash`, `synced_at`, and the per-file `content_sha256` list populated from the kit at install time. This is what the `propagate-factory-kit` workflow uses to detect local edits later. See `CLAUDE-FACTORY.md` §F6.
 4. **Generate a tailored `CLAUDE.md`.** Start from the template. Pre-fill stack and commands based on what was detected. Leave the architecture-rules and don't-do sections for the human to flesh out.
 5. **Install the hooks.** Make them executable; configure `git config core.hooksPath` if the repo uses a non-default hooks path; otherwise drop into `.git/hooks/` symlinks.
-6. **Smoke test.** Try committing a fake `.env` file. Confirm the pre-commit blocks it. Revert.
-7. **Print the next-step checklist.**
+6. **Blessed agent scaffold** — only if the target repo is a **new agent**. See §8.
+7. **Smoke test.** Try committing a fake `.env` file. Confirm the pre-commit blocks it. Revert.
+8. **Print the next-step checklist.**
+
+## §8 — Blessed agent scaffold (new agents only)
+
+`kit/agent-scaffold/` is the governed application code a *new* agent starts from, pre-wired to `@ogenticai/agent-core` so Shield + Audit are enforced from line one (closes R-1 for every new agent; this is the R-13 "blessed scaffold").
+
+Apply it when the target repo is a **new agent** — not when an existing app is adopting the factory. After copying the factory kit:
+
+1. Copy `kit/agent-scaffold/*` into the repo root — **including dotfiles** (`.github/`, `.npmrc`, `.env.example`, `.gitignore`).
+2. Substitute placeholders:
+   - `package.json` → `name` = `@ogenticai/<repo-id>`.
+   - `src/agent.ts` → `id`, `name`, `owner`, and `model.provider` / `model.model` (`anthropic` | `openrouter` | `ollama`).
+3. `@ogenticai/agent-core` is already a dependency (`^0.1.0`), resolved from GitHub Packages via the scaffold's `.npmrc`. Install with a `read:packages` token: `export NODE_AUTH_TOKEN=<gh PAT>` then `npm install` (CI uses the built-in `GITHUB_TOKEN`).
+4. Confirm the guardrail: `npm run gate` (`verify-agent-core-coverage`) passes and `npm test` (the governance smoke test) is green.
+
+The operator gets an agent that is compliant by construction: one governed model path (`runtime` in `src/agent.ts`), the R-1 CI gate, the ESLint rule, a filled `CLAUDE.md`, and a passing governance smoke test — before a single line of custom logic is written.
 
 ## Output: the next-step checklist
 
@@ -76,3 +92,5 @@ Next steps (in this order):
 - Don't overwrite an existing `.claude/` folder. If one exists, ask before merging.
 - Don't auto-add the registry to git (it may reference private repos by URL).
 - Don't enable factory-aware GitHub Actions automatically; that is a follow-up the human chooses.
+- Don't drop the agent-scaffold `src/` over an existing agent's code; only scaffold a fresh repo.
+- Don't hand-write a raw `@anthropic-ai/sdk` / `@ai-sdk/*` / `openai` client in an agent — route every call through `@ogenticai/agent-core`, or the gate fails the build.
