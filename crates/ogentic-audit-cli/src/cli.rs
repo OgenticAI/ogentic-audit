@@ -110,6 +110,12 @@ Examples:
   ogentic-audit verify ./logs --summary                 # one-line verdict
   ogentic-audit verify ./logs --forensic                # do not stop at first violation
   ogentic-audit verify ./logs --segment 0               # verify only segment 0
+  ogentic-audit verify ./logs --checkpoint cp.json      # also prove it extends a known head
+
+Without --checkpoint, verification is self-referential: it proves the
+chain is consistent with itself, which is also true of a chain someone
+holding the key rewrote from the start. --checkpoint compares the log
+against a head observed earlier, which is what makes a rewrite visible.
 ")]
     Verify(VerifyArgs),
 
@@ -125,6 +131,28 @@ Examples:
 
     /// Print the chain head fingerprint + record/segment summary.
     Head(HeadArgs),
+
+    /// Emit a checkpoint pinning the current chain head, for an
+    /// external observer to store and later verify against.
+    #[command(after_long_help = "\
+Examples:
+
+  ogentic-audit checkpoint ./logs                     # print to stdout
+  ogentic-audit checkpoint ./logs --out cp.json       # write to a file
+
+A checkpoint is a (segment, record_id, hmac) triple observed now. Give it
+to a party that does not control the log — a customer, a regulator, a
+counterpart agent, an append-only public log — and `verify --checkpoint`
+can later prove the log still contains that history.
+
+Storing the checkpoint next to the log buys nothing: whoever could rewrite
+the log could rewrite the checkpoint beside it. The security property is
+in where you put it, not in this command.
+
+The chain is verified before a checkpoint is emitted; a checkpoint over an
+already-broken chain would launder the break into a trusted anchor.
+")]
+    Checkpoint(CheckpointArgs),
 
     /// Export the log as a court-ready PDF (tracked in OGE-438).
     Export(ExportArgs),
@@ -164,6 +192,26 @@ pub struct VerifyArgs {
     /// valid and verifies segment 0 only.
     #[arg(long)]
     pub segment: Option<u64>,
+    /// Path to a checkpoint file (as written by `ogentic-audit
+    /// checkpoint`). Additionally proves the log still extends that
+    /// previously-observed head — the only check here that is not
+    /// self-referential. Exits 1 with `CheckpointMismatch` if the
+    /// history was rewritten, `CheckpointTruncated` if it was cut.
+    #[arg(long)]
+    pub checkpoint: Option<PathBuf>,
+}
+
+#[derive(Debug, Args)]
+pub struct CheckpointArgs {
+    /// Directory containing the `audit-NNNN.cbor` segment files.
+    pub log_dir: PathBuf,
+    /// Write the checkpoint here instead of stdout.
+    #[arg(long)]
+    pub out: Option<PathBuf>,
+    /// Override the `observed_at` timestamp (RFC 3339). Present for
+    /// reproducible tests; real observations should use the default.
+    #[arg(long)]
+    pub observed_at: Option<String>,
 }
 
 #[derive(Debug, Args)]

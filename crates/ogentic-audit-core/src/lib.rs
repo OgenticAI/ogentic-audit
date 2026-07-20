@@ -78,6 +78,7 @@
 #![warn(missing_docs)]
 
 pub mod cbor;
+pub mod checkpoint;
 pub mod key;
 pub mod reader;
 pub mod segment;
@@ -85,6 +86,7 @@ pub mod sync_compat;
 pub mod verifier;
 pub mod writer;
 
+pub use checkpoint::{Checkpoint, CHECKPOINT_FORMAT};
 pub use key::{HmacBytes, InMemoryKey, KeyError, KeyHandle, KeyId, HMAC_LEN, KEY_ID_LEN};
 pub use reader::{ReadStrategy, Reader, ReaderConfig, ReaderError, Record, RecordIterator};
 pub use segment::{

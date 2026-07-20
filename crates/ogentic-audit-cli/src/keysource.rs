@@ -207,6 +207,16 @@ impl AppError {
         }
     }
 
+    /// Construct an argument / config-error variant (exit 3). Use for
+    /// operator mistakes — a malformed flag value or an unreadable
+    /// artifact — as distinct from an I/O failure on the log itself.
+    pub fn argument(source: impl Into<anyhow::Error>) -> Self {
+        Self {
+            exit: ExitCodeKind::ArgumentError,
+            source: source.into(),
+        }
+    }
+
     /// The exit code the binary should return for this error.
     pub fn exit_code(&self) -> ExitCodeKind {
         self.exit

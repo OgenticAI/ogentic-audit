@@ -46,6 +46,10 @@ pub fn verify(
     let verifier = Verifier::new(key_box);
     let opts = VerifyOptions {
         forensic_mode: forensic,
+        // Checkpoint anchoring is Rust/CLI-only for now; the Python
+        // binding verifies internal consistency only. Tracked as a
+        // follow-up so the two implementations regain parity.
+        checkpoint: None,
     };
     let report = verifier
         .verify_with_options(log_dir, opts)

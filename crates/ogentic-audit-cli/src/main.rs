@@ -17,6 +17,7 @@
 #![forbid(unsafe_code)]
 #![deny(rust_2018_idioms)]
 
+mod checkpoint_file;
 mod cli;
 mod commands;
 mod exit;
@@ -37,6 +38,7 @@ fn main() -> ExitCode {
         Command::Verify(args) => commands::verify::run(&cli.global, args),
         Command::Show(args) => commands::show::run(&cli.global, args),
         Command::Head(args) => commands::head::run(&cli.global, args),
+        Command::Checkpoint(args) => commands::checkpoint::run(&cli.global, args),
         Command::Export(args) => commands::export::run(&cli.global, args),
         Command::Version => {
             commands::version::run();
