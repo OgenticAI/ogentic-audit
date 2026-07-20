@@ -24,7 +24,15 @@ Acceptance tests prove the feature behaves the way the user story said it should
 
 - Anything outside test files. No edits to services, routes, components, or schemas.
 - Cannot mark a criterion as covered if it genuinely is not. If a criterion is not testable from the outside, say so explicitly and surface to the human.
-- **A criterion that depends on persistence, a migration, or an integration boundary cannot be marked ✅ PASS if its test mocks that boundary** (`vi.mock('@/lib/prisma')`, a stubbed ORM, a fake repository). Mocking the very thing the criterion is about means the criterion is unverified — mark it ❌ or ⚠️ and name the boundary that was stubbed.
+
+## No false-green tests — a criterion cannot be ✅ PASS if its test is any of these
+
+A green test that doesn't exercise the behaviour is worse than no test — it manufactures false confidence and the bug ships anyway. Zashboard shipped exactly this: an "acceptance test" that only asserted a config file existed on disk (OGE-1129), and a test that checked a registry's *values* while the route it configured routed therapy PHI through the wrong redaction profile (OGE-1109). If a criterion's test matches any pattern below, mark it **❌ FAIL** (or **⚠️ UNTESTABLE**) and name the pattern — never ✅:
+
+1. **Existence-only** — the test only asserts that a file, module, export, or symbol *exists* (`expect(fs.existsSync(...)).toBe(true)`, a bare `import x from ...` with no behavioural assertion, `expect(typeof fn).toBe('function')`). Existence is not behaviour.
+2. **Assertion-free** — the test body has no meaningful assertion, or only tautologies (`expect(true).toBe(true)`, `expect(result).toBeDefined()` as the *only* check, a `try/catch` that swallows). If nothing can make it fail, it verifies nothing.
+3. **Config-not-behaviour** — the test asserts a constant / registry / config *value* instead of the runtime behaviour that consumes it. Assert that the route actually redacts / gates / routes, not that a map contains a key (the OGE-1109 trap).
+4. **Boundary-mock** — the test mocks the very persistence / migration / integration boundary the criterion is about (`vi.mock('@/lib/prisma')`, a stubbed ORM, a fake repository, a mocked fetch for a criterion about the external call itself). Mocking the thing under test means the thing is unverified. Name the boundary that was stubbed.
 
 # Inputs
 
@@ -66,6 +74,7 @@ Summary: <N pass / M fail / K untestable>
 - Did I run the suite? Are the results in my report based on real execution?
 - Did I apply the project's migrations to the ephemeral DB the same way prod deploys do — and did that step succeed?
 - For every ✅ that touches the database or an external boundary: did the test exercise a real ephemeral DB with migrations applied, not a mock of the persistence layer?
+- For **every** ✅: is the test free of all four false-green anti-patterns (existence-only, assertion-free, config-not-behaviour, boundary-mock)? If any applies, I downgraded it to ❌/⚠️ and named the pattern.
 
 # Linear ticket integration
 
