@@ -57,6 +57,16 @@ library APIs follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
     verdict (`python_parity_*` in `checkpoint_anchor.rs`;
     `test_parity_*` in `test_checkpoint.py`).
 
+- **Keychain integration tests on real OS stores (OGE-478, closes
+  OGE-431 AC 7).** `store` / `load` / `load_or_generate` / `delete` now run
+  end-to-end against the macOS Keychain, Linux Secret Service, and Windows
+  Credential Manager in CI on every PR — previously only compiled on those
+  platforms, with the macOS suite `#[ignore]`-gated. The tests skip unless
+  `OGENTIC_KEYCHAIN_CI=1` so a developer's `cargo test` never touches their
+  login keychain; each CI job provisions an ephemeral, unlocked store and
+  runs `--test-threads=1`. A `Drop`-based `CleanupGuard` removes entries
+  even when a test panics.
+
 - **Checkpoint anchoring (OGE-1671).** Chain verification is
   self-referential: it proves a log is consistent with itself, which is
   also true of a log that someone holding the HMAC key truncated and
@@ -81,6 +91,16 @@ library APIs follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
     `FORMAT_VERSION` stays `0x0001` and all golden vectors are unchanged.
 
 ### Changed
+
+- **`keyring` 3 → 4 (OGE-478).** Real macOS keychain integration testing
+  was impossible on 3.x: from an unsigned `cargo test` binary `set_secret`
+  returned `Ok` but the immediate `get_secret` returned `NoEntry` (the OS
+  itself was fine — the `security` CLI round-tripped against the same
+  keychain). keyring 4's redesigned Apple backend fixes the round-trip.
+  The `v1` default feature keeps the `Entry` API source-compatible, so the
+  `KeychainKey` backend is unchanged; on Linux the `v1` Secret-Service
+  store is the pure-Rust `zbus` client, so no `libdbus`/`libsecret` system
+  package is required.
 
 - README no longer claims properties the code does not have (OGE-1672):
   the tamper-evidence claim is qualified inline (chained HMACs detect

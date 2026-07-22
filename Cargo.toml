@@ -37,7 +37,16 @@ getrandom = "0.2"
 # OS keychain (used by the optional ogentic-audit-keychain crate).
 # Pinned at the workspace level so consumers see a single, audited version
 # in `cargo audit` output.
-keyring = "3"
+#
+# keyring 4 (OGE-478): the 3.x macOS backend could not round-trip store->load
+# from an unsigned cargo-test binary (set_secret returned Ok, the immediate
+# get_secret returned NoEntry) — which blocked real keychain integration tests
+# on macOS. keyring 4's redesigned Apple backend fixes this. The `v1` default
+# feature keeps the Entry API (new/set_secret/get_secret/delete_credential)
+# source-compatible, so backend.rs is unchanged. `v1` bundles the native
+# Apple / Windows / Secret-Service stores; on Linux that is the pure-Rust
+# `zbus` Secret-Service client (no libdbus system dependency).
+keyring = "4"
 
 # Platform fs sync (F_FULLFSYNC on macOS — see crate::sync_compat).
 # rustix gives us safe bindings without bringing libc into our own

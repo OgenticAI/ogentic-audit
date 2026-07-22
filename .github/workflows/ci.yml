@@ -248,6 +248,133 @@ jobs:
         run: python3 tools/check_cbor_parity.py
 
   # ----------------------------------------------------------------
+  # Keychain integration — real OS secret stores (OGE-478 / OGE-431 AC 7).
+  #
+  # The `rust-test` matrix only COMPILES the keychain backend on each OS.
+  # These jobs exercise store/load/load_or_generate/delete against the
+  # actual Keychain / Secret Service / Credential Manager.
+  #
+  # The integration tests skip unless `OGENTIC_KEYCHAIN_CI=1` (so a
+  # developer's `cargo test` never touches their real login keychain);
+  # each job below provisions an ephemeral, unlocked store and sets that
+  # variable. `--test-threads=1` is required: the tests share one real OS
+  # store, and the platform Security frameworks are not reliable under
+  # concurrent add/find/delete on the same store.
+  # ----------------------------------------------------------------
+  keychain-integration-macos:
+    name: keychain-integration (macos)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # master @ 2025-06-09 — see OGE-837
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2 — pinned per OGE-837
+        with:
+          shared-key: keychain-macos
+
+      # keyring 3.x could not round-trip on macOS from an unsigned cargo
+      # binary (OGE-478); keyring 4.x can, and the round-trip needs the
+      # test store to be the SOLE keychain in the user search list — a
+      # login keychain also present in the list made lookups ambiguous.
+      # So: create an ephemeral keychain, make it the entire search list,
+      # and promote it to the user default (which keyring reads).
+      - name: Provision an ephemeral login keychain
+        run: |
+          KC="$RUNNER_TEMP/ogentic-audit-it.keychain"
+          security create-keychain -p "" "$KC"
+          security set-keychain-settings "$KC"          # no auto-lock timeout
+          security unlock-keychain -p "" "$KC"
+          security list-keychains -d user -s "$KC"      # SOLE keychain in the search list
+          security default-keychain -d user -s "$KC"
+          echo "OGENTIC_AUDIT_IT_KEYCHAIN=$KC" >> "$GITHUB_ENV"
+
+      - name: Keychain integration tests
+        env:
+          OGENTIC_KEYCHAIN_CI: "1"
+        run: cargo test -p ogentic-audit-keychain --all-features --locked -- --test-threads=1 macos_integration
+
+      # Isolation guarantee: nothing the suite wrote may survive in the
+      # real user login keychain. (The ephemeral keychain is discarded
+      # with the runner; this asserts we never wrote past it.)
+      - name: Assert no leak into the login keychain
+        run: |
+          if security find-generic-password -s "com.ogenticai.ogentic-audit.test" "$HOME/Library/Keychains/login.keychain-db" >/dev/null 2>&1; then
+            echo "::error::test entries leaked into the login keychain"; exit 1
+          fi
+          echo "no leak into login keychain"
+
+  keychain-integration-linux:
+    name: keychain-integration (linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # master @ 2025-06-09 — see OGE-837
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2 — pinned per OGE-837
+        with:
+          shared-key: keychain-linux
+
+      # keyring 4's v1 Secret-Service store is the pure-Rust zbus client,
+      # so no libdbus/libsecret system package is needed — only a running
+      # Secret Service (gnome-keyring) on a session bus.
+      - name: Install GNOME Keyring + D-Bus
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gnome-keyring dbus-x11
+
+      # Bring up the Secret Service the way keyring-rs's own CI does:
+      # inside a private session bus, feed a passphrase to
+      # `gnome-keyring-daemon --unlock` (which creates + unlocks a fresh
+      # "login" collection and forks the daemon). The `org.freedesktop.secrets`
+      # service is D-Bus-activated on the first call, so no manual
+      # backgrounding / sleep race. An earlier attempt used an empty
+      # passphrase + `& sleep 2`, which left the service unregistered and
+      # failed with `NoStorageAccess(NoResult)`.
+      #
+      # The passphrase is a throwaway for this ephemeral runner only —
+      # NOT a deployment pattern. Production Sotto Desktop uses a
+      # user-chosen passphrase.
+      - name: Build tests (outside the keyring session, to avoid daemon timeout)
+        run: cargo build -p ogentic-audit-keychain --all-features --locked --tests
+
+      - name: Start a session bus + unlock a fresh keyring, then run tests
+        env:
+          OGENTIC_KEYCHAIN_CI: "1"
+        run: |
+          rm -rf "$HOME/.local/share/keyrings"
+          dbus-run-session -- bash -euxc '
+            echo "ci-throwaway-passphrase" | gnome-keyring-daemon --unlock
+            cargo test -p ogentic-audit-keychain --all-features --locked -- --test-threads=1 linux_integration
+          '
+
+  keychain-integration-windows:
+    name: keychain-integration (windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # master @ 2025-06-09 — see OGE-837
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2 — pinned per OGE-837
+        with:
+          shared-key: keychain-windows
+
+      # Credential Manager is per-user; the runner user's logon session
+      # can write to it with no admin elevation and no code signing. If
+      # this job ever fails with a Credential Manager access error, the
+      # documented fallback is an Authenticode-signed test binary via the
+      # OGE-439 release-signing infra, restricted to release-tag CI.
+      - name: Keychain integration tests
+        env:
+          OGENTIC_KEYCHAIN_CI: "1"
+        run: cargo test -p ogentic-audit-keychain --all-features --locked -- --test-threads=1 windows_integration
+
+  # ----------------------------------------------------------------
   # Conventional Commits on PR titles. Skipped on push to main since
   # squash-merge titles are validated at merge time via the PR.
   # ----------------------------------------------------------------
