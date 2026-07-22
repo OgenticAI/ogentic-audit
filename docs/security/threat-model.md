@@ -140,6 +140,12 @@ If multi-tenant Sotto Server emerges, the threat model and the use cases shift t
 
 The audit log is plaintext on disk inside the encrypted vault. We rely on the vault for confidentiality. If a v0.2+ deployment shape exposes the audit file outside the vault (server-side, shared filesystem), the audit log itself must be encrypted. Likely approach: AEAD (XChaCha20-Poly1305) of each record's payload bytes under a key derived alongside the HMAC key.
 
+## Policy attestation binds only a retained policy
+
+The `payload["policy"]` convention ([ADR-0003](../adr/0003-policy-attestation-payload-convention.md), shipped) records *what rule permitted an action* — a `permit`/`deny` decision plus a SHA-256 `digest` of the governing policy — inside the HMAC'd record bytes. Because it is signed and chain-linked, an attacker cannot alter a stored decision or digest without breaking the chain, and (with a checkpoint) cannot rewrite it undetected.
+
+What the digest does **not** do on its own: it binds the decision to a *specific policy document* only if that document is **retained and retrievable**. The library never sees, canonicalizes, or hashes the policy — the digest is caller-computed and opaque (analogous to `key_id`). So a `digest` whose source policy was discarded proves only that *some* policy with that hash was claimed, not what it said. Operators relying on policy attestation for compliance evidence MUST retain the versioned policy artifacts their digests are taken over, under the same retention regime as the audit log itself. This is a process control, not something the format can enforce — stated here so it is not assumed away.
+
 ## Court-defensibility positioning
 
 (Detailed in [`court-brief.md`](court-brief.md) — TBD; outline below.)

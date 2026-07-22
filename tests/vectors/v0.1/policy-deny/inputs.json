@@ -1,0 +1,28 @@
+{
+  "vector": "policy-deny",
+  "description": "One record carrying a policy attestation (OGE-1674): a DENY decision with only the required fields (format, decision, digest) — no policy_id, no deciding_rules — so the minimal `ogentic-audit-policy/v1` shape is covered too. A denied action is still audited: 'the agent tried X and policy stopped it'. Verifies clean.",
+  "key_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+  "session_id_hex": "00112233445566778899aabbccddeeff",
+  "writer_config": {
+    "segment_size_bytes": 67108864
+  },
+  "records": [
+    {
+      "ts_wall": "2026-07-22T21:00:00.000Z",
+      "ts_mono_delta": 0,
+      "actor": "agent:zing",
+      "event": "tool.exec",
+      "schema_version": 1,
+      "payload": {
+        "action": "shell.exec",
+        "resource": "rm -rf /",
+        "policy": {
+          "format": "ogentic-audit-policy/v1",
+          "decision": "deny",
+          "digest": "sha256:ffeeddccbbaa99887766554433221100ffeeddccbbaa99887766554433221100"
+        }
+      }
+    }
+  ],
+  "expected_verdict": "Verified"
+}

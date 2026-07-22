@@ -9,6 +9,33 @@ library APIs follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Policy attestation (OGE-1674).** Records can now carry *what rule
+  permitted an action*, not just that it happened — the difference between
+  a tamper-evident log and a compliance artifact, per the
+  [NousResearch/hermes-agent#487](https://github.com/NousResearch/hermes-agent/issues/487)
+  / [LangChain RFC #35691](https://github.com/langchain-ai/langchain/issues/35691)
+  discussion.
+  - A documented `payload["policy"]` convention (`ogentic-audit-policy/v1`)
+    holding `decision` (`permit`/`deny`), a caller-computed `digest`
+    (`"sha256:<hex>"`), and optional `policy_id` / `deciding_rules`. Because
+    it rides inside the already-signed `payload`, it is tamper-evident and
+    chain-linked — **no on-disk format change**, `FORMAT_VERSION` stays
+    `0x0001`, all existing golden vectors unchanged.
+  - `ogentic_audit_core::policy`: `PolicyAttestation`, `PolicyDecision`,
+    `PolicyError`, with a typed builder (`.with_policy_id`,
+    `.with_deciding_rules`), `.attach(&mut payload)`, and `from_payload`.
+  - The digest is **caller-computed and opaque** — the library never
+    parses, canonicalizes, or hashes the policy. This dissolves the
+    CBOR-vs-JCS canonicalization question: canonicalize a JSON policy with
+    RFC 8785, a CBOR one with RFC 8949, record the result. Documented in
+    [ADR-0003](docs/adr/0003-policy-attestation-payload-convention.md).
+  - Golden vectors `policy-permit` / `policy-deny`, held byte-identical
+    across Rust, Python, and `gen_vectors.py`.
+  - Threat-model note: a digest binds the decision to a policy only if that
+    policy artifact is retained and retrievable.
+  - Distinct from the `attestation` field reserved for v0.2 external
+    witnesses (ADR-0001) — the payload key is `policy`, no namespace clash.
+
 - **Checkpoint anchoring in the Python binding (OGE-1673).** Brings the
   PyO3 bindings to parity with the Rust core's checkpoint support, so a
   Python compliance job can ask the one question internal verification

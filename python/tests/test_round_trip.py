@@ -62,6 +62,21 @@ def test_verify_segment_rollover_vector() -> None:
     assert report.ok
 
 
+def test_verify_policy_permit_vector() -> None:
+    # A record carrying a policy attestation (OGE-1674) in its payload is an
+    # ordinary v0.1 record; the Python verifier accepts it just like Rust.
+    key = _key_for_vector("policy-permit")
+    report = verify(str(VECTORS_DIR / "policy-permit"), key=key)
+    assert report.ok
+    assert report.records_inspected == 1
+
+
+def test_verify_policy_deny_vector() -> None:
+    key = _key_for_vector("policy-deny")
+    report = verify(str(VECTORS_DIR / "policy-deny"), key=key)
+    assert report.ok
+
+
 def test_verify_tampered_byte_vector_raises_hmac_mismatch() -> None:
     key = _key_for_vector("tampered-byte")
     report = verify(str(VECTORS_DIR / "tampered-byte"), key=key)
