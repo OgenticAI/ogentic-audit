@@ -7,6 +7,13 @@ library APIs follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-07-23
+
+First release published to crates.io and PyPI (OGE-1407). Bundles the
+checkpoint-anchoring, policy-attestation, MCP-integration, and
+keychain-integration work below. On-disk format is unchanged (`0x0001`);
+existing v0.1 logs verify unmodified.
+
 ### Added
 
 - **MCP tool-call audit middleware (OGE-1721).** A reference integration

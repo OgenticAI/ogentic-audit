@@ -4,14 +4,14 @@
 # Two trigger surfaces:
 #
 # * Pushed tags `v*` → build wheels + sdist for every (OS, arch, Python)
-#   combination in the matrix, then publish to PyPI using the org-level
-#   `PYPI_API_TOKEN` secret (shared across every ogentic-* package; "All
-#   repositories" access at the GitHub org level, "All projects" scope on
-#   the PyPI side). Same auth path as ogentic-shield and ogentic-router.
+#   combination in the matrix, then publish to PyPI via a **Trusted
+#   Publisher** (OIDC) — no token stored anywhere. The publisher on PyPI
+#   is bound to this repo, this workflow (`wheels.yml`), and the `pypi`
+#   environment; each run mints a short-lived OIDC token.
 #
 # * Manual `workflow_dispatch` → build everything, upload as a GitHub
-#   Actions artifact, but skip the PyPI publish step. Useful for dry
-#   runs before tagging.
+#   Actions artifact, but skip the PyPI publish step (gated on a tag ref).
+#   Use this to validate all wheel legs before tagging a release.
 #
 # The wheels are built via `cibuildwheel` driving `maturin`'s build
 # backend. `pyo3 = { ..., features = ["abi3-py39"] }` in the workspace
@@ -21,19 +21,14 @@
 # from pyproject.toml's `tool.maturin` block) and the result is
 # `abi3-py39` for every platform.
 #
-# Prerequisites (one-time, on GitHub side):
+# Prerequisites (one-time, on the PyPI + GitHub side):
 #
-#   1. Org secret `PYPI_API_TOKEN` exists with `ogentic-audit` in its
-#      repository-access list (already set "All repositories"; nothing
-#      to do).
-#   2. Repo Environment `pypi` exists (Settings → Environments). No
-#      protection rules required for v0.1.x — environment binding gives
-#      us a per-release audit trail.
-#
-# Switching to PyPI Trusted Publishers (OIDC) later is straightforward:
-# delete the `password:` line below, add `permissions: id-token: write`
-# back to the job, configure the publisher on the PyPI project page.
-# Deferred for v0.2.x in line with the cross-primitive auth pattern.
+#   1. A PyPI Trusted Publisher for `ogentic-audit`: owner `OgenticAI`,
+#      repo `ogentic-audit`, workflow `wheels.yml`, environment `pypi`.
+#      For the first-ever upload use a *pending* publisher (PyPI →
+#      Publishing) since the project does not exist yet. No token needed.
+#   2. Repo Environment `pypi` exists (Settings → Environments). Its name
+#      must match the publisher config and the `environment:` block below.
 
 name: wheels
 
@@ -64,14 +59,14 @@ jobs:
             arch: aarch64
             runs-on: ubuntu-24.04-arm
             cibw_archs: aarch64
+          # Both macOS arches build on Apple Silicon (macos-14): arm64
+          # natively, x86_64 cross-compiled. This replaces the separate
+          # macos-13 (Intel) leg, which GitHub is retiring — it was
+          # cancelling and skipping the whole PyPI publish (OGE-1407).
           - os: macos
-            arch: arm64
+            arch: universal
             runs-on: macos-14
-            cibw_archs: arm64
-          - os: macos
-            arch: x86_64
-            runs-on: macos-13
-            cibw_archs: x86_64
+            cibw_archs: "arm64 x86_64"
           - os: windows
             arch: x86_64
             runs-on: windows-latest
@@ -85,6 +80,12 @@ jobs:
           python-version: "3.12"
 
       - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable — pinned per OGE-837
+
+      # macOS builds both arches on Apple Silicon: install the x86_64
+      # target so maturin can cross-compile the Intel wheel.
+      - name: Add x86_64 Rust target (macOS cross-build)
+        if: runner.os == 'macOS'
+        run: rustup target add x86_64-apple-darwin
 
       - name: Build wheels with cibuildwheel
         uses: pypa/cibuildwheel@f03ac7617d6cff873ccf24cc0d567ef5ba5a9e6d # v2.21.3 — pinned per OGE-837
@@ -112,6 +113,9 @@ jobs:
           # Smoke-test: import + run the format_version helper.
           CIBW_TEST_REQUIRES: "pytest"
           CIBW_TEST_COMMAND: 'python -c "import ogentic_audit; assert ogentic_audit.format_version() == 0x0001"'
+          # The Intel wheel is cross-built on Apple Silicon, so it cannot
+          # be executed on the arm64 runner — build it, skip its test.
+          CIBW_TEST_SKIP: "*-macosx_x86_64"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -154,6 +158,11 @@ jobs:
     needs: [build-wheels, build-sdist]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
+    # PyPI Trusted Publisher (OIDC) — no token stored anywhere. The
+    # publisher on PyPI is bound to this repo + workflow + `pypi`
+    # environment; the short-lived OIDC token is minted per-run.
+    permissions:
+      id-token: write
     environment:
       name: pypi
       url: https://pypi.org/p/ogentic-audit
@@ -179,10 +188,9 @@ jobs:
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b # v1.14.0 (release/v1 HEAD) — pinned per OGE-837
         with:
-          # Org-level `PYPI_API_TOKEN` (shared across every ogentic-* OSS
-          # publish). Header comment documents the OIDC migration path.
-          user: __token__
-          password: ${{ secrets.PYPI_API_TOKEN }}
+          # Trusted Publisher (OIDC): no user/password. The action mints a
+          # short-lived OIDC token that PyPI trades for an upload token,
+          # scoped to this exact repo + workflow + environment.
           packages-dir: dist/
           skip-existing: false
           verbose: true
