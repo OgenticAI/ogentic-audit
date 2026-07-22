@@ -59,14 +59,22 @@ jobs:
             arch: aarch64
             runs-on: ubuntu-24.04-arm
             cibw_archs: aarch64
-          # Both macOS arches build on Apple Silicon (macos-14): arm64
-          # natively, x86_64 cross-compiled. This replaces the separate
-          # macos-13 (Intel) leg, which GitHub is retiring — it was
-          # cancelling and skipping the whole PyPI publish (OGE-1407).
+          # Both macOS arches build on Apple Silicon (macos-14) — arm64
+          # natively, x86_64 cross-compiled — replacing the retired macos-13
+          # Intel leg. Kept as two single-arch jobs so each carries its own
+          # MACOSX_DEPLOYMENT_TARGET: arm64 macOS starts at 11.0, while Rust's
+          # x86_64-apple-darwin std targets 10.12, and cibuildwheel's x86_64
+          # default of 10.9 made delocate reject the wheel (OGE-1407).
           - os: macos
-            arch: universal
+            arch: arm64
             runs-on: macos-14
-            cibw_archs: "arm64 x86_64"
+            cibw_archs: arm64
+            macosx_target: "11.0"
+          - os: macos
+            arch: x86_64
+            runs-on: macos-14
+            cibw_archs: x86_64
+            macosx_target: "10.12"
           - os: windows
             arch: x86_64
             runs-on: windows-latest
@@ -97,6 +105,10 @@ jobs:
           CIBW_BUILD: "cp39-*"
           CIBW_SKIP: "*-musllinux*"
           CIBW_ARCHS: ${{ matrix.cibw_archs }}
+          # Per-arch macOS deployment target (empty / ignored off macOS).
+          # Both maturin (Rust min-version) and cibuildwheel (wheel tag)
+          # read this, so the tag and the binary agree and delocate passes.
+          CIBW_ENVIRONMENT_MACOS: MACOSX_DEPLOYMENT_TARGET=${{ matrix.macosx_target }}
           # manylinux_2_28 — matches the abi3-py39 baseline.
           CIBW_MANYLINUX_X86_64_IMAGE: manylinux_2_28
           CIBW_MANYLINUX_AARCH64_IMAGE: manylinux_2_28
