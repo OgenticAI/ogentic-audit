@@ -142,7 +142,7 @@ In this order:
 
 1. **Create the project.** `linear.save_project` with name, description (the OUTCOME + SUCCESS METRIC + NON-GOALS, formatted), team=OGE, state=Planned, lead, color, icon.
 2. **Create the milestones.** `linear.save_milestone` per M, linked to the project, with target date if given.
-3. **Create the seed issues.** `linear.save_issue` per row, with title, one-line description as body, project=<new>, milestone=<assigned M>, state=Backlog, assignee=<owner or null>, estimate=<S=1, M=3, L=5>, labels=[`from-project-planner`].
+3. **Create the seed issues.** `linear.save_issue` per row, with title, one-line description as body, project=<new>, milestone=<assigned M>, state=Backlog, **assignee=<owner — defaults to the operator/David; NEVER null>** (every created issue must have an owner — see LINEAR-INTEGRATION.md §2a, OGE-1290), estimate=<S=1, M=3, L=5>, labels=[`from-project-planner`].
 4. **Post the summary back to chat:**
 
 ```

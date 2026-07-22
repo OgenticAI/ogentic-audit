@@ -5,7 +5,7 @@
 # for it (Claude caps Linear connectors at two; both are human). See
 # docs/LINEAR-BOT-SETUP.md and .claude/LINEAR-INTEGRATION.md §14.
 #
-# Requires: LINEAR_FACTORY_TOKEN (the bot's Linear personal API key), python3, curl.
+# Requires: LINEAR_FACTORY_TOKEN (the bot's Linear personal API key), python3.
 #
 # Usage:
 #   factory-linear-comment.sh --issue   OGE-123       --body "markdown…"
@@ -28,11 +28,28 @@ done
 [ -n "$body" ] || { echo "--body required" >&2; exit 2; }
 [ -n "$issue$project" ] || { echo "--issue or --project required" >&2; exit 2; }
 
-api() {  # $1 = JSON payload string
-  curl -fsS -X POST https://api.linear.app/graphql \
-    -H "Authorization: $LINEAR_FACTORY_TOKEN" \
-    -H "Content-Type: application/json" \
-    --data "$1"
+api() {  # $1 = JSON payload string (carries NO secret)
+  # Read the token from the environment and send it ONLY in the Authorization
+  # header via urllib — the token never appears on argv, so it can't leak through
+  # `ps` (a plain `curl -H "Authorization: $TOKEN"` would expose it). The payload
+  # is passed as argv (safe — no secret) so the token stays out of the heredoc too.
+  python3 - "$1" <<'PY'
+import json, os, ssl, sys, urllib.error, urllib.request
+tok = os.environ.get("LINEAR_FACTORY_TOKEN", "")
+if not tok:
+    sys.exit("LINEAR_FACTORY_TOKEN not set")
+req = urllib.request.Request(
+    "https://api.linear.app/graphql",
+    data=sys.argv[1].encode(),
+    headers={"Authorization": tok, "Content-Type": "application/json"},
+)
+try:
+    with urllib.request.urlopen(req, timeout=30,
+                                context=ssl.create_default_context()) as r:
+        sys.stdout.write(r.read().decode())
+except urllib.error.HTTPError as e:
+    sys.exit("Linear API HTTP %s: %s" % (e.code, e.read().decode()[:300]))
+PY
 }
 
 # Default to a project comment; resolve an issue identifier (OGE-123) to its UUID.
