@@ -58,7 +58,13 @@ def _synthesize(vector_name: str, tmp: Path) -> None:
             )
 
 
-@pytest.mark.parametrize("vector_name", ["single-record", "segment-rollover"])
+@pytest.mark.parametrize(
+    "vector_name",
+    # policy-permit / policy-deny carry a policy attestation (OGE-1674) in
+    # the payload; including them here proves the Python writer produces the
+    # same bytes as Rust / gen_vectors.py for the nested policy sub-map.
+    ["single-record", "segment-rollover", "policy-permit", "policy-deny"],
+)
 def test_python_writer_synthesizes_byte_identical_output(vector_name: str) -> None:
     with tempfile.TemporaryDirectory() as tmp_str:
         tmp = Path(tmp_str)

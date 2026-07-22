@@ -71,6 +71,19 @@ fn verify_segment_rollover_vector() {
     verify_vector("segment-rollover");
 }
 
+// A record carrying a policy attestation (OGE-1674) in its payload is an
+// ordinary v0.1 record: the verifier is unaware of the convention and the
+// chain verifies clean, because the policy data is inside the HMAC'd bytes.
+#[test]
+fn verify_policy_permit_vector() {
+    verify_vector("policy-permit");
+}
+
+#[test]
+fn verify_policy_deny_vector() {
+    verify_vector("policy-deny");
+}
+
 #[test]
 fn verify_tampered_byte_vector_reports_hmac_mismatch() {
     verify_vector("tampered-byte");

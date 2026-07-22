@@ -406,3 +406,17 @@ fn one_thousand_records_vector() {
 fn segment_rollover_vector() {
     run_vector("segment-rollover");
 }
+
+// Policy attestation (OGE-1674) rides inside the free-form payload, so a
+// permit and a deny vector prove the `ogentic-audit-policy/v1` convention
+// encodes to byte-identical CBOR here and in gen_vectors.py / the Python
+// writer. No format change: these are ordinary v0.1 records.
+#[test]
+fn policy_permit_vector() {
+    run_vector("policy-permit");
+}
+
+#[test]
+fn policy_deny_vector() {
+    run_vector("policy-deny");
+}

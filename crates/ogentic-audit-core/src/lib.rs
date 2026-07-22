@@ -80,6 +80,7 @@
 pub mod cbor;
 pub mod checkpoint;
 pub mod key;
+pub mod policy;
 pub mod reader;
 pub mod segment;
 pub mod sync_compat;
@@ -88,6 +89,9 @@ pub mod writer;
 
 pub use checkpoint::{Checkpoint, CHECKPOINT_FORMAT};
 pub use key::{HmacBytes, InMemoryKey, KeyError, KeyHandle, KeyId, HMAC_LEN, KEY_ID_LEN};
+pub use policy::{
+    PolicyAttestation, PolicyDecision, PolicyError, DIGEST_ALG, POLICY_FORMAT, POLICY_KEY,
+};
 pub use reader::{ReadStrategy, Reader, ReaderConfig, ReaderError, Record, RecordIterator};
 pub use segment::{
     HeaderParseError, SegmentHeader, FORMAT_MAGIC, HEADER_BODY_LEN, HEADER_TOTAL_LEN,
