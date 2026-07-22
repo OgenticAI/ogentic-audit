@@ -202,33 +202,85 @@ fn generate_key() -> Result<[u8; HMAC_LEN], Error> {
 }
 
 // ---------------------------------------------------------------------------
-// Integration tests
+// Integration tests — real platform secret stores (OGE-478)
 // ---------------------------------------------------------------------------
 //
-// macOS-only at v0.1. The Linux and Windows backends compile-test via the
-// existing rust-test CI matrix, but exercising them against a real platform
-// secret store requires fixture setup that's deferred to a follow-up
-// ticket. See the OGE-431 closeout note in Linear.
+// These exercise `store` / `load` / `load_or_generate` / `delete` against the
+// actual OS secret store on macOS (Keychain), Linux (Secret Service), and
+// Windows (Credential Manager) — not just compilation on those platforms.
 //
-// To run locally on macOS:
-//   cargo test -p ogentic-audit-keychain --features keychain -- --ignored
+// ## Why they are gated on an environment variable, not run by default
 //
-// Tests are `#[ignore]` so they don't run by default — they touch the
-// real macOS Keychain and may prompt the user the first time the
-// `cargo test` binary requests access.
+// A real keychain round-trip needs a provisioned, unlocked, throwaway store.
+// In CI each `keychain-integration-*` job sets that up on an ephemeral runner
+// and exports `OGENTIC_KEYCHAIN_CI=1`. On a developer laptop we must NOT touch
+// the real login keychain (it would prompt, pollute, or — on macOS — require
+// mutating the user's *default* keychain, which is session-global). So when
+// `OGENTIC_KEYCHAIN_CI` is unset, every integration test skips with a message.
+//
+// This replaces the previous `#[ignore]`-based gating (OGE-478). `#[ignore]`
+// alone could not express "run in CI, skip on laptops" — an `--ignored` run on
+// a laptop would still hit the developer's Keychain.
+//
+// ## Why keyring 4 (OGE-478)
+//
+// The `keyring` 3.x macOS backend could not round-trip on this path from an
+// unsigned `cargo test` binary: `set_secret` returned `Ok`, but the immediate
+// `get_secret` returned `NoEntry`. The `security` CLI round-tripped fine
+// against the same keychain, so the OS was healthy — the fault was in keyring
+// 3.x. keyring 4's redesigned Apple backend fixes it. This is why real macOS
+// keychain integration testing was impossible before this ticket.
+//
+// ## macOS keychain selection (why CI provisions an ephemeral default)
+//
+// keyring reads the user's login keychain (its `default_for_domain(User)`), not
+// an arbitrary path, and there is no public API to point an `Entry` at a
+// specific keychain file. So CI cannot hand the test a private keychain
+// in-process; the macOS job instead creates an ephemeral keychain, makes it the
+// *sole* entry in the user search list, and promotes it to the user default.
+// Both steps matter: with the login keychain also in the search list, keyring 4
+// lookups became ambiguous and a pre-store `load` stopped returning `NotFound`.
+// The production code path (through `keyring`) is unchanged; only the ambient
+// store differs, and only on the ephemeral runner.
+//
+// ## Concurrency
+//
+// The suite runs `--test-threads=1`. The tests share one real OS store, and the
+// platform Security frameworks are not reliable under concurrent add/find/delete
+// against the same store — parallel execution produced spurious lookup failures.
+//
+// ## Fail-loud semantics
+//
+// When `OGENTIC_KEYCHAIN_CI` IS set (CI), the tests do NOT skip on a missing or
+// broken store — they run and fail. That is deliberate: a CI job whose secret
+// store failed to come up must go red, not silently pass by skipping.
 
-#[cfg(all(test, target_os = "macos"))]
-mod macos_integration {
+#[cfg(test)]
+mod test_support {
     use super::*;
 
-    const TEST_SERVICE: &str = "com.ogenticai.ogentic-audit.test";
+    /// The integration suite runs only when the environment opts in. CI
+    /// sets this after provisioning + unlocking a throwaway secret store;
+    /// a developer laptop leaves it unset so `cargo test` never touches
+    /// the real login keychain.
+    pub(super) const CI_ENV: &str = "OGENTIC_KEYCHAIN_CI";
 
-    fn unique_account(case: &str) -> String {
-        // Per-run unique account to avoid colliding with a prior aborted
-        // run leaving the keychain dirty. `SystemTime::now` is normally
-        // disallowed in this workspace (clippy.toml routes audit-log time
-        // anchoring through `ogentic_audit_core::time::now`), but this
-        // is test-only fixture naming with no chain-time implications.
+    /// Service namespace for every integration entry. Distinct from any
+    /// real application service so a stray entry is obviously test debris.
+    pub(super) const TEST_SERVICE: &str = "com.ogenticai.ogentic-audit.test";
+
+    /// `true` when the integration suite should actually touch the store.
+    pub(super) fn integration_enabled() -> bool {
+        std::env::var_os(CI_ENV).is_some()
+    }
+
+    /// Per-run unique account so a prior aborted run leaving debris cannot
+    /// collide with this one.
+    ///
+    /// `SystemTime::now` is disallowed workspace-wide (clippy.toml routes
+    /// audit-log time anchoring through `ogentic_audit_core::time::now`),
+    /// but this is test-only fixture naming with no chain-time meaning.
+    pub(super) fn unique_account(case: &str) -> String {
         #[allow(clippy::disallowed_methods)]
         let nanos = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -237,71 +289,252 @@ mod macos_integration {
         format!("{case}-{nanos}")
     }
 
+    /// Best-effort deletion of a test entry, run from `Drop` so a panic
+    /// mid-test still removes the entry from the real OS store rather than
+    /// leaving it behind. A test holds one guard per entry it creates.
+    ///
+    /// Failures are logged, never panicked: a `Drop` that panicked during
+    /// unwinding would abort the process and mask the original failure.
+    pub(super) struct CleanupGuard {
+        pub(super) service: &'static str,
+        pub(super) account: String,
+    }
+
+    impl Drop for CleanupGuard {
+        fn drop(&mut self) {
+            match KeychainKey::delete(self.service, &self.account) {
+                Ok(()) | Err(Error::NotFound { .. }) => {},
+                Err(e) => eprintln!(
+                    "[test_support] CleanupGuard failed to delete \
+                     service={} account={}: {e:?}",
+                    self.service, self.account
+                ),
+            }
+        }
+    }
+
+    /// Mechanism test — no real keychain touched. Proves the property the
+    /// integration suites rely on: a `Drop` guard still runs when the test
+    /// body panics and is caught. If this ever regressed, a panicking
+    /// integration test would leak entries into the real store.
     #[test]
-    #[ignore = "touches real macOS Keychain; run with --ignored. \
-                NOTE: keyring 3.x's macOS backend does not always \
-                persist across separate Entry::new() calls when invoked \
-                from an unsigned binary (cargo test under default \
-                sandboxing). This is an environment-dependent test, not \
-                a defect in the wrapper — the unit tests above cover the \
-                wrapper's correctness end-to-end."]
-    fn round_trip_store_load_delete() {
-        let account = unique_account("round-trip");
-        let key = [0x42u8; HMAC_LEN];
+    fn drop_guard_runs_on_panic() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use std::sync::Arc;
 
-        // Clean slate.
-        let _ = KeychainKey::delete(TEST_SERVICE, &account);
-
-        // Initial load should fail with NotFound.
-        match KeychainKey::load(TEST_SERVICE, &account) {
-            Err(Error::NotFound { .. }) => {},
-            other => panic!("expected NotFound, got {other:?}"),
+        struct Probe(Arc<AtomicBool>);
+        impl Drop for Probe {
+            fn drop(&mut self) {
+                self.0.store(true, Ordering::SeqCst);
+            }
         }
 
-        // Store + load round-trip.
+        let dropped = Arc::new(AtomicBool::new(false));
+        let flag = dropped.clone();
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _probe = Probe(flag);
+            panic!("forced panic mid-test");
+        }));
+
+        assert!(result.is_err(), "the closure must have panicked");
+        assert!(
+            dropped.load(Ordering::SeqCst),
+            "Drop must run during unwind — CleanupGuard depends on this"
+        );
+    }
+}
+
+/// Body shared by every platform's integration suite. Keeping it in one
+/// place means macOS / Linux / Windows exercise byte-identical assertions;
+/// each platform module is a thin `#[cfg]`-gated caller.
+#[cfg(test)]
+mod integration_shared {
+    use super::test_support::{integration_enabled, unique_account, CleanupGuard, TEST_SERVICE};
+    use super::*;
+
+    /// `store` then `load` returns a key that signs and fingerprints
+    /// identically to an `InMemoryKey` built from the same bytes — i.e.
+    /// `KeychainKey` is a faithful wrapper, verified without ever exposing
+    /// the raw key bytes through any (even test-only) accessor.
+    pub(super) fn store_and_load_round_trips() {
+        if !integration_enabled() {
+            eprintln!(
+                "[keychain-it] OGENTIC_KEYCHAIN_CI unset; skipping store_and_load_round_trips"
+            );
+            return;
+        }
+        let account = unique_account("store-and-load");
+        let _guard = CleanupGuard {
+            service: TEST_SERVICE,
+            account: account.clone(),
+        };
+
+        // A fresh account must not already exist.
+        match KeychainKey::load(TEST_SERVICE, &account) {
+            Err(Error::NotFound { .. }) => {},
+            other => panic!("expected NotFound before store, got {other:?}"),
+        }
+
+        let key = [0x42u8; HMAC_LEN];
         KeychainKey::store(TEST_SERVICE, &account, &key).expect("store");
+
         let loaded = KeychainKey::load(TEST_SERVICE, &account).expect("load");
         assert_eq!(loaded.service(), TEST_SERVICE);
         assert_eq!(loaded.account(), account);
 
-        // Signing must match what InMemoryKey would produce for the
-        // same key bytes — i.e. KeychainKey is a true wrapper, not a
-        // re-implementation.
         let reference = InMemoryKey::from_bytes(key);
         assert_eq!(loaded.sign(b"hello"), reference.sign(b"hello"));
         assert_eq!(loaded.key_id(), reference.key_id());
+    }
 
-        // Delete.
+    /// `delete` removes the entry; a subsequent `load` is `NotFound`.
+    pub(super) fn delete_then_load_is_not_found() {
+        if !integration_enabled() {
+            eprintln!(
+                "[keychain-it] OGENTIC_KEYCHAIN_CI unset; skipping delete_then_load_is_not_found"
+            );
+            return;
+        }
+        let account = unique_account("delete-then-load");
+        let _guard = CleanupGuard {
+            service: TEST_SERVICE,
+            account: account.clone(),
+        };
+
+        KeychainKey::store(TEST_SERVICE, &account, &[0x11u8; HMAC_LEN]).expect("store");
         KeychainKey::delete(TEST_SERVICE, &account).expect("delete");
+
         match KeychainKey::load(TEST_SERVICE, &account) {
             Err(Error::NotFound { .. }) => {},
             other => panic!("expected NotFound after delete, got {other:?}"),
         }
     }
 
-    #[test]
-    #[ignore = "touches real macOS Keychain; run with --ignored. \
-                NOTE: keyring 3.x's macOS backend does not always \
-                persist across separate Entry::new() calls when invoked \
-                from an unsigned binary (cargo test under default \
-                sandboxing). This is an environment-dependent test, not \
-                a defect in the wrapper — the unit tests above cover the \
-                wrapper's correctness end-to-end."]
-    fn load_or_generate_creates_then_reuses() {
+    /// `load_or_generate` creates on first call and reuses on the second —
+    /// same `key_id`, same signature for the same input.
+    pub(super) fn load_or_generate_creates_then_reuses() {
+        if !integration_enabled() {
+            eprintln!("[keychain-it] OGENTIC_KEYCHAIN_CI unset; skipping load_or_generate_creates_then_reuses");
+            return;
+        }
         let account = unique_account("load-or-generate");
-        let _ = KeychainKey::delete(TEST_SERVICE, &account);
+        let _guard = CleanupGuard {
+            service: TEST_SERVICE,
+            account: account.clone(),
+        };
 
         let first = KeychainKey::load_or_generate(TEST_SERVICE, &account).expect("first");
         let first_id = first.key_id();
         let first_sig = first.sign(b"witness");
 
-        // Second call should reuse the stored key — same key_id, same
-        // signature for the same input.
         let second = KeychainKey::load_or_generate(TEST_SERVICE, &account).expect("second");
-        assert_eq!(first_id, second.key_id());
+        assert_eq!(
+            first_id,
+            second.key_id(),
+            "second call must reuse the stored key"
+        );
         assert_eq!(first_sig, second.sign(b"witness"));
+    }
 
-        KeychainKey::delete(TEST_SERVICE, &account).expect("delete");
+    /// A `CleanupGuard` deletes its entry from the *real* store even when
+    /// the test body panics — the property the whole suite's hygiene rests
+    /// on, verified end-to-end against the provisioned store (not a mock).
+    pub(super) fn cleanup_guard_removes_entry_on_panic() {
+        if !integration_enabled() {
+            eprintln!("[keychain-it] OGENTIC_KEYCHAIN_CI unset; skipping cleanup_guard_removes_entry_on_panic");
+            return;
+        }
+        let account = unique_account("panic-cleanup");
+
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _guard = CleanupGuard {
+                service: TEST_SERVICE,
+                account: account.clone(),
+            };
+            KeychainKey::store(TEST_SERVICE, &account, &[0u8; HMAC_LEN]).expect("store");
+            panic!("forced panic after store");
+        }));
+        assert!(result.is_err(), "closure must have panicked");
+
+        // The guard dropped during unwind and deleted the entry.
+        match KeychainKey::load(TEST_SERVICE, &account) {
+            Err(Error::NotFound { .. }) => {},
+            other => {
+                // Belt-and-braces: clean up before failing the assertion.
+                let _ = KeychainKey::delete(TEST_SERVICE, &account);
+                panic!("guard did not remove entry on panic; load returned {other:?}");
+            },
+        }
+    }
+}
+
+// Each platform module is a thin, `#[cfg]`-gated set of callers into
+// `integration_shared`, so the three platforms run identical assertions and
+// `cargo test --tests <platform>_integration` selects the right one in CI.
+
+#[cfg(all(test, target_os = "macos"))]
+mod macos_integration {
+    use super::integration_shared as shared;
+
+    #[test]
+    fn store_and_load_round_trips() {
+        shared::store_and_load_round_trips();
+    }
+    #[test]
+    fn delete_then_load_is_not_found() {
+        shared::delete_then_load_is_not_found();
+    }
+    #[test]
+    fn load_or_generate_creates_then_reuses() {
+        shared::load_or_generate_creates_then_reuses();
+    }
+    #[test]
+    fn cleanup_guard_removes_entry_on_panic() {
+        shared::cleanup_guard_removes_entry_on_panic();
+    }
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod linux_integration {
+    use super::integration_shared as shared;
+
+    #[test]
+    fn store_and_load_round_trips() {
+        shared::store_and_load_round_trips();
+    }
+    #[test]
+    fn delete_then_load_is_not_found() {
+        shared::delete_then_load_is_not_found();
+    }
+    #[test]
+    fn load_or_generate_creates_then_reuses() {
+        shared::load_or_generate_creates_then_reuses();
+    }
+    #[test]
+    fn cleanup_guard_removes_entry_on_panic() {
+        shared::cleanup_guard_removes_entry_on_panic();
+    }
+}
+
+#[cfg(all(test, target_os = "windows"))]
+mod windows_integration {
+    use super::integration_shared as shared;
+
+    #[test]
+    fn store_and_load_round_trips() {
+        shared::store_and_load_round_trips();
+    }
+    #[test]
+    fn delete_then_load_is_not_found() {
+        shared::delete_then_load_is_not_found();
+    }
+    #[test]
+    fn load_or_generate_creates_then_reuses() {
+        shared::load_or_generate_creates_then_reuses();
+    }
+    #[test]
+    fn cleanup_guard_removes_entry_on_panic() {
+        shared::cleanup_guard_removes_entry_on_panic();
     }
 }
 
