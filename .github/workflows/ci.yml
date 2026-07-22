@@ -326,18 +326,28 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y gnome-keyring dbus-x11
 
-      # Empty passphrase is acceptable ONLY because this keyring is
-      # created fresh and destroyed with the ephemeral runner. Production
-      # Sotto Desktop must use a user-chosen passphrase — do NOT copy this
-      # as a deployment pattern.
+      # Bring up the Secret Service the way keyring-rs's own CI does:
+      # inside a private session bus, feed a passphrase to
+      # `gnome-keyring-daemon --unlock` (which creates + unlocks a fresh
+      # "login" collection and forks the daemon). The `org.freedesktop.secrets`
+      # service is D-Bus-activated on the first call, so no manual
+      # backgrounding / sleep race. An earlier attempt used an empty
+      # passphrase + `& sleep 2`, which left the service unregistered and
+      # failed with `NoStorageAccess(NoResult)`.
+      #
+      # The passphrase is a throwaway for this ephemeral runner only —
+      # NOT a deployment pattern. Production Sotto Desktop uses a
+      # user-chosen passphrase.
+      - name: Build tests (outside the keyring session, to avoid daemon timeout)
+        run: cargo build -p ogentic-audit-keychain --all-features --locked --tests
+
       - name: Start a session bus + unlock a fresh keyring, then run tests
         env:
           OGENTIC_KEYCHAIN_CI: "1"
         run: |
-          cargo build -p ogentic-audit-keychain --all-features --locked --tests
-          dbus-run-session -- bash -exc '
-            echo -n "" | gnome-keyring-daemon --unlock --components=secrets &
-            sleep 2
+          rm -rf "$HOME/.local/share/keyrings"
+          dbus-run-session -- bash -euxc '
+            echo "ci-throwaway-passphrase" | gnome-keyring-daemon --unlock
             cargo test -p ogentic-audit-keychain --all-features --locked -- --test-threads=1 linux_integration
           '
 
