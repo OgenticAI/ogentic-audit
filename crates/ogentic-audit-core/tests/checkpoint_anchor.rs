@@ -268,3 +268,71 @@ fn rewrite_history(dir: &std::path::Path) {
     // valid prev_hash — exactly the scenario the thread describes.
     build_log(dir, &["allow", "allow", "deny", "deny", "deny"]);
 }
+
+// ---------------------------------------------------------------------------
+// Cross-language parity (OGE-1673 AC 5).
+//
+// The Python suite (python/tests/test_checkpoint.py) builds a checkpoint for
+// the committed `single-record` golden vector straight from its chain.json
+// and asserts the verdict. These two tests derive the *identical* checkpoint
+// from the *same* file and assert the *same* verdicts, so the Rust core and
+// the Python binding provably agree on one concrete (log, checkpoint) pair —
+// the checkpoint analogue of the existing golden-vector parity.
+// ---------------------------------------------------------------------------
+
+fn vectors_dir() -> std::path::PathBuf {
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/vectors/v0.1")
+}
+
+/// Build a checkpoint for a committed vector from its chain.json, exactly
+/// as `_checkpoint_from_chain` does on the Python side.
+fn checkpoint_from_chain(vector: &str, hmac_override: Option<&str>) -> Checkpoint {
+    let chain: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(vectors_dir().join(vector).join("chain.json")).unwrap(),
+    )
+    .unwrap();
+    let head = chain["records"].as_array().unwrap().last().unwrap();
+    let hmac_hex = hmac_override.unwrap_or_else(|| head["hmac_hex"].as_str().unwrap());
+    Checkpoint {
+        key_id: hex32(chain["key_id_hex"].as_str().unwrap()),
+        segment: head["segment"].as_u64().unwrap() as u16,
+        record_id: head["record_id"].as_u64().unwrap(),
+        hmac: hex32(hmac_hex),
+        observed_at: "2026-07-22T00:00:00Z".to_string(),
+    }
+}
+
+fn vector_key(vector: &str) -> InMemoryKey {
+    let inputs: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(vectors_dir().join(vector).join("inputs.json")).unwrap(),
+    )
+    .unwrap();
+    InMemoryKey::from_bytes(hex32(inputs["key_hex"].as_str().unwrap()))
+}
+
+#[test]
+fn python_parity_single_record_matching_checkpoint_verifies() {
+    let dir = vectors_dir().join("single-record");
+    let cp = checkpoint_from_chain("single-record", None);
+    let verifier = Verifier::new(Box::new(vector_key("single-record")));
+    let report = verifier
+        .verify_with_options(&dir, with_checkpoint(cp))
+        .unwrap();
+    assert_eq!(report.verdict, Verdict::Verified, "{:?}", report.violation);
+    assert_eq!(report.compact_verdict(), "Verified");
+}
+
+#[test]
+fn python_parity_single_record_wrong_hmac_is_mismatch() {
+    let dir = vectors_dir().join("single-record");
+    let cp = checkpoint_from_chain("single-record", Some(&"00".repeat(32)));
+    let verifier = Verifier::new(Box::new(vector_key("single-record")));
+    let report = verifier
+        .verify_with_options(&dir, with_checkpoint(cp))
+        .unwrap();
+    assert_eq!(report.verdict, Verdict::Violation);
+    assert_eq!(
+        report.violation.expect("violation").kind,
+        ViolationKind::CheckpointMismatch
+    );
+}

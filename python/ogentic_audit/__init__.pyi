@@ -7,8 +7,11 @@ documented in OGE-433 (PyO3 binding ticket).
 
 from __future__ import annotations
 
+from os import PathLike
 from types import TracebackType
-from typing import Any, TypedDict
+from typing import Any, TypedDict, Union
+
+_CheckpointArg = Union[str, "PathLike[str]", dict[str, Any]]
 
 __version__: str
 
@@ -94,7 +97,15 @@ def verify(
     key: KeyHandle,
     forensic: bool = False,
     raise_on_violation: bool = False,
+    checkpoint: _CheckpointArg | None = None,
 ) -> VerifyReport: ...
+def checkpoint(
+    log_dir: str,
+    key: KeyHandle,
+    *,
+    observed_at: str | None = None,
+    out: str | PathLike[str] | None = None,
+) -> dict[str, Any]: ...
 
 # Exception hierarchy.
 class OgenticAuditError(Exception): ...
@@ -111,3 +122,6 @@ class KeyIdMismatchError(VerificationFailed): ...
 class SegmentDiscontinuityError(VerificationFailed): ...
 class TimestampError(VerificationFailed): ...
 class SchemaError(VerificationFailed): ...
+class CheckpointMismatchError(VerificationFailed): ...
+class CheckpointTruncatedError(VerificationFailed): ...
+class CheckpointKeyMismatchError(ArgumentError): ...
