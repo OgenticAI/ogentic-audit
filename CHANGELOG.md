@@ -9,6 +9,25 @@ library APIs follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **MCP tool-call audit middleware (OGE-1721).** A reference integration
+  that turns MCP server tool-call events into chained, tamper-evident
+  records — the "drop-in HMAC hash-chain audit trail for MCP tool-call
+  logs" promised to compliance customers. No new record format, no new
+  crate: a tool-call is an ordinary record with a conventional `payload`
+  shape.
+  - `ogentic_audit.mcp`: `audit_tool_call(writer, tool=, arguments=,
+    result=/error=, policy=, redact=)` appends one chained record;
+    `MCPAuditMiddleware.instrument(...)` decorates a tool function so every
+    call is recorded (result on success, exception on failure, then
+    re-raised). Arguments/results are JSON-summarised, redactable, and
+    size-capped — the log protects integrity, not confidentiality.
+  - Composes with policy attestation (OGE-1674): pass an
+    `ogentic-audit-policy/v1` dict as `policy=` to record *why* a call was
+    permitted (or denied — a denied call is still audited).
+  - `docs/integrations/mcp.md` (quick-start, redaction, policy, verify,
+    EU AI Act Art. 12 / SOC 2 CC7 / ISO 42001 mapping) and a runnable
+    `examples/mcp-audit/` demo, covered end-to-end by `test_mcp.py`.
+
 - **Policy attestation (OGE-1674).** Records can now carry *what rule
   permitted an action*, not just that it happened — the difference between
   a tamper-evident log and a compliance artifact, per the
