@@ -26,6 +26,15 @@ create_exception!(_native, SegmentDiscontinuityError, VerificationFailed);
 create_exception!(_native, TimestampError, VerificationFailed);
 create_exception!(_native, SchemaError, VerificationFailed);
 
+// Checkpoint anchoring (OGE-1671). CheckpointMismatch / CheckpointTruncated
+// are genuine tamper findings, so they sit under VerificationFailed. A
+// checkpoint from a *different* log, by contrast, is a wrong-file operator
+// mistake, not tamper evidence — it subclasses ArgumentError so callers can
+// `except CheckpointKeyMismatchError:` without treating it as an accusation.
+create_exception!(_native, CheckpointMismatchError, VerificationFailed);
+create_exception!(_native, CheckpointTruncatedError, VerificationFailed);
+create_exception!(_native, CheckpointKeyMismatchError, ArgumentError);
+
 /// Register every exception type on the module.
 pub fn register(py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("OgenticAuditError", py.get_type::<OgenticAuditError>())?;
@@ -45,6 +54,18 @@ pub fn register(py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     )?;
     m.add("TimestampError", py.get_type::<TimestampError>())?;
     m.add("SchemaError", py.get_type::<SchemaError>())?;
+    m.add(
+        "CheckpointMismatchError",
+        py.get_type::<CheckpointMismatchError>(),
+    )?;
+    m.add(
+        "CheckpointTruncatedError",
+        py.get_type::<CheckpointTruncatedError>(),
+    )?;
+    m.add(
+        "CheckpointKeyMismatchError",
+        py.get_type::<CheckpointKeyMismatchError>(),
+    )?;
     Ok(())
 }
 
@@ -63,6 +84,8 @@ pub fn violation_exception(kind: &str, message: &str) -> PyErr {
             TimestampError::new_err(message.to_string())
         },
         "SchemaViolation" | "UnknownVersion" => SchemaError::new_err(message.to_string()),
+        "CheckpointMismatch" => CheckpointMismatchError::new_err(message.to_string()),
+        "CheckpointTruncated" => CheckpointTruncatedError::new_err(message.to_string()),
         _ => VerificationFailed::new_err(message.to_string()),
     }
 }

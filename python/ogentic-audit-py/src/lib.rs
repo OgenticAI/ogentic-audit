@@ -62,5 +62,8 @@ fn _native(py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     // `verify` as a module-level call).
     m.add_function(wrap_pyfunction!(verify::verify, m)?)?;
 
+    // Checkpoint anchoring: emit a chain-head pin (OGE-1673).
+    m.add_function(wrap_pyfunction!(verify::checkpoint, m)?)?;
+
     Ok(())
 }

@@ -9,6 +9,27 @@ library APIs follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Checkpoint anchoring in the Python binding (OGE-1673).** Brings the
+  PyO3 bindings to parity with the Rust core's checkpoint support, so a
+  Python compliance job can ask the one question internal verification
+  cannot — did the log I'm looking at extend the head I saw before?
+  - `verify(log_dir, key, checkpoint=...)` accepts a checkpoint dict or a
+    path to a `ogentic-audit-checkpoint/v1` JSON file. A rewrite surfaces
+    as `CheckpointMismatchError` (or `report.verdict_kind ==
+    "CheckpointMismatch"`); a truncation as `CheckpointTruncatedError`.
+  - `checkpoint(log_dir, key, *, observed_at=None, out=None)` emits a
+    chain-head pin (verifies first; refuses a broken chain), defaulting
+    `observed_at` to the current UTC time and optionally writing `out`.
+  - `CheckpointMismatchError` / `CheckpointTruncatedError` (under
+    `VerificationFailed`) and `CheckpointKeyMismatchError` (under
+    `ArgumentError` — a wrong-file mistake is not tamper evidence). `.pyi`
+    stubs updated.
+  - A cross-language parity test derives the *same* checkpoint from the
+    committed `single-record` golden vector's `chain.json` on both sides
+    and asserts the Rust core and the Python binding reach the same
+    verdict (`python_parity_*` in `checkpoint_anchor.rs`;
+    `test_parity_*` in `test_checkpoint.py`).
+
 - **Checkpoint anchoring (OGE-1671).** Chain verification is
   self-referential: it proves a log is consistent with itself, which is
   also true of a log that someone holding the HMAC key truncated and
