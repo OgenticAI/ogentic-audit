@@ -6,7 +6,7 @@
 
 HMAC-SHA256 chained, append-only audit log library. Tamper-evident, language-agnostic on-disk format, built for evidence.
 
-> **Status:** v0.2.0, source-only. **Not yet published to PyPI or crates.io** — build from this repo (`cargo build`, `maturin develop`) until the release lands. The on-disk format is specified in [`docs/spec/v0.1.md`](docs/spec/v0.1.md) and the wire bytes are pinned by [committed golden vectors](tests/vectors/v0.1). The format is the stable surface; the Rust / Python APIs follow semantic versioning. See [Status & versioning](#status--versioning).
+> **Status:** v0.3.0. The on-disk format is specified in [`docs/spec/v0.1.md`](docs/spec/v0.1.md) and the wire bytes are pinned by [committed golden vectors](tests/vectors/v0.1). The format is the stable surface (`0x0001`, unchanged since v0.1); the Rust / Python APIs follow semantic versioning. See [Status & versioning](#status--versioning).
 
 ## Why
 
