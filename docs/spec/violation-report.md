@@ -325,6 +325,68 @@ Segment header `version` field is not `0x0001`.
 }
 ```
 
+### `CheckpointMismatch`
+
+The record at the checkpointed position is present but its HMAC differs from the one recorded in the checkpoint: history was rewritten from at least that point.
+
+Emitted **only** when the caller supplies a checkpoint. Every other kind in this document is an *internal* check — it validates the chain against itself, which a keyholder who rewrote the whole chain also satisfies. `CheckpointMismatch` and `CheckpointTruncated` are the only kinds that compare the log against an observation made outside it.
+
+```json
+{
+  "kind": "CheckpointMismatch",
+  "location": {
+    "segment_index": 0,
+    "record_id": 3,
+    "byte_offset": 412
+  },
+  "evidence": {
+    "checkpoint_hmac_hex": "5c643f56…",
+    "actual_hmac_hex": "9a01be77…",
+    "observed_at": "2026-07-20T20:00:00Z"
+  },
+  "message": "Checkpoint mismatch at s0r3: record differs from the head observed at 2026-07-20T20:00:00Z — history was rewritten"
+}
+```
+
+### `CheckpointTruncated`
+
+The checkpointed record is absent from the log entirely: history that was previously observed has been cut. Distinguished from `CheckpointMismatch` because the operational response differs — records were removed, not altered.
+
+Emitted only when the log is otherwise clean. An earlier violation explains the record's absence on its own and takes precedence.
+
+```json
+{
+  "kind": "CheckpointTruncated",
+  "location": {
+    "segment_index": 0,
+    "record_id": 4,
+    "byte_offset": 0
+  },
+  "evidence": {
+    "checkpoint_hmac_hex": "5c643f56…",
+    "observed_at": "2026-07-20T20:00:00Z",
+    "last_segment_index": 0,
+    "records_inspected": 3
+  },
+  "message": "Checkpoint truncated: s0r4 observed at 2026-07-20T20:00:00Z is absent from this log — history was cut"
+}
+```
+
+**The checkpoint artifact.** A checkpoint is a `(segment, record_id, hmac)` triple plus the `key_id` of the log it came from, serialized as `ogentic-audit-checkpoint/v1`:
+
+```json
+{
+  "format": "ogentic-audit-checkpoint/v1",
+  "key_id": "<64 hex chars>",
+  "segment": 0,
+  "record_id": 3,
+  "hmac": "<64 hex chars>",
+  "observed_at": "2026-07-20T20:00:00Z"
+}
+```
+
+`record_id` is per-segment monotonic, so a position is only meaningful as the `(segment, record_id)` pair. A checkpoint whose `key_id` does not match the log's is a wrong-file error and MUST be refused outright — verifiers MUST NOT silently ignore it (which would make a checkpointed run indistinguishable from a plain one while appearing stricter) and MUST NOT report it as a violation (which would accuse a log the evidence says nothing about). `observed_at` is descriptive only and MUST NOT participate in the comparison.
+
 ## Determinism and stability
 
 - **Field order in JSON output is irrelevant** for conformance. The on-disk-vector cross-check ([Q2 / OGE-441](https://linear.app/ogenticai/issue/OGE-441)) compares parsed JSON, not text.

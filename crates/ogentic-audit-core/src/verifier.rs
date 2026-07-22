@@ -27,6 +27,15 @@
 //! | `UnknownVersion` | Header `version` ≠ supported. |
 //! | `TimestampRegression` | `ts_wall` regresses > 60_000 ms across consecutive records. |
 //! | `TimestampInconsistency` | Within a session, `\|wall_delta - mono_delta\| > 60_000 ms`. |
+//! | `CheckpointMismatch` | Checkpointed record present but its HMAC differs (rewrite). |
+//! | `CheckpointTruncated` | Checkpointed record absent from the log (truncation). |
+//!
+//! The first nine are **internal** checks: they validate the chain
+//! against itself, which a keyholder who rewrote the whole chain also
+//! satisfies. The two `Checkpoint*` kinds are the only ones that compare
+//! the log against something outside it, and they are produced only when
+//! the caller supplies a [`Checkpoint`] via
+//! [`VerifyOptions::checkpoint`]. See [`crate::checkpoint`].
 //!
 //! Constant-time HMAC + key_id compare via [`HmacBytes`] / [`KeyId`]
 //! (both wrap `subtle::ConstantTimeEq`).
@@ -44,6 +53,7 @@
 use std::fmt;
 use std::path::{Path, PathBuf};
 
+use crate::checkpoint::Checkpoint;
 use crate::key::{HmacBytes, KeyHandle, KeyId, HMAC_LEN};
 use crate::reader::{Reader, ReaderError, Record};
 use crate::segment::{SegmentHeader, FORMAT_VERSION, HEADER_BODY_LEN, HEADER_TOTAL_LEN};
@@ -61,6 +71,14 @@ pub struct VerifyOptions {
     /// still appears in `report.violation`; the remainder accumulate
     /// in `report.additional_violations`. Off by default.
     pub forensic_mode: bool,
+    /// A previously-observed chain head to check the log against.
+    ///
+    /// Without this, verification is self-referential: it proves the
+    /// chain is consistent *with itself*, which a keyholder who rewrote
+    /// the chain also satisfies. With it, the verifier can additionally
+    /// answer whether this is the same history as before. See
+    /// [`crate::checkpoint`].
+    pub checkpoint: Option<Checkpoint>,
 }
 
 /// Top-level verifier — owns the signing key handle.
@@ -91,6 +109,20 @@ impl Verifier {
         let reader = Reader::open(log_dir).map_err(VerifyError::Open)?;
         let segments = reader.segments().map_err(VerifyError::Open)?;
         let expected_key_id = self.key.key_id();
+
+        // A checkpoint from a different log is an operator error (wrong
+        // file), not evidence of tampering — refuse it loudly rather
+        // than reporting a violation that would read as an accusation.
+        if let Some(cp) = &options.checkpoint {
+            if !cp.matches_key(&expected_key_id) {
+                return Err(VerifyError::CheckpointKeyMismatch {
+                    log_key_id_hex: expected_key_id.to_hex(),
+                    checkpoint_key_id_hex: hex(&cp.key_id),
+                });
+            }
+        }
+        // Set once the checkpointed record is found and its HMAC agrees.
+        let mut checkpoint_reached = false;
 
         let mut report = VerifyReport {
             format_version: FORMAT_VERSION,
@@ -386,6 +418,44 @@ impl Verifier {
                     break;
                 }
 
+                // Step 8: checkpoint anchoring.
+                //
+                // Every check above this point is self-referential: it
+                // compares the log against itself. This one compares it
+                // against an observation made earlier and held
+                // elsewhere, which is the only way a rewrite by a
+                // keyholder becomes visible.
+                if let Some(cp) = &options.checkpoint {
+                    if cp.is_position(seg_idx, record.record_id) {
+                        if ct_eq(&record.hmac, &cp.hmac) {
+                            checkpoint_reached = true;
+                        } else {
+                            let v = Violation {
+                                kind: ViolationKind::CheckpointMismatch,
+                                location: ViolationLocation {
+                                    segment_index: seg_idx,
+                                    record_id: Some(record.record_id),
+                                    byte_offset: record.file_offset,
+                                },
+                                evidence: ViolationEvidence::CheckpointMismatch {
+                                    checkpoint_hmac_hex: hex(&cp.hmac),
+                                    actual_hmac_hex: hex(&record.hmac),
+                                    observed_at: cp.observed_at.clone(),
+                                },
+                                message: format!(
+                                    "Checkpoint mismatch at s{seg_idx}r{}: record differs from the head observed at {} — history was rewritten",
+                                    record.record_id, cp.observed_at
+                                ),
+                            };
+                            if !push_violation(&mut report, v, &options) {
+                                return Ok(report);
+                            }
+                            segment_violated = true;
+                            break;
+                        }
+                    }
+                }
+
                 // Advance.
                 prev = record.hmac;
                 last_hmac_in_segment = record.hmac;
@@ -402,6 +472,34 @@ impl Verifier {
 
         // Update the chain-head summary.
         report.log.final_hmac_hex = prior_segment_final.map(|h| hex(&h));
+
+        // The log walked clean but never reached the checkpointed
+        // record: history that was there before is no longer present.
+        // Only meaningful when nothing else stopped the walk early —
+        // an earlier violation explains the absence on its own.
+        if let Some(cp) = &options.checkpoint {
+            if !checkpoint_reached && report.violation.is_none() {
+                let v = Violation {
+                    kind: ViolationKind::CheckpointTruncated,
+                    location: ViolationLocation {
+                        segment_index: cp.segment,
+                        record_id: Some(cp.record_id),
+                        byte_offset: 0,
+                    },
+                    evidence: ViolationEvidence::CheckpointTruncated {
+                        checkpoint_hmac_hex: hex(&cp.hmac),
+                        observed_at: cp.observed_at.clone(),
+                        last_segment_index: report.log.last_segment_index,
+                        records_inspected: report.log.records_inspected,
+                    },
+                    message: format!(
+                        "Checkpoint truncated: s{}r{} observed at {} is absent from this log — history was cut",
+                        cp.segment, cp.record_id, cp.observed_at
+                    ),
+                };
+                push_violation(&mut report, v, &options);
+            }
+        }
 
         Ok(report)
     }
@@ -523,6 +621,14 @@ pub enum ViolationKind {
     HeaderCorrupt,
     /// Segment header `version` is not 0x0001.
     UnknownVersion,
+    /// The record at the checkpointed position is present but its HMAC
+    /// differs from the observed one — the chain was rewritten from at
+    /// least that point. Only produced when a checkpoint is supplied.
+    CheckpointMismatch,
+    /// The checkpointed record is absent from the log entirely — the
+    /// chain was cut short of history that was previously observed.
+    /// Only produced when a checkpoint is supplied.
+    CheckpointTruncated,
 }
 
 impl ViolationKind {
@@ -539,6 +645,8 @@ impl ViolationKind {
             ViolationKind::KeyIdMismatch => "KeyIdMismatch",
             ViolationKind::HeaderCorrupt => "HeaderCorrupt",
             ViolationKind::UnknownVersion => "UnknownVersion",
+            ViolationKind::CheckpointMismatch => "CheckpointMismatch",
+            ViolationKind::CheckpointTruncated => "CheckpointTruncated",
         }
     }
 }
@@ -629,6 +737,26 @@ pub enum ViolationEvidence {
         /// Preceding segment's final HMAC, hex.
         preceding_segment_final_hex: String,
     },
+    /// The checkpointed record is present but altered.
+    CheckpointMismatch {
+        /// Lowercase hex of the HMAC recorded in the checkpoint.
+        checkpoint_hmac_hex: String,
+        /// Lowercase hex of the HMAC now at that position.
+        actual_hmac_hex: String,
+        /// When the checkpoint claims the observation was made (RFC 3339).
+        observed_at: String,
+    },
+    /// The checkpointed record is gone.
+    CheckpointTruncated {
+        /// Lowercase hex of the HMAC recorded in the checkpoint.
+        checkpoint_hmac_hex: String,
+        /// When the checkpoint claims the observation was made (RFC 3339).
+        observed_at: String,
+        /// Largest segment index the verifier reached.
+        last_segment_index: Option<u16>,
+        /// How many records the verifier walked before running out.
+        records_inspected: u64,
+    },
     /// Record's key_id didn't match segment header's key_id.
     KeyIdMismatch {
         /// Hex of header's key_id.
@@ -713,6 +841,19 @@ pub enum VerifyError {
     /// violation).
     #[error("reader I/O: {0}")]
     Read(#[from] ReaderError),
+    /// The supplied checkpoint was taken from a log signed with a
+    /// different key. This is a wrong-file mistake, not tamper evidence,
+    /// so it is an error rather than a violation — reporting it as a
+    /// violation would read as an accusation the evidence doesn't support.
+    #[error(
+        "checkpoint belongs to a different log: checkpoint key_id {checkpoint_key_id_hex}, log key_id {log_key_id_hex}"
+    )]
+    CheckpointKeyMismatch {
+        /// Hex `key_id` of the log being verified.
+        log_key_id_hex: String,
+        /// Hex `key_id` recorded in the checkpoint.
+        checkpoint_key_id_hex: String,
+    },
 }
 
 // ---------------------------------------------------------------------------

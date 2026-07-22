@@ -7,6 +7,47 @@ library APIs follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Checkpoint anchoring (OGE-1671).** Chain verification is
+  self-referential: it proves a log is consistent with itself, which is
+  also true of a log that someone holding the HMAC key truncated and
+  re-chained. A checkpoint is a `(segment, record_id, hmac)` triple
+  observed earlier and held outside the log, which makes that rewrite
+  visible. Motivated by the critique in
+  [NousResearch/hermes-agent#487](https://github.com/NousResearch/hermes-agent/issues/487).
+  - `ogentic-audit checkpoint <log_dir> [--out FILE]` — emit the current
+    head as `ogentic-audit-checkpoint/v1` JSON. Refuses to emit for a log
+    that does not verify, so a break cannot be laundered into an anchor.
+  - `ogentic-audit verify --checkpoint <FILE>` — additionally prove the
+    log still extends that head.
+  - Two new violation kinds: `CheckpointMismatch` (history rewritten) and
+    `CheckpointTruncated` (history cut), both specified in
+    [`docs/spec/violation-report.md`](docs/spec/violation-report.md).
+  - `VerifyOptions::checkpoint` in the core crate; `VerifyError::CheckpointKeyMismatch`
+    for a checkpoint presented against a different log (exit 3 — an
+    operator mistake, deliberately not reported as tamper evidence).
+  - `cargo run -p ogentic-audit-core --example rewrite_attack` — runnable
+    demonstration of the attack and its detection.
+  - **No on-disk format change.** The checkpoint lives outside the log;
+    `FORMAT_VERSION` stays `0x0001` and all golden vectors are unchanged.
+
+### Changed
+
+- README no longer claims properties the code does not have (OGE-1672):
+  the tamper-evidence claim is qualified inline (chained HMACs detect
+  edits by a non-keyholder; a keyholder rewrite needs a checkpoint), the
+  status line reflects 0.2.0, and PyPI / crates.io / Homebrew install
+  paths are marked as pending rather than advertised as working —
+  neither package is published yet (OGE-1407).
+
+### Note for downstream verifiers
+
+`ViolationKind` gained two variants. Exhaustive `match` statements over it
+will need a new arm. Independent implementations that do not support
+checkpoints remain conformant: the new kinds are only emitted when a
+checkpoint is supplied.
+
 ## [0.2.0] - 2026-06-25
 
 ### Breaking

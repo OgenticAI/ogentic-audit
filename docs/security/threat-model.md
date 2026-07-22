@@ -112,6 +112,14 @@ For our threat model — where HMAC key compromise = vault passphrase compromise
 
 **Path forward:** introduce a `key.evolved` event type with payload `{ epoch: u64, witness: bstr }` where the witness is the next-epoch key-derivation evidence. Out of v0.1 because it requires a key-evolution policy decision (every N records? every wall-clock interval? on every vault unlock?) and the addition of epoch tracking to the verifier.
 
+### Checkpoint anchoring (shipped — the local half)
+
+The gap the mechanisms in this section address is concrete, so it is worth stating in attack form. An adversary holding the HMAC key and write access to the log truncates it at any record, then re-chains fabricated history forward: each forged record gets a valid HMAC and a valid `prev_hash`. Every internal check in the verifier passes, because the chain is being validated **against itself**. This is not a hypothetical — `crates/ogentic-audit-core/tests/checkpoint_anchor.rs::verifies_rewritten_chain_without_checkpoint` asserts that a rewritten log passes plain verification, so the limitation stays visible in CI rather than drifting into folklore. Run `cargo run -p ogentic-audit-core --example rewrite_attack` to watch it happen.
+
+**Shipped:** `ogentic-audit checkpoint` emits a `(segment, record_id, hmac)` triple — the chain head as observed at a moment in time — and `ogentic-audit verify --checkpoint <file>` asserts the log still contains that record. A rewrite reports `CheckpointMismatch`; a truncation reports `CheckpointTruncated`. The checkpoint lives outside the log, so this is not an on-disk format change.
+
+**What it does not do.** The mechanism supplies comparison, not trust. A checkpoint stored beside the log by the same party that controls the log buys **nothing** — whoever rewrites the log rewrites the checkpoint next to it. The security property lives entirely in *where the checkpoint goes*: a party with different interests from the log's operator (a customer, a regulator, a counterpart agent, an append-only public log). Everything below this line is about making that "somewhere else" systematic rather than manual.
+
 ### External witnesses
 
 Rekor uses Sigstore's TSA; CT uses log-operator-signed tree heads; some compliance products anchor periodically to public blockchains. The pattern: a third party signs an attestation that "I observed chain head X at time T."

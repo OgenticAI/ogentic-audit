@@ -11,8 +11,13 @@ use crate::keysource::{load_key, AppError};
 pub fn run(global: &GlobalArgs, args: VerifyArgs) -> Result<ExitCodeKind, AppError> {
     let key = load_key(global)?;
     let verifier = Verifier::new(key);
+    let checkpoint = match &args.checkpoint {
+        Some(path) => Some(crate::checkpoint_file::load(path)?),
+        None => None,
+    };
     let opts = VerifyOptions {
         forensic_mode: args.forensic,
+        checkpoint,
     };
 
     // --segment scoping: validate the argument range first.
@@ -47,7 +52,15 @@ pub fn run(global: &GlobalArgs, args: VerifyArgs) -> Result<ExitCodeKind, AppErr
     // segment N > 0, causing false HmacMismatch / ChainBreak violations.
     let mut report = verifier
         .verify_with_options(&args.log_dir, opts)
-        .map_err(|e| AppError::io(anyhow!("verifier could not open log: {e}")))?;
+        .map_err(|e| match e {
+            // Presenting a checkpoint from another log is an operator
+            // mistake, not tamper evidence — exit 3, not 2, and say so
+            // plainly rather than implying the log is suspect.
+            ogentic_audit_core::VerifyError::CheckpointKeyMismatch { .. } => {
+                AppError::argument(anyhow!("{e}"))
+            },
+            other => AppError::io(anyhow!("verifier could not open log: {other}")),
+        })?;
 
     // When a segment filter is active, restrict the report to violations
     // that belong to that segment. Violations in other segments are

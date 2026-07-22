@@ -1,20 +1,19 @@
 # ogentic-audit
 
 [![CI](https://github.com/OgenticAI/ogentic-audit/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/OgenticAI/ogentic-audit/actions/workflows/ci.yml)
-[![PyPI](https://img.shields.io/pypi/v/ogentic-audit)](https://pypi.org/project/ogentic-audit/)
-[![Crates.io](https://img.shields.io/crates/v/ogentic-audit)](https://crates.io/crates/ogentic-audit)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Format v0.1](https://img.shields.io/badge/on--disk%20format-v0.1-informational)](docs/spec/v0.1.md)
 
-HMAC-SHA256 chained, append-only audit log library. Court-defensible, tamper-evident, language-agnostic on-disk format.
+HMAC-SHA256 chained, append-only audit log library. Tamper-evident, language-agnostic on-disk format, built for evidence.
 
-> **Status:** v0.1.0 released. The on-disk format is specified in [`docs/spec/v0.1.md`](docs/spec/v0.1.md) and the wire bytes are pinned by [committed golden vectors](tests/vectors/v0.1). The format is the stable surface; the Rust / Python APIs follow semantic versioning from this tag forward. See [Status & versioning](#status--versioning).
+> **Status:** v0.2.0, source-only. **Not yet published to PyPI or crates.io** — build from this repo (`cargo build`, `maturin develop`) until the release lands. The on-disk format is specified in [`docs/spec/v0.1.md`](docs/spec/v0.1.md) and the wire bytes are pinned by [committed golden vectors](tests/vectors/v0.1). The format is the stable surface; the Rust / Python APIs follow semantic versioning. See [Status & versioning](#status--versioning).
 
 ## Why
 
 Regulated industries and audit-grade AI tooling need an audit log that:
 
-- **Cannot be silently rewritten** — every record is HMAC-chained to the previous, so any tamper is detectable. The verifier reports the exact `(segment, record_id)` of the first violation, with a structured evidence payload an auditor can act on.
+- **Cannot be silently edited** — every record is HMAC-chained to the previous, so an edit by anyone without the key is detectable. The verifier reports the exact `(segment, record_id)` of the first violation, with a structured evidence payload an auditor can act on.
+- **Can prove it wasn't rewritten** — but only with a checkpoint. Chained HMACs verify the log *against itself*, which someone holding the key also satisfies after re-chaining fabricated history. `ogentic-audit checkpoint` pins the current head; `ogentic-audit verify --checkpoint` proves the log still extends the head you saw before. That only helps if the checkpoint is held by someone who can't rewrite the log — see the [threat model](docs/security/threat-model.md#checkpoint-anchoring-shipped--the-local-half), and `cargo run -p ogentic-audit-core --example rewrite_attack` to see the attack and the detection.
 - **Survives crashes** — append-only with atomic flush + `F_FULLFSYNC` on macOS; partial writes never produce a half-record. On reopen, the writer detects any torn tail (`len_trailer != len_prefix`) and truncates to the last fully-written record, surfacing a structured `RecoveryReport` to the caller.
 - **Travels across languages** — the on-disk format is documented byte-by-byte, with [golden vectors](tests/vectors/v0.1) that conforming implementations MUST round-trip. v0.1 ships Rust + Python; the format is intentionally implementable in any language that has HMAC-SHA256.
 - **Is court-defensible** — paired [threat model](docs/security/threat-model.md) and [court-defensibility brief](docs/legal/court-defensibility.md); the CLI ships a bit-reproducible `export --pdf` command for self-contained evidence packages.
@@ -22,10 +21,10 @@ Regulated industries and audit-grade AI tooling need an audit log that:
 ## Components
 
 - [`crates/ogentic-audit-core`](crates/ogentic-audit-core) — Rust core library (writer, reader, verifier, key handle, crash recovery)
-- [`crates/ogentic-audit-cli`](crates/ogentic-audit-cli) — `ogentic-audit` CLI binary (`verify` / `show` / `head` / `export`)
+- [`crates/ogentic-audit-cli`](crates/ogentic-audit-cli) — `ogentic-audit` CLI binary (`verify` / `show` / `head` / `checkpoint` / `export`)
 - [`crates/ogentic-audit-keychain`](crates/ogentic-audit-keychain) — optional OS-keychain key source (macOS / Linux / Windows)
 - [`crates/ogentic-audit-kms`](crates/ogentic-audit-kms) — optional KMS-backed key source (AWS KMS in v0.1; GCP / Azure in v0.2)
-- [`python/ogentic_audit`](python/ogentic_audit) — PyO3-based Python bindings (`pip install ogentic-audit`)
+- [`python/ogentic_audit`](python/ogentic_audit) — PyO3-based Python bindings (built with maturin; not yet on PyPI)
 
 ## Quickstart
 
@@ -35,7 +34,8 @@ Add to `Cargo.toml`:
 
 ```toml
 [dependencies]
-ogentic-audit-core = "0.1"
+# Not on crates.io yet — depend on the repo until the release lands:
+ogentic-audit-core = { git = "https://github.com/OgenticAI/ogentic-audit" }
 ```
 
 ```rust
@@ -73,7 +73,8 @@ fn main() -> anyhow::Result<()> {
 ### Python
 
 ```sh
-pip install ogentic-audit
+# Not on PyPI yet — build the bindings from this repo:
+pip install maturin && maturin develop -m python/ogentic-audit-py/Cargo.toml
 ```
 
 ```python
@@ -94,13 +95,19 @@ assert report.ok
 
 ### CLI — quick start
 
-#### macOS (Homebrew)
+> **Not yet on Homebrew or crates.io.** Until the release lands
+> ([OGE-1407](https://linear.app/ogenticai/issue/OGE-1407)), build the CLI
+> from a clone: `cargo build --release --bin ogentic-audit`. The
+> `brew install ogenticai/tap/ogentic-audit` and `cargo install
+> ogentic-audit` paths below are what will work once it ships.
+
+#### macOS (Homebrew) — after release
 
 ```sh
 brew install ogenticai/tap/ogentic-audit
 ```
 
-#### Linux / cross-platform (Cargo)
+#### Linux / cross-platform (Cargo) — after release
 
 ```sh
 cargo install ogentic-audit
@@ -135,6 +142,24 @@ ogentic-audit verify ./samples/matter-2024-CV-3047-tampered/matter-2024-CV-3047.
 echo $?
 # 1
 ```
+
+#### Prove the log was not rewritten
+
+Chain verification alone cannot detect a rewrite by someone holding the
+key — it validates the log against itself. Pin the head, hand the pin to
+someone who does not control the log, and check against it later:
+
+```sh
+# Observe the current head and store it somewhere the writer can't reach.
+ogentic-audit checkpoint ./samples/matter-2024-CV-3047/matter-2024-CV-3047.log/ --out head.json
+
+# Later: prove the log still contains that history.
+ogentic-audit verify ./samples/matter-2024-CV-3047/matter-2024-CV-3047.log/ --checkpoint head.json --summary
+```
+
+A rewritten log reports `CheckpointMismatch`; a truncated one reports
+`CheckpointTruncated`. Both exit `1`. Keeping `head.json` next to the log
+achieves nothing — whoever can rewrite one can rewrite the other.
 
 Exit codes (CI-friendly): `0` success, `1` verification failed, `2` I/O
 error, `3` argument error, `64` clap usage error.
