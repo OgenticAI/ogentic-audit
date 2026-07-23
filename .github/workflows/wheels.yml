@@ -204,5 +204,5 @@ jobs:
           # short-lived OIDC token that PyPI trades for an upload token,
           # scoped to this exact repo + workflow + environment.
           packages-dir: dist/
-          skip-existing: false
+          skip-existing: true   # re-runs skip already-live files (e.g. re-upload a fixed sdist)
           verbose: true
