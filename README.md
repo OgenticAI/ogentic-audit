@@ -1,12 +1,14 @@
 # ogentic-audit
 
 [![CI](https://github.com/OgenticAI/ogentic-audit/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/OgenticAI/ogentic-audit/actions/workflows/ci.yml)
+[![crates.io](https://img.shields.io/crates/v/ogentic-audit-core?label=crates.io)](https://crates.io/crates/ogentic-audit-core)
+[![PyPI](https://img.shields.io/pypi/v/ogentic-audit?label=PyPI)](https://pypi.org/project/ogentic-audit/)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Format v0.1](https://img.shields.io/badge/on--disk%20format-v0.1-informational)](docs/spec/v0.1.md)
 
 HMAC-SHA256 chained, append-only audit log library. Tamper-evident, language-agnostic on-disk format, built for evidence.
 
-> **Status:** v0.3.0. The on-disk format is specified in [`docs/spec/v0.1.md`](docs/spec/v0.1.md) and the wire bytes are pinned by [committed golden vectors](tests/vectors/v0.1). The format is the stable surface (`0x0001`, unchanged since v0.1); the Rust / Python APIs follow semantic versioning. See [Status & versioning](#status--versioning).
+> **Status:** v0.3.0 — live on [crates.io](https://crates.io/crates/ogentic-audit) and [PyPI](https://pypi.org/project/ogentic-audit/). The on-disk format is specified in [`docs/spec/v0.1.md`](docs/spec/v0.1.md) and the wire bytes are pinned by [committed golden vectors](tests/vectors/v0.1). The format is the stable surface (`0x0001`, unchanged since v0.1); the Rust / Python APIs follow semantic versioning. See [Status & versioning](#status--versioning).
 
 ## Why
 
@@ -24,7 +26,7 @@ Regulated industries and audit-grade AI tooling need an audit log that:
 - [`crates/ogentic-audit-cli`](crates/ogentic-audit-cli) — `ogentic-audit` CLI binary (`verify` / `show` / `head` / `checkpoint` / `export`)
 - [`crates/ogentic-audit-keychain`](crates/ogentic-audit-keychain) — optional OS-keychain key source (macOS / Linux / Windows)
 - [`crates/ogentic-audit-kms`](crates/ogentic-audit-kms) — optional KMS-backed key source (AWS KMS in v0.1; GCP / Azure in v0.2)
-- [`python/ogentic_audit`](python/ogentic_audit) — PyO3-based Python bindings (built with maturin; not yet on PyPI)
+- [`python/ogentic_audit`](python/ogentic_audit) — PyO3-based Python bindings (`pip install ogentic-audit`)
 
 ## Quickstart
 
@@ -34,8 +36,7 @@ Add to `Cargo.toml`:
 
 ```toml
 [dependencies]
-# Not on crates.io yet — depend on the repo until the release lands:
-ogentic-audit-core = { git = "https://github.com/OgenticAI/ogentic-audit" }
+ogentic-audit-core = "0.3"
 ```
 
 ```rust
@@ -73,8 +74,7 @@ fn main() -> anyhow::Result<()> {
 ### Python
 
 ```sh
-# Not on PyPI yet — build the bindings from this repo:
-pip install maturin && maturin develop -m python/ogentic-audit-py/Cargo.toml
+pip install ogentic-audit
 ```
 
 ```python
@@ -95,23 +95,15 @@ assert report.ok
 
 ### CLI — quick start
 
-> **Not yet on Homebrew or crates.io.** Until the release lands
-> ([OGE-1407](https://linear.app/ogenticai/issue/OGE-1407)), build the CLI
-> from a clone: `cargo build --release --bin ogentic-audit`. The
-> `brew install ogenticai/tap/ogentic-audit` and `cargo install
-> ogentic-audit` paths below are what will work once it ships.
-
-#### macOS (Homebrew) — after release
-
-```sh
-brew install ogenticai/tap/ogentic-audit
-```
-
-#### Linux / cross-platform (Cargo) — after release
+Install the `ogentic-audit` binary from crates.io:
 
 ```sh
 cargo install ogentic-audit
 ```
+
+> A Homebrew tap (`brew install ogenticai/tap/ogentic-audit`) is planned but
+> not published yet; use `cargo install` above, or grab a signed binary from
+> the [GitHub release](https://github.com/OgenticAI/ogentic-audit/releases).
 
 #### Codesigning status (v0.1.0)
 
