@@ -16,6 +16,16 @@ A free-form description is still allowed, but the orchestrator will refuse to pr
 
 ---
 
+## 1a. No implementation without a ticket (standing rule)
+
+**Every implementation change is grounded in a Linear ticket before code is written.** This is not only a factory-orchestration convenience — it is a standing rule for all work in every OgenticAI repo, whether the change comes from the factory, a Cowork session, or a human. If you are about to write feature or fix code and there is no ticket, **create one first** (with a project AND assignee per §2a), put its `OGE-NNN` in the branch name, and only then implement.
+
+**Why — the reviewer makes ticketless work invisible, not reviewed.** The OgenticAI Reviewer verifies a PR against its linked ticket's `## UAT checklist`. A PR with no `OGE-NNN` and no checklist has nothing to review against, so the reviewer correctly **skips** it — publishing a grey `skipped` Check that sits next to the green ones and looks reviewed. It was not. On 2026-07-22 a real feature PR (`zashboard-ultimate#233`, an integrations-directory UI) merged this way: no ticket, no checklist, no verdict, and no record in any project view. The fix is upstream, at authoring time: **no ticket, no implementation.** A ticket is also what makes the work show up in a project, carry an owner, and leave an audit trail — the same reasons §2a exists.
+
+**The one exception — automated / chore PRs.** Factory-kit syncs (`chore(factory): …`), dependency bumps, and other machine-generated maintenance legitimately carry no ticket, and must not be blocked for lacking one. The reviewer is built this way on purpose: a **missing ticket never fails the check** (only a missing checklist can, and only where a repo opts into `require_checklist`). This rule binds human and agent **implementation** work — the things a person would open a ticket for — not routine machine chores.
+
+---
+
 ## 2. The Linear MCP tools every agent uses
 
 The kit refers to Linear tools by logical name. The actual MCP namespace depends on which Linear connector is installed locally; current OgenticAI installs use `mcp__plugin_engineering_linear__*` or a UUID-prefixed server. Map the logical names to whatever your install exposes.
