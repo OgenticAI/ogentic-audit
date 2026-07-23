@@ -47,6 +47,7 @@ dev = [
 ]
 
 [tool.maturin]
+include = [{ path = "NOTICE", format = "sdist" }]
 manifest-path = "python/ogentic-audit-py/Cargo.toml"
 module-name = "ogentic_audit._native"
 python-source = "python"
