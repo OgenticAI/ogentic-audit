@@ -23,16 +23,20 @@ import streamlit as st
 # Make the sibling logic module importable regardless of launcher (`streamlit
 # run demo/app.py`, Streamlit AppTest, or the Docker image all resolve it).
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import audit_demo as d  # noqa: E402
+import audit_demo as d
 
 st.set_page_config(page_title="ogentic-audit demo", page_icon="🔗", layout="centered")
 
 
 def verdict_banner(v: d.VerifyView) -> None:
     if v.ok:
-        st.success(f"✓ **Verified** · {v.records_inspected} events · chain head `{(v.chain_head or '')[:16]}…`")
+        st.success(
+            f"✓ **Verified** · {v.records_inspected} events · chain head `{(v.chain_head or '')[:16]}…`"
+        )
     else:
-        st.error(f"✗ **{v.kind}** at segment {v.broken_segment}, record {v.broken_record} — {v.message}")
+        st.error(
+            f"✗ **{v.kind}** at segment {v.broken_segment}, record {v.broken_record} — {v.message}"
+        )
 
 
 def records_table(records: list[d.RecordView], broken: int | None = None) -> None:
@@ -78,7 +82,9 @@ st.caption(
     "Four events from a legal matter. Each `hmac` is HMAC-SHA256 over the record; "
     "each `prev_hash` links back to the previous record's `hmac` — that's the chain."
 )
-current = d.VerifyView(**vars(log.report)) if not st.session_state.tampered else d._verify_view(log.path)
+current = (
+    d.VerifyView(**vars(log.report)) if not st.session_state.tampered else d._verify_view(log.path)
+)
 verdict_banner(current)
 records_table(d._read_records(log.path), broken=current.broken_record)
 
@@ -91,7 +97,9 @@ st.caption(
 )
 c1, c2 = st.columns(2)
 with c1:
-    if st.button("💥 Flip a byte in record 2", use_container_width=True, disabled=st.session_state.tampered):
+    if st.button(
+        "💥 Flip a byte in record 2", use_container_width=True, disabled=st.session_state.tampered
+    ):
         d.tamper_byte(log.path)
         st.session_state.tampered = True
         st.rerun()
@@ -146,7 +154,9 @@ if "rewrite" in st.session_state:
         if r.rewritten_checked.ok:
             st.success("✓ Verified")
         else:
-            st.error(f"✗ {r.rewritten_checked.kind} — **caught**\n\n`{r.rewritten_checked.verdict}`")
+            st.error(
+                f"✗ {r.rewritten_checked.kind} — **caught**\n\n`{r.rewritten_checked.verdict}`"
+            )
         st.caption("The pinned head no longer matches: history was rewritten.")
     st.info(
         "A checkpoint held **beside** the log buys nothing — whoever rewrites one "
