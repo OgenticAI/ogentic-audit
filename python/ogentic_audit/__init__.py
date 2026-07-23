@@ -161,4 +161,13 @@ __all__ = [
     "verify",
 ]
 
-__version__ = "0.1.0"
+# Track the installed distribution version instead of a hand-maintained
+# literal (which drifted: it read 0.1.0 through the 0.3.0 release). Falls
+# back to the native crate version for editable/source checkouts where the
+# distribution metadata may be absent.
+try:
+    from importlib.metadata import version as _dist_version
+
+    __version__ = _dist_version("ogentic-audit")
+except Exception:  # pragma: no cover - metadata missing in odd installs
+    __version__ = core_version()
