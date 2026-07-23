@@ -1,0 +1,4 @@
+# Pin the published wheel so the demo runs the exact library users install.
+ogentic-audit==0.3.0
+streamlit>=1.36,<2
+pandas>=2.0
