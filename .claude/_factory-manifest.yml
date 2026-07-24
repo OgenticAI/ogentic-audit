@@ -4,13 +4,13 @@
 manifest_version: 1
 factory_source: "https://github.com/OgenticAI/agent-factory"
 
-synced_kit_sha: "cecfb903906b011a15166c9d36d1352e12245e29"
-synced_kit_hash: "2061af78f715f0db79d0e6488cbcc35ca8d7b6c8551a82bb836255509e498ff0"
-synced_at: "2026-07-23T09:37:30.589633+00:00"
+synced_kit_sha: "01191b4f4d7034cbb0ad782d8f6158564496b8aa"
+synced_kit_hash: "fe837c96a05c405676fddae8145df60bcde4d534614a9c27ac360ee8cad11a15"
+synced_at: "2026-07-24T22:42:58.916804+00:00"
 
 files:
   - path: .claude/CLAUDE-FACTORY.md
-    content_sha256: b69aa19c4f811bae88e22dbbf3fa07e2c4d7ab6cb3a1b1bb307f685b00c58522
+    content_sha256: 48f38a673b3ca7c827e58e8a0e0eb0dfc1d0df830f05059f2c904d4b3ca84f97
   - path: .claude/LINEAR-INTEGRATION.md
     content_sha256: f502490752dd7fcc8f0efee6a622edb1c112034edac4bf6f970ca8a251b6115f
   - path: .claude/SKILLS.md
@@ -57,12 +57,16 @@ files:
     content_sha256: ad65f7a1062a656532c26ef13a17e3717ce2e4493bd7147828ab787dfcf93ed0
   - path: .claude/agents/19-monorepo-consistency-reviewer.md
     content_sha256: eef5a14b99e447d9809741fa1326d4162508ada7e3d551ad04923f8e5095cce1
+  - path: .claude/core-canon.md
+    content_sha256: 25f5d1dacbcba1980f022c361b0eb056f7fe2fa43720708201ce235b9433a976
   - path: .claude/hooks/pre-commit
     content_sha256: 4620e26e07112561a3c0d8c2225c72f7f6c2dad55bc1028e4b995c4f41b1ea6f
   - path: .claude/hooks/pre-push
     content_sha256: e36ac616e6f0a26b8e5ebd8483f99751a43cbf99ef2feb70f0cf4412a93309ac
   - path: .claude/hooks/tests/test-pre-commit.sh
     content_sha256: 15e7fdf20bab3b6210d9342ddbf1ba39395a189e9b2c4477c9f12f99fcf6d092
+  - path: .claude/runbooks/agent-access-resolution.md
+    content_sha256: 09c9a6aeede4f5b22bb9ac9a05027ba8fe9fa986691669b0371b9095a0cc7483
   - path: .claude/scripts/factory-linear-comment.sh
     content_sha256: cf0bbd6af62442f114b16e0c2b2c3de001f951a1785e7b871ddc8ffc220c51af
   - path: .claude/scripts/factory-linear-query.sh
