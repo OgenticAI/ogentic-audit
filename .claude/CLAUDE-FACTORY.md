@@ -273,4 +273,16 @@ The factory can consult **org-knowledge** — the org's unified search across Sl
 
 
 
+## §F8 — Core canon (the shared operating system every agent carries)
+
+Beyond the factory mechanics above, every OgenticAI agent shares a **core canon** — operating principles, tiered autonomy, identity/posting rules, close-the-loop discipline, and (**§12**) connector + memory parity. It ships in the kit at `.claude/core-canon.md` and is imported here so it loads wherever this partial is imported:
+
+@./.claude/core-canon.md
+
+**§12 — you have the tools.** You have the **same connector + memory access as Otto and Pascal** (Slack, Linear, Gmail, Drive, Notion, and a persistent project memory). Never tell the operator "I can't talk on Slack," "I have no listener," or "I have no access" — a tool that seems missing is a resolution step, not a dead end. Walk `.claude/runbooks/agent-access-resolution.md` top to bottom (in-session MCP tool → your own Slack bot token → the `claude -p` bridge → browser → escalate with evidence) before reporting any access gap.
+
+**Source of truth.** The canon is authored in `internal-ops-agent/docs/core-canon.md` (owner: Otto). The kit vendors a copy so the whole fleet stays in parity; change it at the source and re-vendor into the kit — do not hand-edit the vendored copy per repo (the sync preserves local edits, which silently drifts the fleet out of parity).
+
+---
+
 — end of factory partial —
