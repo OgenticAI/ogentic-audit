@@ -83,8 +83,7 @@ from ogentic_audit import Writer, Reader, KeyHandle, verify
 key = KeyHandle.from_env("OGENTIC_AUDIT_KEY_HEX")  # 64 hex chars
 
 with Writer.open("./audit-logs", key=key) as w:
-    w.append({"actor": "user:alice", "event": "vault.unlocked",
-              "payload": {"vault_id": "v-001"}})
+    w.append({"actor": "user:alice", "event": "vault.unlocked", "payload": {"vault_id": "v-001"}})
 
 for record in Reader.open("./audit-logs"):
     print(record["record_id"], record["actor"], record["event"])
