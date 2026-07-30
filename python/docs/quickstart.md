@@ -22,6 +22,7 @@ export OGENTIC_AUDIT_KEY_HEX=$(openssl rand -hex 32)
 
 ```python
 from ogentic_audit import KeyHandle
+
 key = KeyHandle.from_keychain("my-app", "default")
 ```
 
@@ -37,11 +38,13 @@ key = KeyHandle.from_env("OGENTIC_AUDIT_KEY_HEX")
 session_id = uuid.uuid4().hex  # 32 hex chars
 
 with Writer.open("./audit-logs", key=key, session_id_hex=session_id) as w:
-    w.append({
-        "actor": "user:alice",
-        "event": "vault.unlocked",
-        "payload": {"vault_id": "v-001"},
-    })
+    w.append(
+        {
+            "actor": "user:alice",
+            "event": "vault.unlocked",
+            "payload": {"vault_id": "v-001"},
+        }
+    )
 ```
 
 The `with` block flushes any buffered writes to disk (with `F_FULLFSYNC` on macOS) on exit, so the record is durable even if your process crashes immediately after.

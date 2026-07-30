@@ -43,7 +43,7 @@ publish, `maturin develop`), then:
 from ogentic_audit import KeyHandle, Writer, verify
 from ogentic_audit.mcp import MCPAuditMiddleware
 
-key = KeyHandle.from_env("OGENTIC_AUDIT_KEY_HEX")   # 64 hex chars
+key = KeyHandle.from_env("OGENTIC_AUDIT_KEY_HEX")  # 64 hex chars
 
 with Writer.open("./mcp-audit", key=key) as w:
     audit = MCPAuditMiddleware(w)
@@ -53,7 +53,7 @@ with Writer.open("./mcp-audit", key=key) as w:
     def search_docs(query: str) -> list[str]:
         return ["q3-report.pdf", "q4-forecast.xlsx"]
 
-    search_docs("quarterly revenue")     # ← one chained record appended
+    search_docs("quarterly revenue")  # ← one chained record appended
 
 # Later — verify the trail end to end.
 report = verify("./mcp-audit", key=key)
@@ -95,6 +95,7 @@ def scrub(value):
         return {k: ("***" if k in {"token", "password"} else v) for k, v in value.items()}
     return value
 
+
 audit = MCPAuditMiddleware(writer, redact=scrub)
 ```
 
@@ -119,7 +120,7 @@ audit_tool_call(
     policy={
         "format": "ogentic-audit-policy/v1",
         "decision": "permit",
-        "digest": "sha256:" + policy_sha256_hex,   # over YOUR canonicalised policy
+        "digest": "sha256:" + policy_sha256_hex,  # over YOUR canonicalised policy
         "policy_id": "agent-tools-v3",
         "deciding_rules": ["rule.shell-allowlist"],
     },
