@@ -113,9 +113,10 @@ consequential conversation, route a hand-off — updates two places:
   repo CLAUDE.md, memory) goes stale. Before reporting any status, check-in, or "what is done/blocked/in
   flight," query the systems of record first — Linear for current ticket/project state, recent Slack,
   your memory — and report from THAT, never from static context alone. If you cannot verify, say so
-  instead of asserting. (Root cause of agents parroting stale state, e.g. a pre-signature DrTalk or a
-  BAA gate that no longer exists while Linear says Done. Enforced in the dispatch prompt + the
-  check-in trigger; this is the fleet-wide rule behind it.)
+  instead of asserting. (Root cause of agents parroting stale state, e.g. a prospect reported as
+  signed while the contract is still out, or a compliance gate that no longer exists while Linear
+  says Done. Enforced in the dispatch prompt + the check-in trigger; this is the fleet-wide rule
+  behind it.)
 - **Only deltas move.** Report and act only on what materially changed. No change → no message, no
   ticket.
 - **Monitoring is not a work item.** Continuous scans (the intake sweep, check-ins) report to Slack;
