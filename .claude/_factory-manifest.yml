@@ -4,9 +4,9 @@
 manifest_version: 1
 factory_source: "https://github.com/OgenticAI/agent-factory"
 
-synced_kit_sha: "d172b8f11a6506ee41dde59cffc59dc32bb84c9b"
-synced_kit_hash: "2a9441036eda4e7926bd965f374b63d6a89467ab15b655f3609e0b1783fc7574"
-synced_at: "2026-08-24T19:29:59.064096+00:00"
+synced_kit_sha: "633a6d5ac8815ae27e02e573290a2f9dfa277da1"
+synced_kit_hash: "8756318c2ee82275d7f39148426665bf2db5d955a69201b7299d6f334d46401b"
+synced_at: "2026-09-03T04:28:29.162938+00:00"
 
 files:
   - path: .claude/CLAUDE-FACTORY.md
@@ -58,7 +58,7 @@ files:
   - path: .claude/agents/19-monorepo-consistency-reviewer.md
     content_sha256: eef5a14b99e447d9809741fa1326d4162508ada7e3d551ad04923f8e5095cce1
   - path: .claude/core-canon.md
-    content_sha256: ea947805dd5e9d455309bad6580a949736e8d590dfaa264210f23ce1fcdfe436
+    content_sha256: bf1193ee324e98983b8b4fdbc5e56c9924757cce69ad8bd53d5b4f71b7d4af3a
   - path: .claude/hooks/pre-commit
     content_sha256: 4620e26e07112561a3c0d8c2225c72f7f6c2dad55bc1028e4b995c4f41b1ea6f
   - path: .claude/hooks/pre-push
