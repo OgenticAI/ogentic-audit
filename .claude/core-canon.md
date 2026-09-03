@@ -235,6 +235,43 @@ that is a resolution step, never a dead end.
 This section is synced to every agent repo via the factory kit-sync so the whole fleet has parity. If
 your repo is thin or missing this, that is a sync gap to fix, not a limit on what you can do.
 
+## 13. Encode the rule, or expect to pay for it twice (cross-repo, 2026-09-03)
+
+Two things keep happening across this fleet, and they are the same thing.
+
+**A rule kept by reading gets broken under load.** Every one of these was known, written down, and
+still shipped broken:
+
+- `zashboard-ultimate` `trigger/twin-tick.ts` — no Prisma may reach the Trigger worker bundle.
+  The file says so itself: *"Nothing in CI checks this, so it is a rule kept by reading, not by
+  tooling."*
+- `zashboard-ultimate` `lib/run-guard.ts` — three execution guardrails *"declared but not
+  enforced"*, including a `budgetCapCents` of 0 meaning UNCAPPED rather than "no budget".
+- `agentshub` — a budget `mode: 'enforce'` that consulted nothing; a per-agent enabled toggle that
+  did not govern whether the agent ran; a `kind` posted forever to an allowlist that rejected it,
+  the 400 swallowed by a deliberately fail-open fetch.
+- `agent-factory` itself — `propagate-factory-kit.yml` did not list `core-canon.md` in its trigger
+  paths, so a fix at source had no route out. That is how a client's name sat in the canon in seven
+  public repositories.
+
+So: **when you find a load-bearing invariant, encode it as a guard or file a ticket the same day.**
+Naming it in a comment is documentation, not enforcement. If you write "nothing checks this", you
+have just written the acceptance criteria.
+
+**And read the sibling before you build.** `agentshub` (Mission Control) and `zashboard-ultimate`
+have independently built twin config, money go-live gates, operator breaker/STOP surfaces and
+provider selection — and independently paid for the same four bug classes: a control that reports a
+state it never consults; a zero or empty default falling into the permissive branch; a gate with one
+caller that every other path skips; and fail-open resolution that hides a permanent failure. Neither
+repo referenced the other. Before building a surface a sibling already ships, read theirs; when you
+fix something there, check whether the sibling has the same shape.
+
+**Guards stay in their repo — deliberately.** This canon carries the *why* and propagates fleet-wide.
+Executable guards do not: `propagate-factory-kit.yml` auto-merges into every registry repo, so a
+guard with one false positive would break CI everywhere at once, and a real guard needs a baseline
+tuned to its own repo (see `zashboard-ultimate`'s `hardcoded-colors-baseline.txt`). Port a sibling's
+guard by opening a PR in the repo that needs it, not by adding it to the kit.
+
 ---
 
 *Canon owner: Otto (Director of Operations). Proposed via the fleet-consistency work (D1,
