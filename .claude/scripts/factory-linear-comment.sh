@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# factory-linear-comment.sh — post a [factory:*] comment authored by the OgenticAI
-# Factory Bot, via the Linear API (NOT an MCP connector). This is how the factory
-# keeps its Linear audit trail attributed to the bot when there's no connector slot
-# for it (Claude caps Linear connectors at two; both are human). See
-# docs/LINEAR-BOT-SETUP.md and .claude/LINEAR-INTEGRATION.md §14.
+# factory-linear-comment.sh — post a [factory:*] comment authored by the factory's
+# Linear agent (the "OgenticAI Factory Bot" OAuth app), via the Linear API
+# (NOT an MCP connector). This keeps the audit trail attributed to the agent when
+# there's no connector slot for it (Claude caps Linear connectors at two; both are
+# human). See docs/LINEAR-BOT-SETUP.md and .claude/LINEAR-INTEGRATION.md §14.
 #
-# Requires: LINEAR_FACTORY_TOKEN (the bot's Linear personal API key), python3.
+# Requires: LINEAR_AGENT_TOKEN (an OAuth app token, actor=app — docs/LINEAR-BOT-SETUP.md), python3.
 #
 # Usage:
 #   factory-linear-comment.sh --issue   OGE-123       --body "markdown…"
@@ -23,7 +23,7 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-: "${LINEAR_FACTORY_TOKEN:?LINEAR_FACTORY_TOKEN not set — see docs/LINEAR-BOT-SETUP.md}"
+: "${LINEAR_AGENT_TOKEN:?LINEAR_AGENT_TOKEN not set — see docs/LINEAR-BOT-SETUP.md}"
 [ "$body" = "-" ] && body="$(cat)"
 [ -n "$body" ] || { echo "--body required" >&2; exit 2; }
 [ -n "$issue$project" ] || { echo "--issue or --project required" >&2; exit 2; }
@@ -35,13 +35,13 @@ api() {  # $1 = JSON payload string (carries NO secret)
   # is passed as argv (safe — no secret) so the token stays out of the heredoc too.
   python3 - "$1" <<'PY'
 import json, os, ssl, sys, urllib.error, urllib.request
-tok = os.environ.get("LINEAR_FACTORY_TOKEN", "")
+tok = os.environ.get("LINEAR_AGENT_TOKEN", "")
 if not tok:
-    sys.exit("LINEAR_FACTORY_TOKEN not set")
+    sys.exit("LINEAR_AGENT_TOKEN not set")
 req = urllib.request.Request(
     "https://api.linear.app/graphql",
     data=sys.argv[1].encode(),
-    headers={"Authorization": tok, "Content-Type": "application/json"},
+    headers={"Authorization": "Bearer " + tok, "Content-Type": "application/json"},
 )
 try:
     with urllib.request.urlopen(req, timeout=30,

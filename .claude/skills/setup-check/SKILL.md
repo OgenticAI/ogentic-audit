@@ -62,23 +62,23 @@ Require ≥ `2.40.0`. Older versions parse `gh auth status` differently and the 
 - For `feature-factory`: must not be `main`. If on `main`, halt and ask which Linear branch to checkout (use Linear's auto-generated branch name).
 - For `repo-bootstrap` / `repo-create` / `fleet-onboarding`: any branch is fine.
 
-### 6. Factory-bot Linear token
+### 6. Factory agent Linear token
 
-`[factory:*]` comments must be authored by the factory bot, not a human. Claude caps Linear connectors at two (both used by human workspaces), so the bot has **no connector** — it posts comments via the Linear API using `LINEAR_FACTORY_TOKEN` (its personal API key). See `LINEAR-INTEGRATION.md` §14.
+`[factory:*]` comments must be authored by the factory's Linear agent (the "OgenticAI Factory Bot" OAuth app), not a human. The agent has **no connector** — it posts comments via the Linear API using `LINEAR_AGENT_TOKEN` (an OAuth app token, actor=app). See `LINEAR-INTEGRATION.md` §14.
 
-Confirm the token is present and resolves to the bot:
+Confirm the token is present and resolves to the app user:
 
 ```
-test -n "$LINEAR_FACTORY_TOKEN" && curl -fsS -X POST https://api.linear.app/graphql \
-  -H "Authorization: $LINEAR_FACTORY_TOKEN" -H "Content-Type: application/json" \
+test -n "$LINEAR_AGENT_TOKEN" && curl -fsS -X POST https://api.linear.app/graphql \
+  -H "Authorization: Bearer $LINEAR_AGENT_TOKEN" -H "Content-Type: application/json" \
   -d '{"query":"{ viewer { email displayName } }"}'
 ```
 
-Expect `viewer.email` = `factory-bot@ogenticai.com` ("OgenticAI Factory Bot").
+Expect `viewer.email` ending `@oauthapp.linear.app` with `viewer.displayName` = `ogenticaifactorybot` ("OgenticAI Factory Bot").
 
-If `LINEAR_FACTORY_TOKEN` is unset or resolves to a human, **halt** (unless `OGENTICAI_BYPASS_IDENTITY=1`) — the factory must not post `[factory:*]` comments as a human. Post and stop:
+If `LINEAR_AGENT_TOKEN` is unset or resolves to a human (any email NOT ending `@oauthapp.linear.app`), **halt** (unless `OGENTICAI_BYPASS_IDENTITY=1`) — the factory must not post `[factory:*]` comments as a human. Post and stop:
 
-> ❌ LINEAR_FACTORY_TOKEN missing or not the bot. Set the factory-bot key (`docs/LINEAR-BOT-SETUP.md`) and re-run, or run once with `OGENTICAI_BYPASS_IDENTITY=1` to skip (comments are buffered per LINEAR-INTEGRATION §9 — never posted as a human).
+> ❌ LINEAR_AGENT_TOKEN missing or not the agent app. Mint the app token (`docs/LINEAR-BOT-SETUP.md`) and re-run, or run once with `OGENTICAI_BYPASS_IDENTITY=1` to skip (comments are buffered per LINEAR-INTEGRATION §9 — never posted as a human).
 
 This is the Linear analogue of the git-identity gate — see `CLAUDE-FACTORY.md` §F2 and `LINEAR-INTEGRATION.md` §14.
 
@@ -93,7 +93,7 @@ On success, post a single block:
    ssh key:    ~/.ssh/ogenticai_plugins (present)
    gh version: 2.42.1
    branch:     oge-123-invoice-reminders-7d
-   linear:     LINEAR_FACTORY_TOKEN → factory-bot@ogenticai.com   (halts if missing/human — see check 6)
+   linear:     LINEAR_AGENT_TOKEN → OgenticAI Factory Bot (app)   (halts if missing/human — see check 6)
 ```
 
 On any failure, post the failing item and the exact one-liner that fixes it, then halt the orchestration. Don't try to fix the operator's machine config yourself — they own that.

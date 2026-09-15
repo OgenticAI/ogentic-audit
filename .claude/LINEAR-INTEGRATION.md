@@ -30,13 +30,13 @@ A free-form description is still allowed, but the orchestrator will refuse to pr
 
 The kit refers to Linear tools by logical name. The actual MCP namespace depends on which Linear connector is installed locally; current OgenticAI installs use `mcp__plugin_engineering_linear__*` or a UUID-prefixed server. Map the logical names to whatever your install exposes.
 
-> **Identity (critical).** `[factory:*]` **comments** MUST be authored by the factory bot, not the human connector — see §14. Because Claude caps Linear connectors at two (both human), the bot has no connector: comments are posted via the Linear API with `LINEAR_FACTORY_TOKEN` (the bot's personal API key), out-of-band from `linear.save_comment`. Reads and ticket state may use the human connector. Until `LINEAR_FACTORY_TOKEN` is set, the factory does not post `[factory:*]` comments as a human — it buffers them (§9).
+> **Identity (critical).** `[factory:*]` **comments** MUST be authored by the factory's Linear agent (the "OgenticAI Factory Bot" OAuth app), not the human connector — see §14. The agent has no MCP connector: comments are posted via the Linear API with `LINEAR_AGENT_TOKEN` (an OAuth app token, actor=app), out-of-band from `linear.save_comment`. Reads and ticket state may use the human connector. Until `LINEAR_AGENT_TOKEN` is set, the factory does not post `[factory:*]` comments as a human — it buffers them (§9).
 
 | Logical name | What it does | Tools that need it |
 |---|---|---|
 | `linear.get_issue` | Read a ticket + its acceptance criteria + description | **All agents** |
 | `linear.list_comments` | Read prior agent outputs and human responses | All agents |
-| `factory.comment` | Post a `[factory:*]` comment **as the factory bot** — the subagent returns the body; the **orchestrator** posts it via `.claude/scripts/factory-linear-comment.sh` (`LINEAR_FACTORY_TOKEN`). NEVER use MCP `linear.save_comment` for `[factory:*]` comments (authors as the human). | Orchestrator, for every agent |
+| `factory.comment` | Post a `[factory:*]` comment **as the factory bot** — the subagent returns the body; the **orchestrator** posts it via `.claude/scripts/factory-linear-comment.sh` (`LINEAR_AGENT_TOKEN`). NEVER use MCP `linear.save_comment` for `[factory:*]` comments (authors as the human). | Orchestrator, for every agent |
 | `linear.save_issue` | Update title, description, state, assignee, labels, parent | Story Writer, Spec Writer, Validator, Security Reviewer, Compliance Reviewer, Release Manager, Cross-Repo Coordinator, Incident Responder |
 | `linear.list_issues` | Search related tickets in the same project / similar features | Researcher, Story Writer |
 | `linear.list_projects` | Cross-reference project metadata | Researcher, Spec Writer, Cross-Repo Coordinator |
@@ -46,7 +46,7 @@ The kit refers to Linear tools by logical name. The actual MCP namespace depends
 
 If a tool is missing from your local install, the orchestrator should report which agents will degrade and ask whether to proceed in **degraded mode** (no Linear writes, just reads) or **halt**.
 
-> **Headless mode has NO MCP connector.** The Linear MCP tools above are interactively authenticated, so they are typically **absent in the auto-loop / cron driver**. Headless agents MUST NOT fall back to hand-rolling an HTTP call with the token pasted in — that leaks the secret (see §15). Use the kit's token-less helpers instead, which read `LINEAR_FACTORY_TOKEN` from the environment and send it only in the Authorization header:
+> **Headless mode has NO MCP connector.** The Linear MCP tools above are interactively authenticated, so they are typically **absent in the auto-loop / cron driver**. Headless agents MUST NOT fall back to hand-rolling an HTTP call with the token pasted in — that leaks the secret (see §15). Use the kit's token-less helpers instead, which read `LINEAR_AGENT_TOKEN` from the environment and send it only in the Authorization header:
 > - **reads / arbitrary GraphQL** → `.claude/scripts/factory-linear-query.sh --query - --vars '{...}'` (query on stdin or `--query '<gql>'`)
 > - **`[factory:*]` comments** → `.claude/scripts/factory-linear-comment.sh --issue OGE-NNN --body -`
 > These map to `linear.get_issue` / `linear.list_*` (query helper) and `factory.comment` (comment helper).
@@ -57,7 +57,7 @@ If a tool is missing from your local install, the orchestrator should report whi
 
 **Any issue an agent creates via `linear.save_issue` MUST have an assignee — never `null`.** Unowned agent tickets pile up invisibly: an org-wide audit (OGE-1290, 2026-07-02) found 374 unassigned issues in OGE, 173 of them agent-created (121 from the project-planner seed backlog alone). Resolve the assignee in this order:
 
-1. **Self** — if the agent authenticates as its own Linear user (the factory bot is `factory-bot@ogenticai.com`, id `d3e2dfa8-7f3d-4db7-ad33-a3ad0b2d4ffd`), assign the created issue to that user.
+1. **Self** — if the agent authenticates as its own Linear identity (the factory's agent is the "OgenticAI Factory Bot" app user, id `3d069695-1ee4-43bb-9e91-84f092073dfc`), assign the created issue to that user.
 2. **The operator** — otherwise assign the operator (**David** by default; `david@ogenticai.com`). An operator may direct issues to **Dennis** or **Craig**; never assign any other human, and never leave it unassigned (see §12).
 
 This is a hard rule for **every** created issue, not just the intake ticket: the project-planner seed backlog, finding sub-issues (Validator / Security / Compliance), decomposition sub-issues (backlog-groomer), and decision-derived issues (new-from-knowledge) all fall under it. `assignee` is a required field on any `save_issue` **create** — if you can't resolve a specific person, default to the operator.
@@ -141,7 +141,7 @@ Done
 
 Every agent writes a comment in a standard shape so a human can scan a ticket and see the run history. Open the ticket, scroll the comments — the full chain.
 
-> **How these are posted (MANDATORY).** Subagents do **not** call a Linear tool — they return their `[factory:*]` body in their sign-off. The **orchestrator** posts each one **as the factory bot** via `.claude/scripts/factory-linear-comment.sh --issue <OGE-ID> --body <markdown>` (`LINEAR_FACTORY_TOKEN`). The MCP `linear.save_comment` is **never** used for `[factory:*]` comments — it authors as the human operator. See §2, §14, and `setup-check` #6.
+> **How these are posted (MANDATORY).** Subagents do **not** call a Linear tool — they return their `[factory:*]` body in their sign-off. The **orchestrator** posts each one **as the factory bot** via `.claude/scripts/factory-linear-comment.sh --issue <OGE-ID> --body <markdown>` (`LINEAR_AGENT_TOKEN`). The MCP `linear.save_comment` is **never** used for `[factory:*]` comments — it authors as the human operator. See §2, §14, and `setup-check` #6.
 
 All comments start with a single-line header:
 
@@ -422,28 +422,28 @@ No off-ticket Slack threads. No mysterious "ask Claude in chat" history. The tic
 
 Linear attributes every comment, state change, and label to whoever the active connector authenticates as. The audit trail in §5 and §13 is only trustworthy if that actor is the **factory bot**, not a human — the same principle as OGE-333 ("record the actor who triggered it") and the §F5 git-identity gate on the GitHub side.
 
-**Required identity:** `factory-bot@ogenticai.com` — display name "OgenticAI Factory Bot".
+**Required identity:** the "OgenticAI Factory Bot" OAuth app user (email `…@oauthapp.linear.app`, app user id `3d069695-1ee4-43bb-9e91-84f092073dfc`).
 
-**How it's wired:** Claude caps Linear connectors at **two** per install, and at OgenticAI both are needed for human workspaces — so the bot gets **no connector**. It posts comments via the **Linear API** using `LINEAR_FACTORY_TOKEN` — a Linear **personal API key** belonging to `factory-bot@ogenticai.com` — out-of-band from the MCP connector (the same pattern as OgenticAI Reviewer's `LINEAR_API_TOKEN`). Reads, ticket state, and labels still flow through the operator's human connector; only `[factory:*]` **comments** route through the bot token.
+**How it's wired:** the agent gets **no MCP connector** (Claude caps Linear connectors at **two** per install; both are human workspaces). It posts comments via the **Linear API** using `LINEAR_AGENT_TOKEN` — an **OAuth app token (actor=app)** for the "OgenticAI Factory Bot" application that Mission Control installed into the workspace. Reads, ticket state, and labels still flow through the operator's human connector; only `[factory:*]` **comments** route through the agent token.
 
-- **Provisioning** (one-time, admin): `docs/LINEAR-BOT-SETUP.md` — create the bot member, mint its personal API key, expose it as `LINEAR_FACTORY_TOKEN` (1Password → env/secret, off-disk; org/repo Actions secret for CI).
+- **Provisioning** (one-time, admin): `docs/LINEAR-BOT-SETUP.md` — mint an app token for the "OgenticAI Factory Bot" OAuth application, expose it as `LINEAR_AGENT_TOKEN` (1Password → env/secret, off-disk; org/repo Actions secret for CI). No member seat, no mailbox.
 - **Posting:** the **orchestrator** posts each `[factory:*]` comment by running `.claude/scripts/factory-linear-comment.sh --issue OGE-NNN --body <md>` (or `--project <id>`) — `commentCreate` via the token. Subagents return their comment body and never call `linear.save_comment` (human-authed).
-- **Enforcement:** `setup-check` check #6 confirms `LINEAR_FACTORY_TOKEN` is set and its Linear `viewer` resolves to the bot — **hard-fails** otherwise (skip with `OGENTICAI_BYPASS_IDENTITY`).
+- **Enforcement:** `setup-check` check #6 confirms `LINEAR_AGENT_TOKEN` is set and its Linear `viewer` resolves to the app user — **hard-fails** otherwise (skip with `OGENTICAI_BYPASS_IDENTITY`).
 - **Acceptable interim:** ticket creation + state moves may run through the human connector; only comments are gated.
 
-Until `LINEAR_FACTORY_TOKEN` is set, the factory MUST NOT post `[factory:*]` comments as a human — it buffers them to chat (degraded-mode, §9) and replays them once the token is live.
+Until `LINEAR_AGENT_TOKEN` is set, the factory MUST NOT post `[factory:*]` comments as a human — it buffers them to chat (degraded-mode, §9) and replays them once the token is live.
 
 ---
 
 ## 15. Secret handling — never put a token on argv
 
-`LINEAR_FACTORY_TOKEN` (and `ANTHROPIC_API_KEY`, `GH_TOKEN`, any `*_TOKEN`/key) is present in the headless agent's **environment** so the sanctioned helpers can use it. Process **arguments are world-readable** on the host (`ps -ef`, `ps eww`), so a secret that lands on a command line — directly, in a heredoc literal, or interpolated into an inline script — is exposed to every local process for the lifetime of that process. This is exactly how a factory run leaked the bot token once (an agent wrote inline python with `key = "lin_api_…"` pasted in).
+`LINEAR_AGENT_TOKEN` (and `ANTHROPIC_API_KEY`, `GH_TOKEN`, any `*_TOKEN`/key) is present in the headless agent's **environment** so the sanctioned helpers can use it. Process **arguments are world-readable** on the host (`ps -ef`, `ps eww`), so a secret that lands on a command line — directly, in a heredoc literal, or interpolated into an inline script — is exposed to every local process for the lifetime of that process. This is exactly how a factory run leaked the bot token once (an agent wrote inline python with `key = "lin_api_…"` pasted in).
 
 **Rules (MANDATORY for every agent + the orchestrator):**
 
 1. **Never** write a token as a literal in code, a heredoc, a config/temp file, or any argv element; **never** echo or log it.
 2. For all Linear access use the kit helpers — `factory-linear-query.sh` (reads / arbitrary GraphQL) and `factory-linear-comment.sh` (comments). Both read the token from the environment and pass it **only in the HTTP `Authorization` header** (via `urllib`), so it never touches argv.
-3. If you genuinely must call an API without a helper: read the token from the environment **at runtime** (`os.environ["LINEAR_FACTORY_TOKEN"]`) inside the program and put it in a request header. Do **not** pass it to `curl -H "Authorization: …"` (that header value is visible in `ps`); use a language HTTP client (urllib/requests/fetch) whose headers never appear on argv, or `curl -H @<(…)` / `--config <fd>` so the value stays off the command line.
+3. If you genuinely must call an API without a helper: read the token from the environment **at runtime** (`os.environ["LINEAR_AGENT_TOKEN"]`) inside the program and put it in a request header. Do **not** pass it to `curl -H "Authorization: …"` (that header value is visible in `ps`); use a language HTTP client (urllib/requests/fetch) whose headers never appear on argv, or `curl -H @<(…)` / `--config <fd>` so the value stays off the command line.
 4. The same rule covers `gh` (use `GH_TOKEN` from the env; never `--with-token` on a visible command line with the literal) and any model/provider key.
 
 `setup-check` should treat a token literal found in a script or in recent process output as a hard finding.
