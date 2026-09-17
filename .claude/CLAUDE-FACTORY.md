@@ -37,7 +37,7 @@ The factory grounds every run in a Linear ticket. No exceptions. These are the O
 **Linear team key:** `OGE`
 **Primary project for this repo:** TODO — fill in. Match the `linear_project` field for this repo in `.claude/registry/repos.yml`.
 
-**Linear identity (factory bot).** Every `[factory:*]` **comment** MUST be authored by the factory bot (`factory-bot@ogenticai.com` / "OgenticAI Factory Bot"), never a human — comments are the audit trail. Reads and ticket state/labels may run through the operator's human Linear connector (acceptable attribution). Claude caps Linear connectors at two (both used by human workspaces), so the bot has **no connector** — it posts comments via the **Linear API** using `LINEAR_FACTORY_TOKEN` (its personal API key), out-of-band from the MCP connector, exactly like OgenticAI Reviewer's `LINEAR_API_TOKEN`. This is the Linear analogue of the §F5 git-identity gate. `setup-check` (check #6) confirms `LINEAR_FACTORY_TOKEN` is set and resolves to the bot — a hard gate (skip with `OGENTICAI_BYPASS_IDENTITY`). Runbook: `docs/LINEAR-BOT-SETUP.md`. Full contract: `LINEAR-INTEGRATION.md` §14.
+**Linear identity (factory agent).** Every `[factory:*]` **comment** MUST be authored by the factory's Linear agent (the "OgenticAI Factory Bot" OAuth app, installed from Mission Control), never a human and never a personal account — comments are the audit trail. Every Linear call — comments, reads, ticket state, labels, sub-issues — now routes **through Mission Control**, which holds the app's OAuth credential and acts as the app (`actor=app`); the **box holds no Linear token**, only the box→MC bearer (`FACTORY_DASHBOARD_SECRET`, or `TWIN_DASHBOARD_SECRET` as fallback). Reads go through MC's read-only relay (`/api/linear/factory-gql`, mutations rejected) and writes through typed MC endpoints. This is the Linear analogue of the §F5 git-identity gate. `setup-check` (check #6) confirms the box→MC secret is set and the round-trip's `viewer` resolves to the app user — a hard gate (skip with `OGENTICAI_BYPASS_IDENTITY`). The former on-box token paths (`factory-bot@ogenticai.com` personal key, then a delivered `LINEAR_AGENT_TOKEN`) were retired 2026-09-15 (OGE-2796) so the bot's Linear seat and Google account can be removed; any future agent that genuinely needs a mailbox lives on **@ogents.ai**, never gmail. Runbook: `docs/LINEAR-BOT-SETUP.md`. Full contract: `LINEAR-INTEGRATION.md` §14.
 
 **State machine.** The factory walks tickets through:
 ```
@@ -208,7 +208,7 @@ When the kit on `OgenticAI/agent-factory` changes (a new agent role, a tightened
   - new file → copied in (additive)
   - file unchanged since the last sync → overwritten with the new kit version
   - file hand-edited locally → **left alone**; the divergence is listed in the sync PR body
-  - file path in `opt_out:` → skipped entirely
+  - file path in `opt_out:`, or under a directory listed there → skipped entirely
 - Purely-additive sync PRs with no preserved local edits get the `factory-sync-auto-merge` label and merge themselves once CI is green. Anything else waits for human review.
 
 **Files the propagator never touches**
@@ -227,6 +227,15 @@ opt_out:
 ```
 
 After that, propagation will never overwrite the file in this repo.
+
+To keep a whole directory out, list the directory. It also covers files the kit adds to that directory later, which a list of file paths cannot:
+
+```yaml
+opt_out:
+  - .claude/agents/
+```
+
+An entry that matches no kit file is reported in the propagation run's summary, because a misspelt entry protects nothing.
 
 **Forcing a re-sync**
 
