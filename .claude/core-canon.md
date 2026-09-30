@@ -56,6 +56,11 @@ Classify every action before doing it:
 
 - **Post as your OWN bot identity**, never as a human. Never the claude.ai Slack MCP / a user token
   (those render as "Dennis Howell · Sent using Claude" and read as if Dennis posted personally).
+- **The same rule holds in Linear.** Never comment, change status, or create an issue through a
+  Linear MCP, connector, API key or `claude -p` bridge signed in as a person: the comment shows under
+  that person's name. On 30 Sep 2026 Otto's and Nova's comments appeared as **Dennis Howell** this way
+  (OGE-2933). Write to Linear only as yourself (§12). If you cannot, do not post; put the comment you
+  would have written in your reply, with the ticket, for a person to post.
 - **Name yourself in every message.** Open every DM, channel post, and ticket comment with who is
   speaking ("Reva here —"). No anonymous or ambiguous messages; the operator must always know which
   agent acted. (Dennis, 2026-07-20: context visibility + accountability.)
@@ -226,14 +231,57 @@ that is a resolution step, never a dead end.
   fleet listener — you do not need a Slack tool to "talk," just answer. To **proactively** DM the
   operator or post, use `internal-ops-agent/slack-fleet-listener/scripts/send-dm.js --agent <you>`
   (posts from your own bot). Reads: `slack_search` / the bridge (pull-only).
-- **Linear:** read + write your own tickets (comment, status, close-with-evidence per §5/§6) via the
-  Linear MCP / bridge. Reconcile live state before reporting (§6).
+- **Linear, reads:** the Linear MCP / bridge is fine for reading tickets and reconciling live state
+  (§6).
+- **Linear, writes: only as yourself.** Comment with
+  `python3 $FLEET_TOOLS_DIR/linear_comment.py comment --issue OGE-123 --body-file -`, which posts through
+  your own Linear app (OGE-2933). It works where the fleet listener dispatched you. Anywhere else, or
+  if it answers that you have no Linear identity, **do not write to Linear by another route**: the
+  MCP, bridge or any key on the machine belongs to a person and posts as them (§3). Put the comment in
+  your reply, name the ticket, and say you could not post it yourself.
 - **Memory:** you have a persistent project memory like Otto/Pascal — read it at start, write durable
   facts, keep it current. Stale static context is the thing §6 tells you to reconcile against live
   systems.
 
 This section is synced to every agent repo via the factory kit-sync so the whole fleet has parity. If
 your repo is thin or missing this, that is a sync gap to fix, not a limit on what you can do.
+
+## 13. Encode the rule, or expect to pay for it twice (cross-repo, 2026-09-03)
+
+Two things keep happening across this fleet, and they are the same thing.
+
+**A rule kept by reading gets broken under load.** Every one of these was known, written down, and
+still shipped broken:
+
+- `zashboard-ultimate` `trigger/twin-tick.ts` — no Prisma may reach the Trigger worker bundle.
+  The file says so itself: *"Nothing in CI checks this, so it is a rule kept by reading, not by
+  tooling."*
+- `zashboard-ultimate` `lib/run-guard.ts` — three execution guardrails *"declared but not
+  enforced"*, including a `budgetCapCents` of 0 meaning UNCAPPED rather than "no budget".
+- `agentshub` — a budget `mode: 'enforce'` that consulted nothing; a per-agent enabled toggle that
+  did not govern whether the agent ran; a `kind` posted forever to an allowlist that rejected it,
+  the 400 swallowed by a deliberately fail-open fetch.
+- `agent-factory` itself — `propagate-factory-kit.yml` did not list `core-canon.md` in its trigger
+  paths, so a fix at source had no route out. That is how a client's name sat in the canon in seven
+  public repositories.
+
+So: **when you find a load-bearing invariant, encode it as a guard or file a ticket the same day.**
+Naming it in a comment is documentation, not enforcement. If you write "nothing checks this", you
+have just written the acceptance criteria.
+
+**And read the sibling before you build.** `agentshub` (Mission Control) and `zashboard-ultimate`
+have independently built twin config, money go-live gates, operator breaker/STOP surfaces and
+provider selection — and independently paid for the same four bug classes: a control that reports a
+state it never consults; a zero or empty default falling into the permissive branch; a gate with one
+caller that every other path skips; and fail-open resolution that hides a permanent failure. Neither
+repo referenced the other. Before building a surface a sibling already ships, read theirs; when you
+fix something there, check whether the sibling has the same shape.
+
+**Guards stay in their repo — deliberately.** This canon carries the *why* and propagates fleet-wide.
+Executable guards do not: `propagate-factory-kit.yml` auto-merges into every registry repo, so a
+guard with one false positive would break CI everywhere at once, and a real guard needs a baseline
+tuned to its own repo (see `zashboard-ultimate`'s `hardcoded-colors-baseline.txt`). Port a sibling's
+guard by opening a PR in the repo that needs it, not by adding it to the kit.
 
 ---
 
