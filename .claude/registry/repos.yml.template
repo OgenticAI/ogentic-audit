@@ -1,0 +1,85 @@
+# OgenticAI multi-repo registry — TEMPLATE
+#
+# Rename this file to `repos.yml` and edit it. `repos.yml` is operator-owned:
+# it is in the factory kit's NEVER_OVERWRITE list, so once you rename it, a
+# future kit sync will not touch your entries. This template itself IS tracked,
+# so it keeps arriving with schema changes — which is why the two are separate
+# files rather than one.
+#
+# ── What reads this ───────────────────────────────────────────────────────
+#
+# `multi-repo-coordinator` loads it when a brief spans more than one repo. It
+# halts if a repo named in the brief is not listed here, and it topologically
+# sorts the affected repos by `depends_on` so upstream ships first. An empty
+# registry means the coordinator has nothing to sort and no way to know a
+# sibling exists.
+#
+# That is not hypothetical. agentshub (Mission Control) and zashboard-ultimate
+# independently built twin configuration, money go-live gates, operator
+# breaker/STOP surfaces and provider selection — and independently paid for the
+# same four bug classes — while neither repo's .claude/ mentioned the other.
+# See core-canon §13.
+#
+# ── Minimum useful content ────────────────────────────────────────────────
+#
+# This repo, plus every repo it depends on or is depended on by. A registry
+# holding only this repo is the same as no registry: nothing to coordinate.
+#
+# Add a `siblings:` list for repos you do NOT depend on but that build
+# overlapping surfaces. Nothing sorts on it — it is there so an agent reading
+# this file learns the sibling exists before rebuilding what it already ships.
+
+repos:
+  # ── Worked example: delete these two and put your own here ──────────────
+  - name: zashboard-ultimate
+    kind: web-platform
+    linear_project: Zashboard
+    priority: high
+    url: git@github.com:OgenticAI/zashboard-ultimate.git
+    description: |
+      Customer-facing command centre + admin analytics. Also home of the
+      `@ogenticai/ui` and `@ogenticai/config-tailwind` packages.
+    stacks: [nextjs, typescript, react, tailwind]
+    # Upstream repos. The coordinator ships these BEFORE this one.
+    depends_on:
+      - ogentic-audit
+    # Overlapping surfaces, no build-order edge. Read before you rebuild.
+    siblings:
+      - name: agentshub
+        overlaps: |
+          Twin configuration, money go-live gates, operator breaker/STOP,
+          provider selection. Both have shipped these; check the other's
+          implementation and its tests before writing a third.
+    factory_notes: |
+      Hosts the shared design system (@ogenticai/ui) — when changes here ship,
+      consumers pin to new versions, so treat this as a dependency chain.
+
+  - name: ogentic-audit
+    kind: oss-library
+    linear_project: Wave-2 OSS
+    priority: medium
+    url: git@github.com:OgenticAI/ogentic-audit.git
+    description: |
+      HMAC-SHA256 chained, append-only audit log. Tamper-evident, and the
+      on-disk format is language-agnostic.
+    stacks: [typescript]
+    depends_on: []
+
+# ── Field reference ───────────────────────────────────────────────────────
+#
+#   name            (required) repo name as it is on GitHub, no owner prefix.
+#                   Keep it current: a renamed repo left stale here makes the
+#                   propagate workflow 404 on that target and nothing else.
+#   kind            web-platform | oss-library | internal-library | agent |
+#                   tooling | playground
+#   linear_project  the Linear project that owns the work
+#   priority        high | medium | low
+#   url             clone URL
+#   description     what it is, in a sentence or two
+#   stacks          list, e.g. [nextjs, typescript]
+#   depends_on      list of repo names. Build order. A cycle halts the
+#                   coordinator, so keep it a DAG.
+#   siblings        list of {name, overlaps}. No build-order meaning; it exists
+#                   so overlap is discoverable before it is duplicated.
+#   agents          which factory agents this repo runs, if it differs
+#   factory_notes   anything an agent should know before touching this repo
