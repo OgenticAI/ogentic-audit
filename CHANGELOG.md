@@ -7,6 +7,25 @@ library APIs follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-10-02
+
+### Fixed
+
+- **`verify` no longer certifies a log that is not there.** A directory with
+  no `audit-NNNN.cbor` segment files returned `Verified` with
+  `records_inspected: 0`, so a deleted log, or a mistyped path, read as an
+  intact one. It is now a `VerifyError::NoSegments` error and the CLI exits 2
+  with `no audit segments … nothing to verify`. A header-only segment (a log
+  that exists and holds zero records) still verifies, as the `empty` golden
+  vector specifies.
+
+### Changed
+
+- Removed the broken post-publish badge-bump job from the release workflow
+  (OGE-1751).
+- The verify-chain demo moved to the standalone `audit-streamlit-demo`
+  repository (OGE-1668).
+
 ## [0.3.0] - 2026-07-23
 
 First release published to crates.io and PyPI (OGE-1407). Bundles the

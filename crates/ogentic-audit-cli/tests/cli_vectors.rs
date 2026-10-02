@@ -372,3 +372,16 @@ fn export_on_tampered_vector_emits_violation_pdf_and_exits_zero() {
         "expected HmacMismatch in PDF text"
     );
 }
+
+#[test]
+fn verify_a_directory_with_no_segments_fails_instead_of_verifying() {
+    let dir = tempfile::TempDir::new().unwrap();
+    cmd()
+        .env("OGENTIC_AUDIT_KEY_HEX", vector_key_hex("single-record"))
+        .arg("verify")
+        .arg(dir.path())
+        .assert()
+        .failure()
+        .stdout(predicate::str::contains("Verified").not())
+        .stderr(predicate::str::contains("no audit segments"));
+}
