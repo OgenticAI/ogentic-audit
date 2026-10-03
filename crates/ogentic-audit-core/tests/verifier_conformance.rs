@@ -93,3 +93,40 @@ fn verify_tampered_byte_vector_reports_hmac_mismatch() {
 fn verify_missing_record_vector_reports_chain_break() {
     verify_vector("missing-record");
 }
+
+/// A directory with no segment files is not a verified log. 0.3.0 returned
+/// `Verified` with zero records inspected, so a deleted log, or a typo in the
+/// path, read as intact.
+#[test]
+fn a_directory_with_no_segments_is_an_error_not_verified() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let verifier = Verifier::new(Box::new(InMemoryKey::from_bytes([0u8; 32])));
+    match verifier.verify(dir.path()) {
+        Err(ogentic_audit_core::VerifyError::NoSegments { log_dir }) => {
+            assert_eq!(log_dir, dir.path());
+        },
+        other => panic!("expected NoSegments, got {other:?}"),
+    }
+}
+
+/// Deleting every segment of a real log must not verify either.
+#[test]
+fn a_log_whose_segments_were_deleted_does_not_verify() {
+    let src = vectors_dir().join("single-record");
+    let dir = tempfile::TempDir::new().unwrap();
+    for entry in fs::read_dir(&src).unwrap() {
+        let path = entry.unwrap().path();
+        if path.extension().is_some_and(|e| e != "cbor") {
+            fs::copy(&path, dir.path().join(path.file_name().unwrap())).unwrap();
+        }
+    }
+    let spec: VectorInputs =
+        serde_json::from_str(&fs::read_to_string(src.join("inputs.json")).unwrap()).unwrap();
+    let verifier = Verifier::new(Box::new(InMemoryKey::from_bytes(decode_hex_32(
+        &spec.key_hex,
+    ))));
+    assert!(matches!(
+        verifier.verify(dir.path()),
+        Err(ogentic_audit_core::VerifyError::NoSegments { .. })
+    ));
+}
