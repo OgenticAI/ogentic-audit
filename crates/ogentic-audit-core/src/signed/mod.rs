@@ -15,7 +15,7 @@
 //! | [`ed25519`] | strict verification, spec §3.5, rule by rule |
 //! | [`sshsig`] | OpenSSH SSHSIG signed data, blobs and armor |
 //! | [`signer`] | the [`Signer`] trait and [`InMemorySigner`] |
-//! | [`format`] | segment header, envelope, body, record framing |
+//! | [`mod@format`] | segment header, envelope, body, record framing |
 //! | [`writer`] | [`SignedWriter`] |
 //! | [`trust`] | [`TrustContext`]: pins, scopes, transitions, revocations |
 //! | [`statements`] | building key transitions, revocations, KRLs |

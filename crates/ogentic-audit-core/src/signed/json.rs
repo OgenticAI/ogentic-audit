@@ -13,7 +13,7 @@
 //! it, and requires byte equality with the input.
 //!
 //! Reports are plain JSON and may also carry booleans and `null`; they are
-//! produced with [`Value::to_string`], which uses the same escaping.
+//! produced with [`Value::to_pretty`] or [`Value::to_canonical`], which use the same escaping.
 
 use std::collections::BTreeMap;
 use std::fmt::Write as _;

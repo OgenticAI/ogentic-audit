@@ -100,9 +100,13 @@ pub struct GlobalArgs {
     #[arg(short = 'q', long, global = true, action = ArgAction::SetTrue)]
     pub quiet: bool,
 
-    /// Print [OK] [FAILED] [!] instead of the ✓ ✗ ! marks (automatic on
-    /// consoles that are not UTF-8).
-    #[arg(long, global = true, action = ArgAction::SetTrue)]
+    /// Use ASCII status marks instead of ✓ ✗ !.
+    #[arg(
+        long,
+        global = true,
+        action = ArgAction::SetTrue,
+        help = "Print [OK] [FAILED] [!] instead of the ✓ ✗ ! marks (automatic on consoles that are not UTF-8)"
+    )]
     pub ascii: bool,
 }
 

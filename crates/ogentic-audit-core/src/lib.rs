@@ -1,4 +1,14 @@
-//! `ogentic-audit-core` — HMAC-SHA256 chained, append-only audit log.
+//! `ogentic-audit-core` — tamper-evident, append-only audit log.
+//!
+//! Two on-disk formats:
+//!
+//! - **Signed (`0x0002`)**, in [`signed`]: every record carries an Ed25519
+//!   signature; anyone holding the signer's public key can verify, and
+//!   nobody who can verify can forge. Use this when someone other than
+//!   the writer must check the log.
+//! - **HMAC-SHA256 (`0x0001`)**: [`Writer`] / [`Verifier`] below. Verifying
+//!   needs the shared key, and whoever holds it could also have written
+//!   the log.
 //!
 //! See [`docs/spec/v0.1.md`](https://github.com/OgenticAI/ogentic-audit/blob/main/docs/spec/v0.1.md)
 //! for the language-agnostic on-disk format and

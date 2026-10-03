@@ -138,14 +138,14 @@ tool applies:
 
 ```sh
 # Fast integrity check (CI-friendly exit codes).
-ogentic-audit verify ./mcp-audit --summary
+ogentic-audit verify ./mcp-audit --key-source env --summary
 
 # Prove it was not rewritten, using a checkpoint held elsewhere.
-ogentic-audit checkpoint ./mcp-audit --out head.json
-ogentic-audit verify   ./mcp-audit --checkpoint head.json
+ogentic-audit checkpoint ./mcp-audit --key-source env --out head.json
+ogentic-audit verify   ./mcp-audit --key-source env --checkpoint head.json
 
 # Court-ready PDF evidence package.
-ogentic-audit export ./mcp-audit --pdf mcp-trail.pdf
+ogentic-audit export ./mcp-audit --key-source env --pdf mcp-trail.pdf
 ```
 
 Or from Python: `verify("./mcp-audit", key=key)` and, for rewrite

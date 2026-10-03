@@ -1,6 +1,6 @@
-# ogentic-audit — Violation report shape, v0.1
+# ogentic-audit — Violation report shape, v0.1 and v0.2
 
-**Status:** Normative (companion to [`v0.1.md`](v0.1.md))
+**Status:** Normative (companion to [`v0.1.md`](v0.1.md); the [format version 2](#format-version-2-signed-logs) section is the companion to [`v0.2.md`](v0.2.md) §14)
 **Tracks:** [OGE-461 (F3 closeout)](https://linear.app/ogenticai/issue/OGE-461) — consumed by [OGE-437 (R3 Verifier)](https://linear.app/ogenticai/issue/OGE-437) and [OGE-441 (Q2 cross-language vectors)](https://linear.app/ogenticai/issue/OGE-441)
 **Last updated:** 2026-05-10
 
@@ -462,3 +462,95 @@ Notes:
 - `expected_hmac_hex` is `chain.json`'s `records[2].hmac_hex` from the vector — the value the writer recorded at the time of signing.
 - `actual_hmac_hex` is the value `HMAC-SHA256(key, on_disk_payload_bytes)` produces *after* tampering. The two differ because the tampered payload bytes differ from the bytes the writer signed. The exact value is implementation-deterministic but not statically known here (it depends on the byte that was XOR'd).
 - `final_hmac_hex` is the HMAC of the last record that successfully verified — record 1 — exactly as it appears in `chain.json`'s `records[1].hmac_hex`. The chain head moves forward by exactly one HMAC per verified record.
+
+
+## Format version 2 (signed logs)
+
+Reports for signed logs (format `0x0002`, [`v0.2.md`](v0.2.md)) carry `format_version: 2`. Releases have their own report, [`release-report.md`](release-report.md). Reports for format `0x0001` keep the shape above, plus one member: `"authentication": "shared-key"`, because anyone holding an HMAC key could also have written the log.
+
+```json
+{
+  "format_version": 2,
+  "verdict": "Violation",
+  "status": "tampered",
+  "reason": null,
+  "log": {
+    "log_dir": "<path>",
+    "log_id_hex": "<32-hex>",
+    "key_id_hex": "<64-hex>",
+    "segments_inspected": 1,
+    "records_inspected": 3,
+    "first_segment_index": 0,
+    "last_segment_index": 0,
+    "final_record_hash_hex": "<64-hex>",
+    "head": "s0r1",
+    "head_anchored": false,
+    "sealed": false,
+    "elided_records": { "count": 0, "positions": [] },
+    "unsigned_last_segment": false
+  },
+  "signer": {
+    "principal": null,
+    "alg": "ed25519",
+    "key_id_hex": "<64-hex>",
+    "fingerprint_grouped": "6db5 e9b8 … 6d4f",
+    "fingerprint_openssh": "SHA256:…",
+    "trusted": true,
+    "trust_path": ["<64-hex>"],
+    "reason": "pinned"
+  },
+  "violation": {
+    "kind": "SignatureInvalid",
+    "reason": "body_mismatch",
+    "location": { "segment_index": 0, "record_id": 2, "byte_offset": 746, "item": "s0r2" },
+    "evidence": { "expected_body_hash_hex": "<64-hex>", "actual_body_hash_hex": "<64-hex>" },
+    "message": "s0r2: the record's content was changed after it was signed"
+  },
+  "additional_violations": [],
+  "warnings": []
+}
+```
+
+### Top level
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `format_version` | u16 | `2` |
+| `verdict` | string | `"Verified"`, `"SelfConsistent"` or `"Violation"`. `SelfConsistent` is **not** a verification: no key was supplied, or nothing was signed |
+| `status` | string | `"ok"`, `"unpinned"` or `"tampered"` (CLI exit 0, 4, 1) |
+| `reason` | string \| null | For `SelfConsistent`: `"not_pinned"` or `"no_signed_records"` |
+| `log` | object | Below |
+| `signer` | object \| null | Who signed segment 0, and whether the verifier trusts them. Null if segment 0's header could not be read |
+| `violation` | object \| null | The first violation |
+| `additional_violations` | array | Later violations (forensic mode) |
+| `warnings` | array | `{kind, item, message}`: `UnsignedLastSegment`, `RolledOverWithoutSuccessor`, `NearMissSegmentName`, `TornTailAfterHead`, `IgnoredStatement` |
+| `checkpoints` | array | Present when checkpoints were supplied: `{signed, signer_key_id_hex, position, observed_at, witnesses: [{principal, key_id_hex, observed_at}], anchors_head}` |
+| `segment_filter` | object | Present with `--segment`: `{segment, violations_outside}`. The verdict is the whole log's; only the list is narrowed |
+
+### `log`
+
+`final_hmac_hex` is replaced by `final_record_hash_hex` (the public chain link). Added: `log_id_hex`; `head` (position of the last record walked, `s<N>r<P>`); `head_anchored` (whether the end of the log is known: a `log.sealed` record, a trusted checkpoint naming the last record, or, in a release, the attested head); `sealed`; `elided_records` (records carried without their bodies); `unsigned_last_segment` (a header-only last segment was found and not counted).
+
+### `signer`
+
+`reason` is `"pinned"` (the key itself was supplied), `"transition"` (reached from a supplied key through key transitions; `trust_path` lists them, the supplied key first), `"not_pinned"`, `"no_signed_records"`, or `"not_trusted"` (a key was supplied, and this is not it). `principal` is the trust file's name for the key, or null for a key given with `--public-key` or `--key-fingerprint`.
+
+### `violation`
+
+`kind` and `location` as in v0.1, plus `reason` (a sub-kind) and `location.item` (`s<N>`, `s<N>r<P>`, or `key:<64-hex>`). New kinds:
+
+| Kind | `reason` | Meaning |
+|------|----------|---------|
+| `SignatureInvalid` | `mismatch`, `body_mismatch`, `reencoded`, `weak_key` | The record's signature, or its body, does not match. `reencoded`: a valid signature whose bytes were changed after signing (`S + L`). `weak_key`: the header key is one under which anyone can sign |
+| `UntrustedSigner` | `not_trusted`, `out_of_scope` | Signed by a key not supplied, or supplied for another purpose (for example a witness key) |
+| `RevokedKey`, `RetiredKey` | | Signed by a revoked or retired key outside what its statements still vouch for |
+| `TransitionEquivocation` | | Two different verified transitions from one key (`location.item` is `key:<hex>`) |
+| `AlgorithmMismatch`, `UnsupportedAlgorithm`, `LogIdMismatch` | | `sig_alg` or `log_id` differs within a log, or from `--expect-log-id` |
+| `SealedLogExtended` | | A record after `log.sealed` |
+| `CheckpointForDifferentLog` | | A checkpoint by this log's signer names another log |
+| `FormatDowngrade` | | An HMAC segment inside a signed log |
+| `RecordCorrupt` | adds `TooLarge`, `BadRollover`, `ElidedStructural`, `DecodeError`, `TornTail` | |
+
+`HmacMismatch` does not occur in format version 2. Times (`ts_wall`, `observed_at`) are each signer's own clock; a report never presents them as independently established.
+
+Errors that prevent a report (no segments; a malformed key, fingerprint, trust file, statement or checkpoint; an HMAC log given a public key, `HmacLog`; a signed log given an HMAC key; a format newer than the verifier) are not reports: the CLI prints them on standard error and exits 2 or 3.

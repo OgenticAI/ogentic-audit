@@ -1,6 +1,6 @@
 [package]
 name = "ogentic-audit-core"
-description = "HMAC-SHA256 chained, append-only audit log — core library (writer, reader, verifier, key handle)"
+description = "Tamper-evident append-only audit log, Ed25519-signed (anyone verifies with a public key) or HMAC-SHA256 chained — core library"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

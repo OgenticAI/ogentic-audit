@@ -180,13 +180,15 @@ Every input can come from an untrusted holder, so sizes, counts, and nesting are
 
 ## Action items
 
-1. [ ] Core: signed segment and record format (envelope, body, `log_id`), `Signer`, `SignedVerifier`, strict verification per §3.5, downgrade rules, limits, anchoring.
-2. [ ] Checkpoint v2, witness co-signatures, key statements (transition with acceptance and retirement, revocation with authority and cut points), scoped trust evaluation, KRL export.
-3. [ ] Release attestation (builder with elision, `verify_release`, `ReleaseReport`) and the CLI `verify-release`.
-4. [ ] `KeychainSigner` (tagged seed with stored public key, create-only, Windows local persistence, `.pub` file).
-5. [ ] CLI: format detection before key loading, explicit HMAC key, `--segment` fix, stdout reports, exit 4 and parser usage errors to 64, `export` wording per format, `key` subcommands; Python bindings and `python -m ogentic_audit`.
-6. [ ] `#[non_exhaustive]` sweep, CHANGELOG migration note, crate and PyPI descriptions.
-7. [ ] Release workflow: sigstore bundles and `SHA256SUMS` per artifact.
-8. [ ] `tests/vectors/v0.2/` from `tools/gen_vectors.py`, its `--verify` oracle, Rust and Python conformance, `ssh-keygen` checks in CI, the PowerShell recipe on Windows.
-9. [ ] Docs: `violation-report.md` v2 and its JSON Schema, `release-report.md`, README.
+Status as of the implementing change (2026-10-03):
+
+1. [x] Core: signed segment and record format (envelope, body, `log_id`), `Signer`, `SignedVerifier`, strict verification per §3.5, downgrade rules, limits, anchoring.
+2. [x] Checkpoint v2, witness co-signatures, key statements (transition with acceptance and retirement, revocation with authority and cut points), scoped trust evaluation, KRL export.
+3. [x] Release attestation (builder with elision, `verify_release`, `ReleaseReport`) and the CLI `verify-release`.
+4. [x] `KeychainSigner` (tagged seed with stored public key, create-only, Windows local persistence, `.pub` file). The Windows path is compiled and run only in CI.
+5. [x] CLI: format detection before key loading, explicit HMAC key, `--segment` fix, stdout reports, exit 4 and parser usage errors to 64, `export` wording per format, `key` subcommands; Python bindings and `python -m ogentic_audit`.
+6. [ ] `#[non_exhaustive]` sweep and CHANGELOG migration note are done; the 0.4.0 version bump and the crates.io and PyPI publication belong to the release-preparation change.
+7. [x] Release workflow: sigstore bundles and `SHA256SUMS` per artifact (not yet exercised by a tagged release).
+8. [ ] `tests/vectors/v0.2/` from `tools/gen_vectors_v02.py` (also `tools/gen_vectors.py --v02`), its `--verify` oracle, Rust and Python conformance, and `ssh-keygen` checks (release signature, namespace restriction, KRL) in the CLI tests are done. Remaining: the PowerShell recipe of §11.7, run on Windows in CI.
+9. [x] Docs: `violation-report.md` format version 2 and its JSON Schema (`violation-report-v2.schema.json`), `release-report.md`, README.
 10. [ ] Mark this ADR Accepted when item 8 passes.
