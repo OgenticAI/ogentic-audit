@@ -1378,6 +1378,18 @@ def build_vectors() -> list[Vector]:
             [run(ok(warnings=["UnsignedLastSegment"]), **pin("K1"))],
         )
     )
+    files = logfiles(sealed)
+    files["log/audit-0001.cbor"] = header(
+        1, LOG_A, pub(SEEDS["K1"]), sealed.records[-1].record_hash
+    )
+    V.append(
+        Vector(
+            "signed-sealed-header-tail",
+            "A header-only segment after log.sealed.",
+            files,
+            [run(bad("SealedLogExtended@s1", warnings=["UnsignedLastSegment"]), **pin("K1"))],
+        )
+    )
     w = Writer("K1", LOG_A)
     for r in record_inputs(2):
         w.append(r)
@@ -1527,6 +1539,17 @@ def build_vectors() -> list[Vector]:
             [run(err(3, error="HmacLog"), **pin("K1"))],
         )
     )
+    files = logfiles(roll)
+    del files["log/audit-0000.cbor"]
+    files["log/audit-0001.cbor"] = v01["log/audit-0000.cbor"]
+    V.append(
+        Vector(
+            "signed-seg0-missing-hmac-seg1",
+            "Signed segment 0 deleted, a v0.1 segment put in as segment 1.",
+            files,
+            [run(bad("SegmentDiscontinuity@s0"), **pin("K1"))],
+        )
+    )
     V.append(
         Vector(
             "v01-no-key",
@@ -1637,6 +1660,17 @@ def build_vectors() -> list[Vector]:
                     err(3),
                     key_fingerprint=["SHA256:" + base64.b64encode(bytes(31)).decode().rstrip("=")],
                 )
+            ],
+        )
+    )
+    V.append(
+        Vector(
+            "fingerprint-plain-hex",
+            "The fingerprint as 64 plain hex digits, either case: a fingerprint, not a key.",
+            logfiles(one),
+            [
+                run(ok(), key_fingerprint=[h64], name="lower"),
+                run(ok(), key_fingerprint=[f" {h64.upper()} "], name="upper"),
             ],
         )
     )
@@ -1909,6 +1943,26 @@ def build_vectors() -> list[Vector]:
             [run(ok(), statements=["keys"], **pin("K1"))],
         )
     )
+    cut = logfiles(k1old)
+    seg = cut["log/audit-0000.cbor"]
+    cut["log/audit-0000.cbor"] = seg[: offsets(seg)[2][0]]
+    V.append(
+        Vector(
+            "transition-retired-final-head-cut",
+            "K1's log cut below the final head the transition names (no key needed).",
+            {**cut, **st12},
+            [run(bad("CheckpointMismatch@s0r3"), statements=["keys"], **pin("K1"))],
+        )
+    )
+    k1forged = write_log("K1", LOG_B, record_inputs(2, actor="user:forger"))
+    V.append(
+        Vector(
+            "transition-retired-forged-log-id",
+            "The stolen retired K1 writes a short new log under the retired log's log_id.",
+            {**logfiles(k1forged), **st12},
+            [run(bad("CheckpointMismatch@s0r3"), statements=["keys"], **pin("K1"))],
+        )
+    )
     t13 = transition_doc("K1", "K3")
     V.append(
         Vector(
@@ -1958,6 +2012,27 @@ def build_vectors() -> list[Vector]:
                 **statement_files("rev", "auth", auth4, "K1", NS_REVOCATION),
             },
             [run(bad("RevokedKey@s0r5"), trust="allowed_signers", revocations=["rev/auth.json"])],
+        )
+    )
+    cut8 = logfiles(k2eight)
+    seg = cut8["log/audit-0000.cbor"]
+    cut8["log/audit-0000.cbor"] = seg[: offsets(seg)[2][0]]
+    V.append(
+        Vector(
+            "revoked-authority-head-cut",
+            "K2's log cut below the trusted head K1's revocation names (no key needed).",
+            {
+                **cut8,
+                "allowed_signers": ops,
+                **statement_files("rev", "auth", auth4, "K1", NS_REVOCATION),
+            },
+            [
+                run(
+                    bad("CheckpointMismatch@s0r4"),
+                    trust="allowed_signers",
+                    revocations=["rev/auth.json"],
+                )
+            ],
         )
     )
     V.append(
@@ -2350,6 +2425,69 @@ def build_vectors() -> list[Vector]:
             "The signed log replaced by a v0.1 (HMAC) log.",
             rel(hm),
             [rrun(bad("FormatDowngrade@log:Audit log/s0"), **pin("K1"))],
+        )
+    )
+    nv = dict(clean)
+    b = bytearray(nv["Audit log/audit-0000.cbor"])
+    b[4] = 3
+    b[124:128] = struct.pack("<I", zlib.crc32(bytes(b[:124])) & 0xFFFFFFFF)
+    nv["Audit log/audit-0000.cbor"] = bytes(b)
+    V.append(
+        Vector(
+            "release-log-newer-version",
+            "The bundled log's segment 0 version set to 3 (CRC fixed).",
+            rel(nv),
+            [rrun(bad("UnknownVersion@log:Audit log/s0"), **pin("K1"))],
+        )
+    )
+    V.append(
+        Vector(
+            "release-reserved-planted",
+            "Files planted under ogentic-audit-keys/ and ogentic-audit-witness/.",
+            rel(
+                {
+                    **clean,
+                    "ogentic-audit-keys/sub/run-me.sh": b"#!/bin/sh\necho Verified\n",
+                    "ogentic-audit-witness/0002-unredacted.pdf": b"%PDF planted\n",
+                }
+            ),
+            [rrun(bad("UnattestedFile@file:ogentic-audit-keys/sub/run-me.sh"), **pin("K1"))],
+        )
+    )
+    nf, nd = release_files(rlog)
+    nf = {k: v for k, v in nf.items() if not k.startswith("Audit log/")}
+    nd["logs"] = []
+    k1rel = sign_release(nf, nd)
+    k1rel.update(
+        statement_files("ogentic-audit-keys", "k1-k2", t12, "K1", NS_TRANSITION, accept="K2")
+    )
+    k1rel.update(
+        statement_files("ogentic-audit-keys", "k1-k3", t13, "K1", NS_TRANSITION, accept="K3")
+    )
+    V.append(
+        Vector(
+            "release-equivocation-no-log",
+            "A release with no log, by K1, bundling K1→K2 and K1→K3.",
+            rel(k1rel),
+            [
+                rrun(
+                    bad(f"TransitionEquivocation@key:{key_id(pub(SEEDS['K1'])).hex()}"),
+                    **pin("K1"),
+                )
+            ],
+        )
+    )
+    nd2 = dict(nd, key_id=key_id(pub(SEEDS["K2"])).hex())
+    k2rel = sign_release(nf, nd2, "K2")
+    k2rel.update(
+        statement_files("ogentic-audit-keys", "k1-k2", t12, "K1", NS_TRANSITION, accept="K2")
+    )
+    V.append(
+        Vector(
+            "release-bundled-transition",
+            "A release by K2 bundling the K1→K2 transition; pinned to K1.",
+            rel(k2rel),
+            [rrun(ok(), **pin("K1"))],
         )
     )
     rsha = sha256(clean["ogentic-audit-release.json"]).hex()
@@ -2832,7 +2970,10 @@ def oracle_log(
     segs = sorted(i for p in d.iterdir() if (i := seg_index(p.name)) is not None)
     if not segs:
         return Result(2, error="NoSegments")
-    first = (d / f"audit-{segs[0]:04d}.cbor").read_bytes()
+    # Segment 0 decides the format (spec §8.1); without it the log is walked
+    # as a signed log, which reports what is wrong with segment 0.
+    p0 = d / "audit-0000.cbor"
+    first = p0.read_bytes() if segs[0] == 0 and p0.is_file() else b""
     if len(first) >= 6 and first[:4] == b"OGAU":
         ver = struct.unpack("<H", first[4:6])[0]
         if ver == 1:
@@ -2881,8 +3022,11 @@ def oracle_log(
             if stop:
                 break
         expected = n + 1
-        b = (d / f"audit-{n:04d}.cbor").read_bytes()
         loc = f"s{n}"
+        if not (d / f"audit-{n:04d}.cbor").is_file():
+            v(f"HeaderCorrupt@{loc}", "NotRegularFile")
+            continue
+        b = (d / f"audit-{n:04d}.cbor").read_bytes()
         if len(b) < 12:
             v(f"HeaderCorrupt@{loc}", "Truncated")
             continue
@@ -3067,6 +3211,12 @@ def oracle_log(
         prev_had_records = p > 0
         if p == 0 and n > 0 and is_last:
             warnings.append("UnsignedLastSegment")
+            # An unsigned header is no successor (spec §7 inv. 2, 6, 7).
+            if sealed_at:
+                v(f"SealedLogExtended@s{n}")
+            elif last and last[3] == "segment.finalized":
+                warnings.append("RolledOverWithoutSuccessor")
+                rolled_no_successor = True
         if fin_at is not None and is_last:
             warnings.append("RolledOverWithoutSuccessor")
             rolled_no_successor = True
@@ -3127,6 +3277,24 @@ def oracle_log(
             viol.append((f"CheckpointMismatch@s{pos_[0]}r{pos_[1]}", None))
         elif last and (last[0], last[1]) == pos_:
             anchored = True
+    # Spec §9.3 item 2, §9.4: a head named by the signer's retirement or
+    # authority revocation MUST be in the log. A different record there is
+    # already HeadMismatch above; a missing one means the log was cut below
+    # it, or another log was written under its log_id with the stolen key.
+    if ev["has_pins"] and seg0 is not None and (walk_complete or not viol):
+        kid = seg0[1]
+        heads = list(ev["retired"][kid]["heads"]) if kid in ev["retired"] else []
+        heads += ev["cuts"][kid]["heads"] if kid in ev["cuts"] else []
+        for h in heads:
+            if bytes.fromhex(h["log_id"]) != seg0[0]:
+                continue
+            pos_ = (h["segment"], h["record_id"])
+            got = positions.get(pos_)
+            if got is not None and (
+                got[0].hex() != h["record_hash"] or got[1] == h["record_count"]
+            ):
+                continue
+            viol.append((f"CheckpointMismatch@s{pos_[0]}r{pos_[1]}", None))
     if attested is not None and seg0 is not None:
         if (
             bytes.fromhex(attested["key_id"]) != seg0[1]
@@ -3161,7 +3329,27 @@ def oracle_log(
     )
 
 
-def oracle_release(d: Path, ev: dict, *, expect_release_id=None, allow_unattested=False) -> Result:
+def oracle_release(
+    d: Path, ev: dict, *, expect_release_id=None, allow_unattested=False, bundle_ok=frozenset()
+) -> Result:
+    res = _oracle_release(
+        d,
+        ev,
+        expect_release_id=expect_release_id,
+        allow_unattested=allow_unattested,
+        bundle_ok=bundle_ok,
+    )
+    # Trust findings come first, whether or not the release carries a log
+    # (spec §9.3 item 3).
+    eq = [f"TransitionEquivocation@key:{k.hex()}" for k in ev["equiv"]]
+    if eq and res.exit in (0, 1):
+        return Result(1, eq[0], info=res.info)
+    return res
+
+
+def _oracle_release(
+    d: Path, ev: dict, *, expect_release_id=None, allow_unattested=False, bundle_ok=frozenset()
+) -> Result:
     viol: list[tuple[str, str | None]] = []
     info: dict = {"warnings": [], "ignored": [], "elided": [], "records_after_head": 0}
     ap = d / "ogentic-audit-release.json"
@@ -3253,6 +3441,9 @@ def oracle_release(d: Path, ev: dict, *, expect_release_id=None, allow_unatteste
         if res.error == "HmacLog":
             viol.append((f"FormatDowngrade@log:{lg['path']}/s0", None))
             continue
+        if res.error == "NewerFormat":
+            viol.append((f"UnknownVersion@log:{lg['path']}/s0", None))
+            continue
         if res.error:
             return res
         for x in res.info["violations"]:
@@ -3268,15 +3459,28 @@ def oracle_release(d: Path, ev: dict, *, expect_release_id=None, allow_unatteste
         info["warnings"] += res.info["warnings"]
         if res.exit == 4:
             pass
+    # Exempt reserved entries (spec §11.1): the three top-level files, and
+    # statements and co-signatures whose signatures verify. Anything else
+    # under the reserved folders is planted.
     reserved = {
         "ogentic-audit-release.json",
         "ogentic-audit-release.json.sig",
         "ogentic-audit-signer.pub",
-        "ogentic-audit-keys",
-        "ogentic-audit-witness",
     }
+    for nm in bundle_ok:
+        reserved |= {f"ogentic-audit-keys/{nm}{x}" for x in ("", ".sig", ".accept.sig")}
+    wd = d / "ogentic-audit-witness"
+    for wp in sorted(wd.glob("*.json")) if wd.is_dir() else []:
+        try:
+            wb = wp.read_bytes()
+            wk = bytes.fromhex(parse_cjson(wb, 1)["witness_key_id"])
+            wpk, s = parse_sshsig(Path(str(wp) + ".sig").read_bytes(), NS_WITNESS)
+            if key_id(wpk) == wk and not strict_verify(wpk, signed_data(NS_WITNESS, wb), s):
+                reserved |= {f"ogentic-audit-witness/{wp.name}{x}" for x in ("", ".sig")}
+        except (SigError, ValueError, KeyError, TypeError, OSError):
+            pass
     for path in sorted(present):
-        if path in covered or path.split("/")[0] in reserved:
+        if path in covered or path in reserved:
             continue
         if (
             "/" in path
@@ -3333,6 +3537,7 @@ def oracle_run(vdir: Path, r: dict) -> Result:
         return Result(1, "UnknownVersion@s0")
     t = Trust()
     rev_sources: dict = {}
+    bundle_ok: set = set()
     try:
         if "public_key" in r:
             raw = bytes.fromhex(r["public_key"])
@@ -3353,6 +3558,16 @@ def oracle_run(vdir: Path, r: dict) -> Result:
             t.add_statement(vdir / rp, True)
             for rv in t.revocations[n:]:
                 rev_sources[rv["sha"]] = True
+        # A release's own ogentic-audit-keys/ statements (bundle source).
+        kd = vdir / r.get("target", "") / "ogentic-audit-keys"
+        if cmd == "verify-release" and kd.is_dir():
+            for p in sorted(kd.glob("*.json")):
+                nt, nr = len(t.transitions), len(t.revocations)
+                t.add_statement(p, False)
+                if len(t.transitions) > nt or len(t.revocations) > nr:
+                    bundle_ok.add(p.name)
+                for rv in t.revocations[nr:]:
+                    rev_sources[rv["sha"]] = False
     except OracleError as e:
         return Result(3, error=str(e))
     if r.get("hmac_key_source"):
@@ -3416,6 +3631,7 @@ def oracle_run(vdir: Path, r: dict) -> Result:
             ev,
             expect_release_id=r.get("expect_release_id"),
             allow_unattested=r.get("allow_unattested", False),
+            bundle_ok=bundle_ok,
         )
         res.info["warnings"] = res.info.get("warnings", []) + (
             ["IgnoredStatement"] if t.warnings else []
