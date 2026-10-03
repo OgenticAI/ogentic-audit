@@ -2,7 +2,7 @@
 
 **Status:** Draft (paired with [ADR-0001](../adr/0001-on-disk-format.md))
 **Tracks:** [OGE-427 (F4)](https://linear.app/ogenticai/issue/OGE-427)
-**Last updated:** 2026-10-03 (added [§ Signed mode](#signed-mode-format-0x0002-v02) for format `0x0002`; everything else describes format `0x0001`)
+**Last updated:** 2026-10-03 (added [§ Signed mode](#signed-mode-format-0x0002-v02) for format `0x0002`, revised after review; everything else describes format `0x0001`)
 
 This document defines the security boundary of the `ogentic-audit` library at v0.1, names the adversaries we defend against, states the cryptographic invariants we maintain, explains why we made specific design choices given the threat model, and is paired with the court-defensibility brief at [`court-brief.md`](court-brief.md) (TBD).
 
@@ -126,7 +126,7 @@ The gap the mechanisms in this section address is concrete, so it is worth stati
 
 Rekor uses Sigstore's TSA; CT uses log-operator-signed tree heads; some compliance products anchor periodically to public blockchains. The pattern: a third party signs an attestation that "I observed chain head X at time T."
 
-**Path forward:** the `attestation` field reserved at v0.2 will accommodate witness signatures. Witness identity and signature scheme are pluggable. Likely first witness types: a customer's compliance team (offline witness, asymmetric signature), Sotto's hosted attestation service (online witness), and an RFC-3161 TSA token (procurement-driven). *(2026-10-03: in signed mode a witness signs the checkpoint file itself with its own key, [v0.2 §10](../spec/v0.2.md#10-signed-checkpoints), so the `attestation` record field stays unassigned.)*
+**Path forward:** the `attestation` field reserved at v0.2 will accommodate witness signatures. Witness identity and signature scheme are pluggable. Likely first witness types: a customer's compliance team (offline witness, asymmetric signature), a hosted attestation service (online witness), and an RFC-3161 TSA token (procurement-driven). *(2026-10-03: in signed mode a witness signs a co-signature over a checkpoint with its own key, in its own namespace, [v0.2 §10.2](../spec/v0.2.md#102-witness-co-signatures), so the `attestation` record field stays unassigned.)*
 
 ### Public anchoring
 
@@ -156,52 +156,67 @@ Specified in [`v0.2.md`](../spec/v0.2.md); decisions in [ADR-0004](../adr/0004-s
 
 v0.1 assumes the signer and the verifier are the same principal. Signed mode exists for the case where they are not. A log or a release written by one party is checked by another (a requester, an auditor, or a court) who must not need to trust the writer and must not be able to forge.
 
-- **Signer:** holds an Ed25519 private key in the OS keychain, as a device-only item, behind a `Signer` handle that never exposes it.
-- **Verifier:** holds the signer's **public** key or fingerprint, obtained **outside** the artefact (§ Pins in the spec). No secret.
+- **Signer:** holds an Ed25519 private key in the OS keychain, behind a `Signer` handle that never exposes it ([spec §13.2](../spec/v0.2.md#132-rust-ogentic-audit-keychain) states what each platform's store guarantees).
+- **Verifier:** holds the signer's **public** key or fingerprint, obtained **outside** the artefact, with a scope saying what that key may sign. No secret. The verifier program itself is obtained independently, or checked before it is run ([spec §11.8](../spec/v0.2.md#118-obtaining-the-verifier)).
+- **Witnesses:** other parties who co-sign checkpoints with their own keys, pinned for that purpose only.
 - **The artefact travels through untrusted hands:** the requester, intermediaries, storage providers, an opposing party. All of them are now adversaries, alongside the cold-file adversaries above.
 
-The verifier's inputs are part of the threat surface too. The pin, and any revocation, must arrive by a channel the artefact's holder does not control.
+The verifier's inputs are part of the threat surface too. The pin, the revocations and transitions, and the verifier program must arrive by a channel the artefact's holder does not control.
 
 ### Adversaries in scope for signed mode
 
 | Adversary | Capability | Defense | Report |
 |-----------|-----------|---------|--------|
-| **Holder of the log or release, without the signing key** | Edit, insert, delete, reorder, or splice records; alter or replace released files or the attestation | Strict per-record Ed25519 signatures over every payload byte; public SHA-256 chain; signed attestation with per-file and per-part hashes | `SignatureInvalid` naming the record; `ChainBreak` for moved or missing records; `FileAltered` naming the file and part; `FileMissing` |
-| **The same holder, truncating** | Drop the tail of a log, or whole trailing segments | A signed checkpoint held by someone else, or the head pinned by the release attestation. Without either, a valid prefix is indistinguishable from a whole log | `CheckpointTruncated` |
-| **Key substitution** | Re-sign altered content with their own key; replace `ogentic-audit-signer.pub` and any printed instructions | The verifier's key comes from outside the artefact; keys inside it are informational; with no pin the best verdict is `SelfConsistent` (exit 4), never `Verified`; bundle instructions may not present an in-bundle fingerprint as the one to pin | `UntrustedSigner` (expected vs actual fingerprint) |
-| **Downgrade** | Swap a signed log for an HMAC log (anyone can make one that verifies under an HMAC key they chose); splice a v0.1 segment into a v0.2 log; present a v1 checkpoint | Signed-mode verification of `0x0001` is a violation; HMAC-mode verification of `0x0002` is an argument error; one format per log; checkpoint versions are not interchangeable | `FormatDowngrade` |
-| **Algorithm or protocol confusion** | Replay a signature from one context in another; claim a different algorithm | SSHSIG namespaces per object type; `sig_alg` inside every signed record, every hashed header, and the key blob behind `key_id`; the verifier never infers an algorithm | `SignatureInvalid` (`namespace`), `AlgorithmMismatch` |
-| **Malleability and weak keys** | Re-encode a signature; get a small-order key pinned, under which anyone can forge | Strict verification (canonical `S`, small-order `A` and `R` rejected); weak keys refused at pin time and in headers | `SignatureInvalid` (`noncanonical`, `weak_key`) |
-| **Parser differential** | Craft an attestation that two JSON parsers read differently (duplicate keys, alternative escapes) | Canonical JSON with a re-serialize-and-compare check | `AttestationMalformed` |
-| **Path tricks** | `..` or absolute paths, symlinks out of the bundle, Unicode normalization collisions | Path rules; symlinks never followed; NFC lookup; ambiguous names fail closed | `AttestationMalformed`, `FileAltered` |
-| **Bundle padding** | Add a file that was never released and claim it was | Unattested files are listed by name as not covered; `--strict` fails | warning / `UnattestedFile` |
-| **Compromised signing key** | Sign new history; mint transitions to keys they control | Revocation with cut points (`trusted_heads`, `trusted_successors`), signed by a pinned key or the revoked key itself; pin the newest key | `RevokedKey` |
-| **The signer, rewriting their own history** | Produce an alternate history and deny the earlier one | Not preventable by any format. Signed checkpoints given to other parties make it **provable**: two signed checkpoints for one position with different hashes are an equivocation proof | `CheckpointMismatch` |
+| **Holder of the log or release, without the signing key** | Edit, insert, delete, reorder, or splice records; alter or replace released files or the attestation | Strict per-record Ed25519 signatures over every envelope; body bound by `body_hash`; public SHA-256 chain; signed attestation with per-file and per-part hashes | `SignatureInvalid` naming the record; `ChainBreak` for moved or missing records; `FileAltered` naming the file and part; `FileMissing` |
+| **The same holder, truncating** | Drop the tail of a log or whole trailing segments; append a header-only segment | Anchoring: `log.sealed`, a checkpoint or witness naming the head, or the attested head in a release. Rollover records are checked against the chain. Without an anchor the report says "tail not anchored" | `CheckpointTruncated`; warnings `UnsignedLastSegment`, `RolledOverWithoutSuccessor` |
+| **The same holder, planting files** | Add a file to a bundle and claim it was released | Unattested files fail by default, apart from a fixed list of operating-system litter | `UnattestedFile` |
+| **The same holder, swapping the verifier** | Replace a verifier binary in the bundle with one that always prints "Verified" | Verifier files are attested and checked with stock tools first; releases publish `SHA256SUMS` and sigstore bundles checkable offline; instructions say to obtain the verifier independently | `FileAltered` on the verifier file |
+| **Key substitution** | Re-sign altered content with their own key; replace `ogentic-audit-signer.pub` and any printed instructions | The verifier's key comes from outside the artefact; keys inside it are informational; with no pin the best verdict is `SelfConsistent` (exit 4); instructions never present an in-bundle fingerprint as the one to use; fingerprints are compared by machine, in full | `UntrustedSigner` (expected vs actual fingerprint) |
+| **A trusted party acting outside its role** | A witness, or an unrelated signer pinned in the same trust file, signs a log or release, mints a transition, or revokes someone else's key | Scopes on every pin (`namespaces=`); revocation authority confined to directly pinned keys of the same principal | `UntrustedSigner` (`out_of_scope`); statement not honoured |
+| **Forged key statements** | Sign a transition or revocation with their own key while naming a pinned key as its author | The signer of a statement must be the key it names, verified under the trusted copy of that key | statement rejected |
+| **Thief of a current key** | Sign new history; mint transitions to keys they control; revoke the key with cut points of their choosing | Revocation by the authority, with cut points; a self-revocation only marks the key revoked and its lists are ignored; several authority revocations intersect, independent of order and of signer-chosen times; one transition per key | `RevokedKey`, `TransitionEquivocation` |
+| **Thief of a retired key** | Use a copy of an old key, taken before it was destroyed, to sign new logs or releases | A transition retires the old key: it is accepted only up to its listed final heads and releases | `RetiredKey` |
+| **Successor hijack** | Name someone else's key as one's successor, so their genuine releases verify under one's own pin | The new key must accept the transition with its own signature | transition rejected |
+| **Log substitution** | Pass off another log by the same key as "the" log, or rewrite a log from its first record | Random `log_id` fixed at creation, signed in every header; `--expect-log-id`; checkpoints compare `log_id` | `CheckpointMismatch`, `CheckpointForDifferentLog`, `LogIdMismatch` |
+| **Downgrade** | Swap a signed log for an HMAC log made under a key of their choosing, and supply that key through the environment; splice a v0.1 segment into a v0.2 log; present a v1 checkpoint | Format read before any key; no implicit HMAC key; shared-key results labelled; an HMAC log under any signed-mode input is never `Verified`; one format per log; checkpoint versions not interchangeable | error `HmacLog` (exit 3); `FormatDowngrade` inside a signed log or release |
+| **Algorithm or protocol confusion** | Replay a signature from one context in another; claim a different algorithm | SSHSIG namespaces per object type; `sig_alg` inside every signed envelope, every hashed header, and the key blob behind `key_id`; every JSON `alg` checked; strict SSHSIG parsing | `SignatureInvalid` (`namespace`), `AlgorithmMismatch` |
+| **Malleability, weak keys, verifier disagreement** | Re-encode a signature; publish a small-order or mixed-order key and later disown signatures; craft signatures that one library accepts and another rejects | Strict verification defined rule by rule (canonical encodings, all small-order points, torsion-free keys, `S < L`, cofactorless); weak keys refused at pin time and in headers; Appendix A for the stock-tools path; the edge cases of "Taming the many EdDSAs" as vectors | `SignatureInvalid` (`reencoded`, `weak_key`) |
+| **Parser differential and resource exhaustion** | Craft an attestation two JSON parsers read differently (duplicate keys, alternative escapes, `1.0`); send huge lengths, deep nesting, or many statements | Canonical JSON with re-serialize-and-compare and integer type checks; size, count, and depth limits applied before parsing | `AttestationMalformed`, `RecordCorrupt` (`TooLarge`) |
+| **Display and path tricks** | Names with escape sequences, carriage returns, bidirectional overrides, or newlines (which inject lines into `shasum -c`); `..` or absolute paths; symlinks, reparse points, Unicode or case collisions | Those characters are banned in attested strings and escaped on output; path rules; links never followed; NFC lookup; ambiguous names fail closed | `AttestationMalformed`, `FileAltered` |
+| **Disclosure through a release** | Read withheld content from a released log, or confirm a guess about a withheld page from its hash | Withheld records are elided; values about withheld content are salted commitments; release builders may include only releasable data | none: prevention |
+| **The signer, rewriting their own history** | Produce an alternate history and deny the earlier one | Not preventable by any format. Signed checkpoints and witness co-signatures held by others make it **provable**: two signed checkpoints for one position with different hashes are an equivocation proof | `CheckpointMismatch` |
 
 ### Invariants in signed mode
 
 1. Verification needs no secret, and nothing a verifier holds lets it sign.
-2. `Verified` means no violation **and** at least one signature checked under a key that is pinned, or reachable from a pin through valid transitions, and not revoked at that position.
-3. Every payload byte of every record is covered by that record's signature. Every header field is covered through `chain_start` once its segment holds a record. An empty segment's header is unsigned and carries nothing to attest.
-4. Every signature names its purpose (namespace) and its algorithm.
-5. Destroying the private key after rotation does not affect verifiability. Only public keys are needed, which reverses the v0.1 key-destruction trade-off.
+2. `Verified` means no violation **and** at least one signature checked under a key that is pinned, or reachable from a pin through accepted transitions, within that key's scope, and neither retired nor revoked for that object.
+3. Every envelope byte of every record is covered by that record's signature, and every body byte by `body_hash`. Every header field is covered through `chain_start` once its segment holds a record. A header-only segment is unsigned, carries nothing to attest, and is reported as such.
+4. Every signature names its purpose (namespace) and its algorithm, and is accepted only within its key's scope.
+5. Revocation and retirement only ever reduce trust, and their result does not depend on the order in which statements arrive or on any time a signer chose.
+6. Destroying the private key after rotation does not affect verifiability. Only public keys are needed, which reverses the v0.1 key-destruction trade-off.
+7. Every report says whether the end of each log is anchored.
 
 ### What signed mode does not change
 
 - **Signatures prove origin, not truth.** The signer can still record false events from the start. Same as v0.1.
-- **Time is the signer's clock.** `ts_wall`, `observed_at`, and `created_at` are asserted, not established. Trusted time (RFC 3161 over a checkpoint) remains future work.
-- **A compromised process holding the unlocked key can sign anything.** Same as v0.1, except that signed mode now has a remediation that third parties can apply: revocation.
+- **Time is the signer's clock.** `ts_wall`, `observed_at`, and `created_at` are each asserted by whoever signed them. Trusted time (RFC 3161 over a checkpoint) remains future work, and is required for any checkpoint relied on for the long-term post-quantum claim.
+- **A compromised process holding the unlocked key can sign anything.** Same as v0.1, except that signed mode now has remediations third parties can apply: revocation with cut points, and retirement through rotation.
 
 ### Residual risks (signed mode)
 
 | Risk | Why accepted / mitigation |
 |------|---------------------------|
-| The pin arrives through a compromised channel | Outside the format. Publish the fingerprint in at least two independent places; the grouped-hex form is designed to be read aloud and compared |
-| A revocation is never delivered to the verifier | An offline verifier cannot know. Publish revocations next to the pins; pinning the newest key limits what a compromised older key can do |
-| Tail truncation when no checkpoint was ever handed out | Inherent to any log. The release attestation pins the head at release; hand out signed checkpoints at meaningful moments |
-| Ed25519 forgeable by a future quantum computer | ML-DSA-65 is reserved (`sig_alg 0x0002`). Evidence made before then is defended by checkpoints and attestations held by others before that point |
-| `ssh-keygen` accepts non-canonical `S` | It only admits re-encodings of a signature the key holder already made; the `ogentic-audit` verifiers are strict |
-| The OS syncs the signing key off the device | The keychain signer must create a device-only item; a platform that cannot is documented as such, not silently accepted |
+| The pin arrives through a compromised channel | Outside the format. Publish the fingerprint in at least two independent places; compare it by machine |
+| A revocation or transition is never delivered to the verifier | An offline verifier cannot know. Publish both next to the pins; pinning the newest key limits what a compromised older key can do; anyone verifying a newer key's artefacts necessarily holds the transition that retires the older one |
+| The thief of a directly pinned key issues an authority revocation with empty cut points | Fails closed: the key's history stops verifying until the signer republishes a pin and cut points. Denial of service by a key thief is inherent; forging is not possible |
+| A self-revoked key's history is unverifiable until the authority issues cut points | Deliberate: only the authority decides what survives a compromise |
+| Tail truncation when no anchor exists | Inherent to any log. The report states it. Seal logs, hand out signed checkpoints, and attest heads in releases |
+| A rewrite under a new `log_id` | Cannot be linked to the old log by the format. An earlier signed checkpoint of the old `log_id` remains signed evidence that the old log existed, which the signer must account for |
+| Ed25519 forgeable by a future quantum computer | ML-DSA-65 is reserved (`sig_alg 0x0002`). Evidence made before then is defended by checkpoints and attestations held by others and timestamped before that point. Transitions into a post-quantum key are only as strong as Ed25519 |
+| `ssh-keygen` accepts `S + L` and, like OpenSSL, signatures under small-order keys | Stated in the spec. The `ogentic-audit` verifiers are strict and report re-encoding by name; the stock-tools recipe checks the pin against the list of small-order keys first |
+| The stock-tools path follows no transitions and applies revocations all-or-nothing | It fails closed. Cut points and transitions need an `ogentic-audit` verifier or an independent implementation |
+| The OS store moves the signing key off the device | macOS login keychain items move with Migration Assistant and backups; Linux Secret Service has no device binding; Windows items are stored with local persistence. Documented per platform; an application with the needed entitlements can provide a device-bound `Signer` |
+| Release content is only as private as the builder makes it | The verifier cannot know what was withheld. Elision and commitments are builder obligations, with a vector showing an elided release verifying |
 
 ## Court-defensibility positioning
 
@@ -213,7 +228,7 @@ The court argument relies on:
 2. **Cryptographic invariants**: HMAC-SHA256 is FIPS 140-3 approved (NIST SP 800-107). Chain construction is straightforward to explain to a judge with the right expert witness.
 3. **Tamper-evidence**: any modification to the log breaks the chain. The verifier produces a structured report pointing to the exact record where tamper-evidence was triggered.
 4. **Self-authentication path**: per FRE 902(13)/(14), an audit log produced by a system with documented integrity controls can be self-authenticating with a certification of process. The CLI's `export --pdf` ([OGE-438](https://linear.app/ogenticai/issue/OGE-438)) is intended to produce such a certification.
-5. **Independence**: a separate `ogentic-audit` binary, not the application that wrote the log, performs verification. The verifier is open-source — opposing counsel can run it themselves. For a `0x0001` log they need the HMAC key to do so, and that key also lets them forge. Verification that confers no power to forge requires a `0x0002` signed log and a public key pinned independently ([§ Signed mode](#signed-mode-format-0x0002-v02)).
+5. **Independence**: a separate `ogentic-audit` binary, not the application that wrote the log, performs verification. The verifier is open-source — opposing counsel can run it themselves. For a `0x0001` log they need the HMAC key to do so, and that key also lets them forge. Verification that confers no power to forge requires a `0x0002` signed log, a public key pinned independently, and a verifier obtained or checked independently of the party offering the log ([§ Signed mode](#signed-mode-format-0x0002-v02)); the release signature and files can also be checked with stock OpenSSH tools alone.
 
 ## Residual risks (accepted at v0.1)
 

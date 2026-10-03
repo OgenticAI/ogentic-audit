@@ -321,7 +321,8 @@ Full integration guide for the KMS option:
 
 - [`docs/spec/v0.1.md`](docs/spec/v0.1.md) — language-agnostic on-disk format spec
 - [`docs/spec/violation-report.md`](docs/spec/violation-report.md) — normative JSON schema for verifier output
-- [`docs/spec/v0.2.md`](docs/spec/v0.2.md) — signed mode (format `0x0002`, draft): Ed25519-signed records, signed checkpoints, offline release attestations
+- [`docs/spec/v0.2.md`](docs/spec/v0.2.md) — signed mode (format `0x0002`, draft): Ed25519-signed records, signed checkpoints and witness co-signatures, key rotation and revocation, offline release attestations
+- [`docs/guides/verifying-a-release.md`](docs/guides/verifying-a-release.md) — plain-language guide for a third party checking a signed release (draft)
 - [`docs/security/threat-model.md`](docs/security/threat-model.md) — adversaries, invariants, accepted residual risk
 - [`docs/security/key-rotation.md`](docs/security/key-rotation.md) — customer-facing rotation policy
 - [`docs/legal/court-defensibility.md`](docs/legal/court-defensibility.md) — court-defensibility brief (draft)
