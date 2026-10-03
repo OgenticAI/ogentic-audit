@@ -19,12 +19,20 @@ library APIs follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   that exists and holds zero records) still verifies, as the `empty` golden
   vector specifies.
 
+### Security
+
+- `Cargo.lock`: `h2` 0.4.19 (RUSTSEC-2026-0258) and `rustls` 0.23.45
+  (RUSTSEC-2026-0285). Both are reached only through the AWS SDK behind
+  `ogentic-audit-kms`'s `aws` feature.
+
 ### Changed
 
 - Removed the broken post-publish badge-bump job from the release workflow
   (OGE-1751).
 - The verify-chain demo moved to the standalone `audit-streamlit-demo`
   repository (OGE-1668).
+- `async-trait` 0.1.92: the 0.1.89 expansion fails `clippy::double_must_use`
+  on Rust 1.99.
 
 ## [0.3.0] - 2026-07-23
 
