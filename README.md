@@ -321,11 +321,13 @@ Full integration guide for the KMS option:
 
 - [`docs/spec/v0.1.md`](docs/spec/v0.1.md) — language-agnostic on-disk format spec
 - [`docs/spec/violation-report.md`](docs/spec/violation-report.md) — normative JSON schema for verifier output
+- [`docs/spec/v0.2.md`](docs/spec/v0.2.md) — signed mode (format `0x0002`, draft): Ed25519-signed records, signed checkpoints, offline release attestations
 - [`docs/security/threat-model.md`](docs/security/threat-model.md) — adversaries, invariants, accepted residual risk
 - [`docs/security/key-rotation.md`](docs/security/key-rotation.md) — customer-facing rotation policy
 - [`docs/legal/court-defensibility.md`](docs/legal/court-defensibility.md) — court-defensibility brief (draft)
 - [`docs/adr/0001-on-disk-format.md`](docs/adr/0001-on-disk-format.md) — on-disk format rationale (ADR)
 - [`docs/adr/0002-server-side-kms-key-sourcing.md`](docs/adr/0002-server-side-kms-key-sourcing.md) — KMS key sourcing rationale (ADR)
+- [`docs/adr/0004-signed-chain-and-offline-verification.md`](docs/adr/0004-signed-chain-and-offline-verification.md) — signed chain and third-party verification rationale (ADR, proposed)
 - [`tests/vectors/v0.1/README.md`](tests/vectors/v0.1/README.md) — golden-vector layout + procedure for adding new vectors
 - [`docs/integrations/sotto-desktop.md`](docs/integrations/sotto-desktop.md) — embedding `ogentic-audit-core` inside the Sotto Desktop Tauri shell
 - [`docs/integrations/server-side-kms.md`](docs/integrations/server-side-kms.md) — KMS integration guide (AWS KMS `GenerateMac`)

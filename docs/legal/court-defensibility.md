@@ -73,7 +73,9 @@ Audit logs are typically offered to prove the truth of what they record (e.g. "u
 The phrase "tamper-evident" is engineering shorthand. In court it has to translate into something a judge or jury understands. Two formulations that have worked for similar systems (CT logs, git-signed commits, Sigstore Rekor) and we expect to apply here:
 
 - **"You cannot edit a record without leaving a detectable trail."** Concretely: a verifier comparing the on-disk file against the cryptographic chain will report which record was modified, what kind of modification it was, and at what byte offset. The structured violation report ([violation-report.md](../spec/violation-report.md)) is the exhibit that demonstrates this.
-- **"Detection does not require trusting the operator."** A third party with the public key and the spec can verify without our involvement. This is the load-bearing claim for "court-defensible" — the credibility of the verdict does not depend on us.
+- **"Detection does not require trusting the operator."** This holds for **signed logs and releases** (format `0x0002`, [ADR-0004](../adr/0004-signed-chain-and-offline-verification.md)). A third party holding the signer's public key, obtained independently of the log, can verify with the spec and the open-source verifier without our involvement, and gains no ability to forge. It does **not** hold for HMAC logs (format `0x0001`). Verifying those needs the HMAC key, and whoever holds that key can also produce a log that verifies. This is the load-bearing claim for "court-defensible", so make it only about `0x0002` artefacts verified against an independently pinned key.
+
+  > *Edit 2026-10-03:* this bullet previously said a third party could verify "with the public key". Format `0x0001` has no public key, so the sentence was inaccurate for every log written before signed mode. It now states the condition under which the claim is true.
 
 These map to legal arguments about chain of custody and integrity-on-its-face that counsel will recognize.
 
@@ -154,7 +156,7 @@ What this brief asserts on the engineering side, which counsel can rely on:
 
 1. The technical capabilities described in the [threat model](../security/threat-model.md) and the [violation-report shape](../spec/violation-report.md) are real, tested, and reproducible.
 2. The on-disk format is fully and publicly specified ([`docs/spec/v0.1.md`](../spec/v0.1.md)) and language-agnostic; an opposing expert can build a verifier from the spec alone in any major language.
-3. The verifier's verdicts are deterministic and reproducible from the on-disk file plus the public key — no dependency on OgenticAI infrastructure or runtime.
+3. The verifier's verdicts are deterministic and reproducible from the on-disk file plus the verification key — the HMAC key for format `0x0001`, the signer's public key for format `0x0002` — with no dependency on OgenticAI infrastructure or runtime. Only for `0x0002` can the party verifying be someone who cannot forge. *(Edit 2026-10-03: previously said "the public key" without qualification.)*
 
 These three properties are the technical predicate for whatever case-specific narrative counsel chooses to build.
 

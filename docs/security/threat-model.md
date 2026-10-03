@@ -1,8 +1,8 @@
-# ogentic-audit — Threat model, v0.1
+# ogentic-audit — Threat model, v0.1 and v0.2 signed mode
 
 **Status:** Draft (paired with [ADR-0001](../adr/0001-on-disk-format.md))
 **Tracks:** [OGE-427 (F4)](https://linear.app/ogenticai/issue/OGE-427)
-**Last updated:** 2026-05-09
+**Last updated:** 2026-10-03 (added [§ Signed mode](#signed-mode-format-0x0002-v02) for format `0x0002`; everything else describes format `0x0001`)
 
 This document defines the security boundary of the `ogentic-audit` library at v0.1, names the adversaries we defend against, states the cryptographic invariants we maintain, explains why we made specific design choices given the threat model, and is paired with the court-defensibility brief at [`court-brief.md`](court-brief.md) (TBD).
 
@@ -84,7 +84,9 @@ Asymmetric signature would matter if:
 - Verification needed to be possible without the signing capability (third-party attestation)
 - The signing party and verifying party were different principals
 
-For v0.1, the signing party = verifying party = vault owner. HMAC is the right primitive. Future v0.2 work on external witnesses will introduce Ed25519 signatures over chain-head attestations layered on top of (not in place of) the HMAC chain.
+For v0.1, the signing party = verifying party = vault owner. HMAC is the right primitive.
+
+Both conditions above now hold for logs and releases checked by a third party, so v0.2 adds a signed format (`0x0002`, [§ Signed mode](#signed-mode-format-0x0002-v02)). It **replaces** HMAC in that mode rather than layering Ed25519 head attestations over the HMAC chain, as this section previously planned. Layered heads would still leave the records themselves checkable only by someone holding the HMAC key ([ADR-0004](../adr/0004-signed-chain-and-offline-verification.md) D1). Format `0x0001` remains the right choice when the writer is the only verifier.
 
 ## Time anchoring rationale
 
@@ -124,7 +126,7 @@ The gap the mechanisms in this section address is concrete, so it is worth stati
 
 Rekor uses Sigstore's TSA; CT uses log-operator-signed tree heads; some compliance products anchor periodically to public blockchains. The pattern: a third party signs an attestation that "I observed chain head X at time T."
 
-**Path forward:** the `attestation` field reserved at v0.2 will accommodate witness signatures. Witness identity and signature scheme are pluggable. Likely first witness types: a customer's compliance team (offline witness, asymmetric signature), Sotto's hosted attestation service (online witness), and an RFC-3161 TSA token (procurement-driven).
+**Path forward:** the `attestation` field reserved at v0.2 will accommodate witness signatures. Witness identity and signature scheme are pluggable. Likely first witness types: a customer's compliance team (offline witness, asymmetric signature), Sotto's hosted attestation service (online witness), and an RFC-3161 TSA token (procurement-driven). *(2026-10-03: in signed mode a witness signs the checkpoint file itself with its own key, [v0.2 §10](../spec/v0.2.md#10-signed-checkpoints), so the `attestation` record field stays unassigned.)*
 
 ### Public anchoring
 
@@ -146,6 +148,61 @@ The `payload["policy"]` convention ([ADR-0003](../adr/0003-policy-attestation-pa
 
 What the digest does **not** do on its own: it binds the decision to a *specific policy document* only if that document is **retained and retrievable**. The library never sees, canonicalizes, or hashes the policy — the digest is caller-computed and opaque (analogous to `key_id`). So a `digest` whose source policy was discarded proves only that *some* policy with that hash was claimed, not what it said. Operators relying on policy attestation for compliance evidence MUST retain the versioned policy artifacts their digests are taken over, under the same retention regime as the audit log itself. This is a process control, not something the format can enforce — stated here so it is not assumed away.
 
+## Signed mode (format `0x0002`, v0.2)
+
+Specified in [`v0.2.md`](../spec/v0.2.md); decisions in [ADR-0004](../adr/0004-signed-chain-and-offline-verification.md). Everything above still describes format `0x0001`, which is unchanged.
+
+### Trust model change
+
+v0.1 assumes the signer and the verifier are the same principal. Signed mode exists for the case where they are not. A log or a release written by one party is checked by another (a requester, an auditor, or a court) who must not need to trust the writer and must not be able to forge.
+
+- **Signer:** holds an Ed25519 private key in the OS keychain, as a device-only item, behind a `Signer` handle that never exposes it.
+- **Verifier:** holds the signer's **public** key or fingerprint, obtained **outside** the artefact (§ Pins in the spec). No secret.
+- **The artefact travels through untrusted hands:** the requester, intermediaries, storage providers, an opposing party. All of them are now adversaries, alongside the cold-file adversaries above.
+
+The verifier's inputs are part of the threat surface too. The pin, and any revocation, must arrive by a channel the artefact's holder does not control.
+
+### Adversaries in scope for signed mode
+
+| Adversary | Capability | Defense | Report |
+|-----------|-----------|---------|--------|
+| **Holder of the log or release, without the signing key** | Edit, insert, delete, reorder, or splice records; alter or replace released files or the attestation | Strict per-record Ed25519 signatures over every payload byte; public SHA-256 chain; signed attestation with per-file and per-part hashes | `SignatureInvalid` naming the record; `ChainBreak` for moved or missing records; `FileAltered` naming the file and part; `FileMissing` |
+| **The same holder, truncating** | Drop the tail of a log, or whole trailing segments | A signed checkpoint held by someone else, or the head pinned by the release attestation. Without either, a valid prefix is indistinguishable from a whole log | `CheckpointTruncated` |
+| **Key substitution** | Re-sign altered content with their own key; replace `ogentic-audit-signer.pub` and any printed instructions | The verifier's key comes from outside the artefact; keys inside it are informational; with no pin the best verdict is `SelfConsistent` (exit 4), never `Verified`; bundle instructions may not present an in-bundle fingerprint as the one to pin | `UntrustedSigner` (expected vs actual fingerprint) |
+| **Downgrade** | Swap a signed log for an HMAC log (anyone can make one that verifies under an HMAC key they chose); splice a v0.1 segment into a v0.2 log; present a v1 checkpoint | Signed-mode verification of `0x0001` is a violation; HMAC-mode verification of `0x0002` is an argument error; one format per log; checkpoint versions are not interchangeable | `FormatDowngrade` |
+| **Algorithm or protocol confusion** | Replay a signature from one context in another; claim a different algorithm | SSHSIG namespaces per object type; `sig_alg` inside every signed record, every hashed header, and the key blob behind `key_id`; the verifier never infers an algorithm | `SignatureInvalid` (`namespace`), `AlgorithmMismatch` |
+| **Malleability and weak keys** | Re-encode a signature; get a small-order key pinned, under which anyone can forge | Strict verification (canonical `S`, small-order `A` and `R` rejected); weak keys refused at pin time and in headers | `SignatureInvalid` (`noncanonical`, `weak_key`) |
+| **Parser differential** | Craft an attestation that two JSON parsers read differently (duplicate keys, alternative escapes) | Canonical JSON with a re-serialize-and-compare check | `AttestationMalformed` |
+| **Path tricks** | `..` or absolute paths, symlinks out of the bundle, Unicode normalization collisions | Path rules; symlinks never followed; NFC lookup; ambiguous names fail closed | `AttestationMalformed`, `FileAltered` |
+| **Bundle padding** | Add a file that was never released and claim it was | Unattested files are listed by name as not covered; `--strict` fails | warning / `UnattestedFile` |
+| **Compromised signing key** | Sign new history; mint transitions to keys they control | Revocation with cut points (`trusted_heads`, `trusted_successors`), signed by a pinned key or the revoked key itself; pin the newest key | `RevokedKey` |
+| **The signer, rewriting their own history** | Produce an alternate history and deny the earlier one | Not preventable by any format. Signed checkpoints given to other parties make it **provable**: two signed checkpoints for one position with different hashes are an equivocation proof | `CheckpointMismatch` |
+
+### Invariants in signed mode
+
+1. Verification needs no secret, and nothing a verifier holds lets it sign.
+2. `Verified` means no violation **and** at least one signature checked under a key that is pinned, or reachable from a pin through valid transitions, and not revoked at that position.
+3. Every payload byte of every record is covered by that record's signature. Every header field is covered through `chain_start` once its segment holds a record. An empty segment's header is unsigned and carries nothing to attest.
+4. Every signature names its purpose (namespace) and its algorithm.
+5. Destroying the private key after rotation does not affect verifiability. Only public keys are needed, which reverses the v0.1 key-destruction trade-off.
+
+### What signed mode does not change
+
+- **Signatures prove origin, not truth.** The signer can still record false events from the start. Same as v0.1.
+- **Time is the signer's clock.** `ts_wall`, `observed_at`, and `created_at` are asserted, not established. Trusted time (RFC 3161 over a checkpoint) remains future work.
+- **A compromised process holding the unlocked key can sign anything.** Same as v0.1, except that signed mode now has a remediation that third parties can apply: revocation.
+
+### Residual risks (signed mode)
+
+| Risk | Why accepted / mitigation |
+|------|---------------------------|
+| The pin arrives through a compromised channel | Outside the format. Publish the fingerprint in at least two independent places; the grouped-hex form is designed to be read aloud and compared |
+| A revocation is never delivered to the verifier | An offline verifier cannot know. Publish revocations next to the pins; pinning the newest key limits what a compromised older key can do |
+| Tail truncation when no checkpoint was ever handed out | Inherent to any log. The release attestation pins the head at release; hand out signed checkpoints at meaningful moments |
+| Ed25519 forgeable by a future quantum computer | ML-DSA-65 is reserved (`sig_alg 0x0002`). Evidence made before then is defended by checkpoints and attestations held by others before that point |
+| `ssh-keygen` accepts non-canonical `S` | It only admits re-encodings of a signature the key holder already made; the `ogentic-audit` verifiers are strict |
+| The OS syncs the signing key off the device | The keychain signer must create a device-only item; a platform that cannot is documented as such, not silently accepted |
+
 ## Court-defensibility positioning
 
 (Detailed in [`court-brief.md`](court-brief.md) — TBD; outline below.)
@@ -156,7 +213,7 @@ The court argument relies on:
 2. **Cryptographic invariants**: HMAC-SHA256 is FIPS 140-3 approved (NIST SP 800-107). Chain construction is straightforward to explain to a judge with the right expert witness.
 3. **Tamper-evidence**: any modification to the log breaks the chain. The verifier produces a structured report pointing to the exact record where tamper-evidence was triggered.
 4. **Self-authentication path**: per FRE 902(13)/(14), an audit log produced by a system with documented integrity controls can be self-authenticating with a certification of process. The CLI's `export --pdf` ([OGE-438](https://linear.app/ogenticai/issue/OGE-438)) is intended to produce such a certification.
-5. **Independence**: a separate `ogentic-audit` binary, not the application that wrote the log, performs verification. The verifier is open-source — opposing counsel can run it themselves.
+5. **Independence**: a separate `ogentic-audit` binary, not the application that wrote the log, performs verification. The verifier is open-source — opposing counsel can run it themselves. For a `0x0001` log they need the HMAC key to do so, and that key also lets them forge. Verification that confers no power to forge requires a `0x0002` signed log and a public key pinned independently ([§ Signed mode](#signed-mode-format-0x0002-v02)).
 
 ## Residual risks (accepted at v0.1)
 
@@ -175,7 +232,7 @@ These resolve before v0.1 is tagged Accepted:
 1. **Crash-recovery semantics under network-mounted filesystems** (NFS, SMB) — `fsync` semantics are weaker. Likely answer: refuse to open log files on non-local filesystems at v0.1, with a config opt-out.
 2. **Key-derivation parameters** — Argon2id memory/time/parallelism for the HMAC-key derivation. Inherits Sotto Desktop's vault parameters; documented in `docs/spec/key-derivation.md` (TBD).
 3. **`segment_index` width** — u16 caps at 65,536 segments. At 64 MiB / segment, that's 4 TiB per key. v0.2 may widen to u32 if needed; v0.1 documents the limit.
-4. **Witness signature scheme** for v0.2 — Ed25519 vs ML-DSA (post-quantum). Decision deferred until v0.2 design.
+4. ~~**Witness signature scheme** for v0.2 — Ed25519 vs ML-DSA (post-quantum). Decision deferred until v0.2 design.~~ Resolved 2026-10-03 ([ADR-0004](../adr/0004-signed-chain-and-offline-verification.md) D5): Ed25519 now; ML-DSA-65 reserved as `sig_alg 0x0002`.
 
 ## Server-side / KMS
 
@@ -224,7 +281,9 @@ signing.  The distinction matters:
   both produce valid MACs.  A court expert should verify that access logs
   (CloudTrail) confirm only the expected principal signed the records under audit.
 - Asymmetric signing — where the verifier holds only a public key and cannot
-  forge records — remains a v0.2+ path.
+  forge records — is specified as format `0x0002`
+  ([ADR-0004](../adr/0004-signed-chain-and-offline-verification.md)); a KMS-backed
+  `Signer` is a follow-up.
 
 ### New failure mode: KMS unavailable
 
