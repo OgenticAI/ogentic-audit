@@ -31,6 +31,7 @@ fn cmd() -> Command {
 fn verify_clean_vector_exits_zero() {
     let key_hex = vector_key_hex("single-record");
     cmd()
+        .args(["--key-source", "env"])
         .env("OGENTIC_AUDIT_KEY_HEX", key_hex)
         .arg("verify")
         .arg(vectors_dir().join("single-record"))
@@ -43,6 +44,7 @@ fn verify_clean_vector_exits_zero() {
 fn verify_tampered_vector_exits_one_and_reports_hmac_mismatch() {
     let key_hex = vector_key_hex("tampered-byte");
     cmd()
+        .args(["--key-source", "env"])
         .env("OGENTIC_AUDIT_KEY_HEX", key_hex)
         .arg("verify")
         .arg(vectors_dir().join("tampered-byte"))
@@ -55,6 +57,7 @@ fn verify_tampered_vector_exits_one_and_reports_hmac_mismatch() {
 fn verify_missing_record_vector_reports_chain_break() {
     let key_hex = vector_key_hex("missing-record");
     cmd()
+        .args(["--key-source", "env"])
         .env("OGENTIC_AUDIT_KEY_HEX", key_hex)
         .arg("verify")
         .arg(vectors_dir().join("missing-record"))
@@ -67,6 +70,7 @@ fn verify_missing_record_vector_reports_chain_break() {
 fn verify_summary_clean_vector_prints_one_line_verified() {
     let key_hex = vector_key_hex("single-record");
     let assert = cmd()
+        .args(["--key-source", "env"])
         .env("OGENTIC_AUDIT_KEY_HEX", key_hex)
         .arg("verify")
         .arg("--summary")
@@ -88,6 +92,7 @@ fn verify_summary_clean_vector_prints_one_line_verified() {
 fn verify_summary_tampered_vector_prints_failure_line() {
     let key_hex = vector_key_hex("tampered-byte");
     let assert = cmd()
+        .args(["--key-source", "env"])
         .env("OGENTIC_AUDIT_KEY_HEX", key_hex)
         .arg("verify")
         .arg("--summary")
@@ -112,6 +117,7 @@ fn verify_summary_and_format_json_are_mutually_exclusive() {
     // before any I/O — and exits non-zero with the conflict on stderr.
     let key_hex = vector_key_hex("single-record");
     let assert = cmd()
+        .args(["--key-source", "env"])
         .env("OGENTIC_AUDIT_KEY_HEX", key_hex)
         .arg("verify")
         .arg("--summary")
@@ -131,6 +137,7 @@ fn verify_summary_and_format_json_are_mutually_exclusive() {
 fn verify_json_format_emits_parseable_object() {
     let key_hex = vector_key_hex("single-record");
     let assert = cmd()
+        .args(["--key-source", "env"])
         .env("OGENTIC_AUDIT_KEY_HEX", key_hex)
         .arg("verify")
         .arg("--format")
@@ -240,6 +247,7 @@ fn missing_log_dir_exits_io_error() {
     cmd()
         .arg("verify")
         .arg("/nonexistent-path-for-cli-test")
+        .args(["--key-source", "env"])
         .env("OGENTIC_AUDIT_KEY_HEX", "00".repeat(32))
         .assert()
         .code(2);
@@ -294,6 +302,7 @@ fn export_writes_a_pdf_for_clean_vector() {
     let tmp = tempfile::tempdir().unwrap();
     let pdf_path = tmp.path().join("out.pdf");
     cmd()
+        .args(["--key-source", "env"])
         .env("OGENTIC_AUDIT_KEY_HEX", key_hex)
         .arg("export")
         .arg(vectors_dir().join("single-record"))
@@ -323,6 +332,7 @@ fn export_is_bit_reproducible_for_same_inputs() {
     let pdf_b = tmp.path().join("b.pdf");
     for out in [&pdf_a, &pdf_b] {
         cmd()
+            .args(["--key-source", "env"])
             .env("OGENTIC_AUDIT_KEY_HEX", &key_hex)
             .arg("export")
             .arg(vectors_dir().join("single-record"))
@@ -351,6 +361,7 @@ fn export_on_tampered_vector_emits_violation_pdf_and_exits_zero() {
     let tmp = tempfile::tempdir().unwrap();
     let pdf_path = tmp.path().join("tampered.pdf");
     cmd()
+        .args(["--key-source", "env"])
         .env("OGENTIC_AUDIT_KEY_HEX", key_hex)
         .arg("export")
         .arg(vectors_dir().join("tampered-byte"))

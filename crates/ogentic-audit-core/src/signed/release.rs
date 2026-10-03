@@ -1842,6 +1842,9 @@ impl ReleaseReport {
                 ));
             }
         }
+        if ascii {
+            out = out.replace(['–', '·'], "-");
+        }
         out
     }
 }

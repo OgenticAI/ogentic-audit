@@ -1379,3 +1379,62 @@ impl<'a> Walk<'a> {
         self.report.log.head_ts_wall = self.last.as_ref().map(|l| l.ts_wall.clone());
     }
 }
+
+/// One record as read, without any verification (for `show`, `head`,
+/// and exports; use [`SignedVerifier`] to check anything).
+#[derive(Debug, Clone)]
+pub struct RecordView {
+    /// Segment.
+    pub segment: u16,
+    /// Position in the segment.
+    pub position: u64,
+    /// `record_hash` of the envelope bytes.
+    pub record_hash: [u8; 32],
+    /// The decoded envelope, or why it does not decode.
+    pub envelope: Result<Envelope, String>,
+    /// The decoded body; `None` when elided or undecodable.
+    pub body: Option<Body>,
+    /// Whether the body was elided.
+    pub elided: bool,
+    /// The signature bytes.
+    pub signature: [u8; 64],
+}
+
+/// Read every complete record of a signed log in order, stopping at the
+/// first framing problem. `f` returns `false` to stop early. Performs
+/// no verification.
+pub fn visit_records(
+    dir: impl AsRef<Path>,
+    mut f: impl FnMut(&RecordView) -> bool,
+) -> io::Result<()> {
+    let dir = dir.as_ref();
+    let (segments, _) = list_segments(dir)?;
+    for n in segments {
+        let mut file = File::open(segment_path(dir, n))?;
+        let len = file.metadata()?.len();
+        if len < HEADER_LEN as u64 {
+            return Ok(());
+        }
+        file.seek(SeekFrom::Start(HEADER_LEN as u64))?;
+        let mut r = BufReader::new(file);
+        let mut off = HEADER_LEN as u64;
+        let mut p = 0u64;
+        while let Frame::Record(raw) = format::read_frame(&mut r, off, len)? {
+            off += raw.total_len;
+            let view = RecordView {
+                segment: n,
+                position: p,
+                record_hash: record_hash(&raw.envelope),
+                envelope: Envelope::decode(&raw.envelope),
+                body: raw.body.as_deref().and_then(|b| Body::decode(b).ok()),
+                elided: raw.body.is_none(),
+                signature: raw.signature,
+            };
+            if !f(&view) {
+                return Ok(());
+            }
+            p += 1;
+        }
+    }
+    Ok(())
+}

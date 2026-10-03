@@ -790,6 +790,9 @@ impl SignedVerifyReport {
                 ));
             }
         }
+        if ascii {
+            out = out.replace(['–', '·'], "-");
+        }
         out
     }
 }

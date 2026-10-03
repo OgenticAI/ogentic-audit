@@ -57,7 +57,8 @@ pub use signer::{InMemorySigner, SignError, Signature, Signer};
 pub use statements::{CutPoints, Head, SignedStatement};
 pub use trust::{Scope, TrustContext, TrustError};
 pub use verify::{
-    log_format, SignedVerifier, SignedVerifyError, SignedVerifyOptions, SuppliedCheckpoint,
+    log_format, visit_records, RecordView, SignedVerifier, SignedVerifyError, SignedVerifyOptions,
+    SuppliedCheckpoint,
 };
 pub use writer::SignedWriter;
 
