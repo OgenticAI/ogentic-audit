@@ -454,7 +454,7 @@ jobs:
         run: pytest python/tests --cov=ogentic_audit --cov-report=xml:coverage.xml || true
 
       - name: Upload to Codecov
-        uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac # v5 — pinned per OGE-837
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v5 — pinned per OGE-837
         with:
           files: lcov.info,coverage.xml
           fail_ci_if_error: false
