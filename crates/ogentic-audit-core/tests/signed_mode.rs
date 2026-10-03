@@ -494,7 +494,18 @@ fn transition_equivocation_follows_neither() {
     let mut c = pin(1);
     c.add_statements(st.path(), true).unwrap();
     let r = SignedVerifier::new(c).verify(log.path()).unwrap();
-    assert_eq!(r.compact_verdict(), "UntrustedSigner@s0");
+    assert_eq!(
+        r.compact_verdict(),
+        format!(
+            "TransitionEquivocation@key:{}",
+            k(1).public_key().fingerprint().to_hex()
+        )
+    );
+    // Neither successor is trusted.
+    assert!(r
+        .violations
+        .iter()
+        .any(|v| v.compact() == "UntrustedSigner@s0"));
 }
 
 #[test]
@@ -819,4 +830,67 @@ fn pins_refuse_weak_keys_and_bad_fingerprints() {
     ))
     .unwrap();
     let _ = Fingerprint::parse("SHA256:bbXpuKG6zhzdmnxq256TlqzFBzRl2f6OOg722cYNbU8").unwrap();
+}
+
+// Cases git cannot carry (spec §16): generated at test time.
+
+/// A bundle that passed through a filesystem storing names decomposed
+/// (NFD) still verifies: names are looked up by NFC equality.
+#[test]
+fn release_nfd_name_verifies() {
+    let log = tempfile::tempdir().unwrap();
+    write_log(log.path(), 1, 2, true);
+    let rel = tempfile::tempdir().unwrap();
+    let nfc = "r\u{e9}sum\u{e9}.pdf";
+    std::fs::write(rel.path().join(nfc), b"%PDF").unwrap();
+    let mut b = AttestationBuilder::new(rel.path(), "nfd");
+    b.add_file(FileSpec::new(nfc));
+    b.add_log(LogSpec {
+        source: log.path().to_path_buf(),
+        path: "log".into(),
+        head: None,
+        elide: vec![],
+    });
+    b.write(&k(1)).unwrap();
+    let nfd = "re\u{301}sume\u{301}.pdf";
+    std::fs::rename(rel.path().join(nfc), rel.path().join(nfd)).unwrap();
+    // On APFS both spellings name one file; elsewhere the rename changes it.
+    assert_eq!(
+        verify_rel(rel.path(), &pin(1), &ReleaseOptions::new()),
+        "Verified"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn release_symlink_is_not_followed() {
+    let (_log, rel) = build_release(&k(1));
+    let page = rel.path().join("pages/0001.pdf");
+    let real = rel.path().join("elsewhere.bin");
+    std::fs::rename(&page, &real).unwrap();
+    std::os::unix::fs::symlink(&real, &page).unwrap();
+    let r = verify_release(rel.path(), &pin(1), &ReleaseOptions::new()).unwrap();
+    let first = &r.violations[0];
+    assert_eq!(first.compact(), "FileAltered@file:pages/0001.pdf");
+    assert_eq!(first.reason.as_deref(), Some("not_regular_file"));
+}
+
+/// Two names equal after case folding are ambiguous and fail closed.
+/// Needs a case-sensitive filesystem (Linux; skipped where the second
+/// name lands on the first).
+#[test]
+fn release_ambiguous_name_fails_closed() {
+    let (_log, rel) = build_release(&k(1));
+    let other = rel.path().join("DECISIONS.csv");
+    std::fs::write(&other, b"x").unwrap();
+    if std::fs::read(rel.path().join("Decisions.csv")).unwrap() == b"x" {
+        eprintln!("skipping: case-insensitive filesystem");
+        return;
+    }
+    let r = verify_release(rel.path(), &pin(1), &ReleaseOptions::new()).unwrap();
+    assert!(r
+        .violations
+        .iter()
+        .any(|v| v.compact() == "FileAltered@file:Decisions.csv"
+            && v.reason.as_deref() == Some("ambiguous_name")));
 }

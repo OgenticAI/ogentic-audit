@@ -1,0 +1,62 @@
+[
+ {
+  "case": 0,
+  "accept": false,
+  "reason": "weak_key"
+ },
+ {
+  "case": 1,
+  "accept": false,
+  "reason": "weak_key"
+ },
+ {
+  "case": 2,
+  "accept": false,
+  "reason": "weak_key"
+ },
+ {
+  "case": 3,
+  "accept": false,
+  "reason": "weak_key"
+ },
+ {
+  "case": 4,
+  "accept": false,
+  "reason": "weak_key"
+ },
+ {
+  "case": 5,
+  "accept": false,
+  "reason": "weak_key"
+ },
+ {
+  "case": 6,
+  "accept": false,
+  "reason": "reencoded"
+ },
+ {
+  "case": 7,
+  "accept": false,
+  "reason": "reencoded"
+ },
+ {
+  "case": 8,
+  "accept": false,
+  "reason": "weak_key"
+ },
+ {
+  "case": 9,
+  "accept": false,
+  "reason": "weak_key"
+ },
+ {
+  "case": 10,
+  "accept": false,
+  "reason": "weak_key"
+ },
+ {
+  "case": 11,
+  "accept": false,
+  "reason": "weak_key"
+ }
+]

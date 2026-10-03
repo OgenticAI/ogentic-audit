@@ -38,6 +38,8 @@ env/
 
 # Editor / OS
 .DS_Store
+# A v0.2 vector checks that operating-system litter in a release is ignored.
+!tests/vectors/v0.2/release-ds-store/release/.DS_Store
 .idea/
 .vscode/
 *.swp

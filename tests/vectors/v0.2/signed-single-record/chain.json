@@ -1,0 +1,23 @@
+{
+  "key": "K1",
+  "key_id": "6db5e9b8a1bace1cdd9a7c6adb9e9396acc5073465d9fe8e3a0ef6d9c60d6d4f",
+  "log_id": "000102030405060708090a0b0c0d0e0f",
+  "post_tamper": false,
+  "public_key": "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
+  "records": [
+    {
+      "body_hash": "f4cbebfd7287940fb663f8c20b773b1bcbb6dd767d3b7a04a34d39e163187d80",
+      "position": "s0r0",
+      "prev_hash": "377d85f15f810e761308e18230717c9b7a58554a611ef77df2a5822e1fd977dc",
+      "record_hash": "e8e4c3558417857d4892f54091d66306b699da0a3ca5104ebec50c063a0779be",
+      "signature": "a5f331e846ea68b341bcc8e1f2314040f93fc7a73e1b1b98f46a30b2ee2ac77fe52defd36ec236be685a109ffbc91e7ddadb1b43cf2d7e13ecd7c503f2451409"
+    }
+  ],
+  "segments": [
+    {
+      "chain_start": "377d85f15f810e761308e18230717c9b7a58554a611ef77df2a5822e1fd977dc",
+      "final": "e8e4c3558417857d4892f54091d66306b699da0a3ca5104ebec50c063a0779be",
+      "index": 0
+    }
+  ]
+}

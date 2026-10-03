@@ -15,12 +15,24 @@ Dependencies:
     Python 3.9+
 
 Usage:
+    python3 tools/gen_vectors.py --v02 [--check|--verify]   # v0.2 signed-mode vectors
     python3 tools/gen_vectors.py                      # regenerate every vector
     python3 tools/gen_vectors.py --check              # error if any output drifted
     python3 tools/gen_vectors.py <vector-dir> [...]   # regenerate just these
 """
 
 from __future__ import annotations
+
+import sys as _sys
+
+if "--v02" in _sys.argv:
+    # v0.2 (signed mode) vectors live in their own module so this v0.1
+    # generator keeps its own dependencies (blake3) and stays unchanged.
+    _sys.argv.remove("--v02")
+    _sys.path.insert(0, __import__("os").path.dirname(__file__))
+    import gen_vectors_v02
+
+    raise SystemExit(gen_vectors_v02.main())
 
 import argparse
 import hashlib
