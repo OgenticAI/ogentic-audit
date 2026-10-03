@@ -17,8 +17,10 @@ pub enum ExitCodeKind {
     IoError,
     /// 3 — argument / config error from user.
     ArgumentError,
-    /// 64 — sysexits.h `EX_USAGE`. Reserved for clap-detected misuse;
-    /// clap exits with this on its own when it detects bad invocation.
+    /// 4 — not verified: a signed log or release checked without a key,
+    /// or with nothing signed. Neither a failure of the log nor a success.
+    NotVerified,
+    /// 64 — sysexits.h `EX_USAGE`: the parser rejected the invocation.
     Usage,
 }
 
@@ -29,6 +31,7 @@ impl From<ExitCodeKind> for ExitCode {
             ExitCodeKind::VerificationFailed => ExitCode::from(1),
             ExitCodeKind::IoError => ExitCode::from(2),
             ExitCodeKind::ArgumentError => ExitCode::from(3),
+            ExitCodeKind::NotVerified => ExitCode::from(4),
             ExitCodeKind::Usage => ExitCode::from(64),
         }
     }

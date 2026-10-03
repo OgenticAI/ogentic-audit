@@ -12,7 +12,11 @@
 //!
 //! This crate wraps the [`keyring`](https://crates.io/crates/keyring)
 //! abstraction over those three backends and exposes a [`KeychainKey`]
-//! that satisfies [`KeyHandle`].
+//! that satisfies [`KeyHandle`] (format `0x0001`, HMAC), and a
+//! [`KeychainSigner`] that satisfies the signed-mode
+//! [`Signer`](ogentic_audit_core::signed::Signer) (format `0x0002`,
+//! Ed25519). Use a different account for each; neither can be loaded as
+//! the other.
 //!
 //! The crate is **optional** at the workspace level: server-side
 //! deployments (Zashboard, see [OGE-460]) that hold their HMAC key in a
@@ -49,6 +53,10 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 mod backend;
 #[cfg(feature = "keychain")]
 pub use backend::{Error, KeychainKey};
+#[cfg(feature = "keychain")]
+pub mod signer;
+#[cfg(feature = "keychain")]
+pub use signer::{KeychainSigner, SignerError};
 
 // Re-export the core types consumers will interact with so they don't
 // have to depend on `ogentic-audit-core` directly to compose with a

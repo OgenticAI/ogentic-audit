@@ -13,9 +13,43 @@
 .. autofunction:: ogentic_audit.format_version
 .. autofunction:: ogentic_audit.core_version
 .. autofunction:: ogentic_audit.verify
+.. autofunction:: ogentic_audit.checkpoint
+.. autofunction:: ogentic_audit.attest_release
+.. autofunction:: ogentic_audit.verify_release
+.. autofunction:: ogentic_audit.log_format
 ```
 
+`verify` reads the log's format before it uses any key. A signed log
+(format `0x0002`) takes the signer's public key, obtained from the signer:
+`public_key=`, `key_fingerprint=` or `trust=` (an OpenSSH `allowed_signers`
+file), plus `statements=` and `revocations=`, and returns a
+`SignedVerifyReport`. Without a key its verdict is `"SelfConsistent"` and
+`.ok` is `False`. An HMAC log (format `0x0001`) takes `key=` and returns a
+`VerifyReport`; passing it a public key raises `HmacLogError`.
+
+From a shell, `python -m ogentic_audit verify …` and
+`python -m ogentic_audit verify-release …` print the same report and exit
+with the same codes as the `ogentic-audit` command-line tool.
+
 ## Classes
+
+### `SigningKey`
+
+An Ed25519 signing key for signed logs and releases. `generate()`,
+`from_seed(bytes)`, `from_keychain(service, account, create=False)`,
+`create_in_keychain(service, account)`; `public_key_openssh()`,
+`public_key_pem()`, `public_key_hex()`, `fingerprint()` (16 groups of 4 hex
+digits: publish this), `fingerprint_openssh()`. The private key never leaves
+the object.
+
+### `SignedVerifyReport` and `ReleaseReport`
+
+```{eval-rst}
+.. autoclass:: ogentic_audit.SignedVerifyReport
+   :members:
+.. autoclass:: ogentic_audit.ReleaseReport
+   :members:
+```
 
 ### `KeyHandle`
 
@@ -73,7 +107,13 @@ OgenticAuditError(Exception)
 ├── IoFailure
 ├── ArgumentError
 ├── RecoveryError
+├── SignerNotPinnedError        (a signed log checked without a key: not verified, not tampered)
 └── VerificationFailed
+    ├── SignatureInvalidError, UntrustedSignerError, RevokedKeyError, RetiredKeyError,
+    │   TransitionEquivocationError, AlgorithmMismatchError, UnsupportedAlgorithmError,
+    │   LogIdMismatchError, SealedLogExtendedError, CheckpointForDifferentLogError,
+    │   FormatDowngradeError, AttestationMissingError, AttestationMalformedError,
+    │   ReleaseIdMismatchError, FileMissingError, FileAlteredError, UnattestedFileError
     ├── ChainBreakError
     ├── HmacMismatchError
     ├── MissingRecordError
@@ -84,5 +124,9 @@ OgenticAuditError(Exception)
     ├── TimestampError
     └── SchemaError
 ```
+
+`HmacLogError` subclasses `ArgumentError`. An unknown violation kind raises
+`VerificationFailed` itself, so a handler written today fails closed on a
+kind added later.
 
 Catch `OgenticAuditError` for any binding-emitted error; subclass for precise handling.

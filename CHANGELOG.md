@@ -7,6 +7,95 @@ library APIs follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+Implements signed mode, on-disk format `0x0002` ([spec v0.2](docs/spec/v0.2.md),
+[ADR-0004](docs/adr/0004-signed-chain-and-offline-verification.md)), so a third
+party (a requester, an auditor, a court) can verify a log or a release with the
+signer's public key, offline, with no secret. To be released as **0.4.0** for
+every published crate and the Python package. Format `0x0001` is unchanged and
+existing logs verify unmodified.
+
+### Added
+
+- **Signed logs (`0x0002`).** `ogentic_audit_core::signed`: every record carries
+  a strictly verified Ed25519 signature (an SSHSIG over its envelope); records
+  are linked by a public SHA-256 hash; each record's body can be withheld from a
+  release without breaking the chain. `SignedWriter` (random `log_id`, rollover,
+  `seal()`, torn-tail recovery that checks the last signature), `Signer` trait
+  (fallible; the extension point for hardware and OS-protected keys),
+  `InMemorySigner`, `PublicKey`, `Fingerprint` (grouped, dashed and `SHA256:`
+  forms, always compared in full).
+- **Trust.** `TrustContext`: pins with principals and scopes (OpenSSH
+  `allowed_signers` with `namespaces=`), key transitions (acceptance by the new
+  key, retirement of the old one, one per key), revocations (authority rules,
+  intersected cut points, independent of order). `SignedVerifier` never reports
+  `Verified` without a pinned key: the verdict is then `SelfConsistent`.
+- **Checkpoints v2 and witnesses.** Signed by the log's own key; witness
+  co-signatures in their own namespace; `checkpoint::compare` proves
+  equivocation.
+- **Release attestations.** `AttestationBuilder` copies logs through their head
+  (eliding withheld bodies), writes `HOW-TO-VERIFY.txt`, and signs a canonical
+  JSON index of every file and named part; `verify_release` reports every
+  altered, missing or unattested item by name. The signature checks with
+  `ssh-keygen -Y verify`, so stock tools can verify the files too.
+- **`ogentic-audit-keychain`: `KeychainSigner`**, create-only under a lock,
+  public key on disk for display, Windows persistence `local`.
+- **CLI:** `verify` reads the format first and takes `--public-key`,
+  `--key-fingerprint`, `--trust`, `--statements`, `--revocations`, `--witness`,
+  `--expect-log-id`; `verify-release`; `checkpoint --sign`, `checkpoint compare`;
+  `witness`; `key generate|export|fingerprint|transition|accept|revoke|krl`
+  (plus `keygen`, `export-public-key`); `show`, `head` and `export` read signed
+  logs.
+- **Python:** `SigningKey`, `Writer.open(..., signing_key=)`, signed `verify()`,
+  `checkpoint()`, `attest_release()`, `verify_release()`, typed exceptions per
+  kind, `SignerNotPinnedError`, and `python -m ogentic_audit` with the same
+  output and exit codes as the CLI.
+- **Golden vectors** `tests/vectors/v0.2` (110 vectors, 132 runs) from an
+  independent Python implementation (`tools/gen_vectors_v02.py`), with an oracle
+  mode; Rust, CLI and Python conformance tests.
+- **Release workflow:** a sigstore bundle per artifact and `SHA256SUMS`, so a
+  downloaded verifier can be checked offline.
+- **Adversarial tests** (`attack_keys`, `attack_downgrade`,
+  `attack_truncation_splice_replay`, CLI `attack_cli`): 112 attacks on keys,
+  pinning, downgrade, truncation, splicing and replay, kept as regression
+  tests. Fixed from them before release: a retired or revoked key's final
+  head must be in the log (cutting a log below it, or forging a log under its
+  `log_id` with the stolen key, is `CheckpointMismatch`); `verify-release`
+  reports `TransitionEquivocation` even with no log; only authenticated
+  statements and co-signatures are exempt inside the reserved folders; a
+  header-only segment is no successor and cannot follow `log.sealed`; plain
+  64-hex pins are fingerprints; a newer log version or a non-regular segment
+  inside a release is a finding, not an error that hides the report; format
+  detection reads segment 0. Each fixed class also has a golden vector, and
+  the independent oracle applies the same rules.
+
+### Changed (breaking) — migration to 0.4.0
+
+- **No implicit HMAC key.** `--key-source` has no default: `verify`,
+  `checkpoint` and `export` of an HMAC log need `--key-source env` (or
+  `--key-file`, or `--key-source keychain`) on the command line. An environment
+  variable that happens to be set is never used by itself.
+- **Exit code 4** means "not verified": a signed log or release checked without
+  the signer's key, or with nothing signed. Scripts that treat any non-zero exit
+  as failure fail closed. Parser usage errors now exit **64** (help and version
+  exit 0).
+- **`--segment N` never reports a segment it did not check.** It runs
+  forensically; for `0x0001` this fixes a run that stopped in segment 0 and
+  reported a later segment as verified. For signed logs it never improves the
+  whole log's verdict.
+- HMAC verification is labelled **shared key**: human output says so, and the
+  JSON report gains `"authentication": "shared-key"`.
+- **`#[non_exhaustive]`** on `ViolationKind`, `Verdict`, `ViolationEvidence`,
+  `HeaderCorruptSubkind`, `RecordCorruptSubkind`, `HeaderParseError`,
+  `RecoveryAction`, `VerifyReport`, `LogSummary`, `Violation`, `VerifyOptions`,
+  `RecoveryReport`. **A wildcard arm over `Verdict` or `ViolationKind` MUST fail
+  closed: an unknown verdict is not a verification.** Build `VerifyOptions` with
+  `VerifyOptions::new().forensic(..).checkpoint(..)`.
+- `Verdict` gains `SelfConsistent` (signed mode only); `ViolationKind` gains the
+  signed-mode and release kinds; `WriterError` gains `FormatMismatch`, `Sealed`,
+  `Sign`; `RecoveryFailure` gains `SignatureInvalid`, `LogIdMismatch`.
+- ogentic-audit **0.3.x reports a signed log as tampered** (`UnknownVersion`,
+  exit 1). Instructions for signed releases name 0.4.0 as the minimum.
+
 ## [0.3.1] - 2026-10-02
 
 ### Fixed

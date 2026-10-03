@@ -88,10 +88,7 @@ fn checkpoint_at(dir: &std::path::Path, segment: u16, record_id: u64) -> Checkpo
 }
 
 fn with_checkpoint(cp: Checkpoint) -> VerifyOptions {
-    VerifyOptions {
-        forensic_mode: false,
-        checkpoint: Some(cp),
-    }
+    VerifyOptions::new().checkpoint(Some(cp))
 }
 
 /// The honest log, re-verified against a checkpoint taken from itself,

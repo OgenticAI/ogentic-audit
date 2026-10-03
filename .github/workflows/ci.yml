@@ -239,10 +239,19 @@ jobs:
           python-version: "3.12"
           cache: pip
 
-      - run: pip install blake3 cbor2
+      - run: pip install blake3 cbor2 cryptography
 
       - name: gen_vectors --check (no drift)
         run: python3 tools/gen_vectors.py --check
+
+      # v0.2 (signed mode): the committed vectors are what the independent
+      # Python generator produces, and its oracle agrees with every
+      # expected result (spec v0.2 §16).
+      - name: gen_vectors --v02 --check (no drift)
+        run: python3 tools/gen_vectors.py --v02 --check
+
+      - name: gen_vectors --v02 --verify (independent oracle)
+        run: python3 tools/gen_vectors.py --v02 --verify
 
       - name: check_cbor_parity (cbor2 round-trip)
         run: python3 tools/check_cbor_parity.py
