@@ -108,6 +108,15 @@ impl Verifier {
         let log_dir = log_dir.as_ref();
         let reader = Reader::open(log_dir).map_err(VerifyError::Open)?;
         let segments = reader.segments().map_err(VerifyError::Open)?;
+        // No segment files means there is nothing to verify — a deleted log
+        // or the wrong path. Reporting `Verified` here would certify a log
+        // nobody can show exists. (A header-only segment is different: the
+        // log exists and holds zero records, and that verifies.)
+        if segments.is_empty() {
+            return Err(VerifyError::NoSegments {
+                log_dir: log_dir.to_path_buf(),
+            });
+        }
         let expected_key_id = self.key.key_id();
 
         // A checkpoint from a different log is an operator error (wrong
@@ -853,6 +862,14 @@ pub enum VerifyError {
         log_key_id_hex: String,
         /// Hex `key_id` recorded in the checkpoint.
         checkpoint_key_id_hex: String,
+    },
+    /// The directory holds no `audit-NNNN.cbor` segment files, so there is
+    /// no log to verify: it was deleted, or the path is wrong. An error, not
+    /// a `Verified` report with zero records inspected.
+    #[error("no audit segments (audit-NNNN.cbor) in {}: nothing to verify", log_dir.display())]
+    NoSegments {
+        /// The directory that was searched.
+        log_dir: std::path::PathBuf,
     },
 }
 
