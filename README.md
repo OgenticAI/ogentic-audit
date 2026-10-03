@@ -129,7 +129,7 @@ with Writer.open("./audit-logs", signing_key=key) as w:
 print(key.fingerprint())  # publish this out of band
 
 report = verify("./audit-logs", key_fingerprint="6db5 e9b8 ... 6d4f")
-assert report.ok          # False, with verdict "SelfConsistent", if no key is given
+assert report.ok  # False, with verdict "SelfConsistent", if no key is given
 ```
 
 ```sh
