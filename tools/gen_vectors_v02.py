@@ -32,7 +32,7 @@ import unicodedata
 import zlib
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any, Callable
 
 try:
     from cryptography.exceptions import InvalidSignature
@@ -142,7 +142,9 @@ def c_map_int(items: list[tuple[int, bytes]]) -> bytes:
 
 
 def c_map_text(d: dict[str, Any]) -> bytes:
-    enc = sorted(((c_tstr(k), c_value(v)) for k, v in d.items()), key=lambda kv: (len(kv[0]), kv[0]))
+    enc = sorted(
+        ((c_tstr(k), c_value(v)) for k, v in d.items()), key=lambda kv: (len(kv[0]), kv[0])
+    )
     return _head(5, len(enc)) + b"".join(k + v for k, v in enc)
 
 
@@ -296,8 +298,10 @@ def r_ok(r: bytes) -> bool:
 def pub(seed_hex: str) -> bytes:
     from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 
-    return Ed25519PrivateKey.from_private_bytes(bytes.fromhex(seed_hex)).public_key().public_bytes(
-        Encoding.Raw, PublicFormat.Raw
+    return (
+        Ed25519PrivateKey.from_private_bytes(bytes.fromhex(seed_hex))
+        .public_key()
+        .public_bytes(Encoding.Raw, PublicFormat.Raw)
     )
 
 
@@ -313,7 +317,7 @@ def _openssl_ok(pk: bytes, msg: bytes, sig: bytes) -> bool:
         return False
 
 
-def strict_verify(pk: bytes, msg: bytes, sig: bytes) -> Optional[str]:
+def strict_verify(pk: bytes, msg: bytes, sig: bytes) -> str | None:
     """None if valid under spec §3.5; else the reason (weak_key, reencoded, mismatch)."""
     if not key_is_strong(pk):
         return "weak_key"
@@ -360,10 +364,18 @@ def openssh_line(pk: bytes, comment: str = "") -> str:
 
 def signed_data(ns: str, msg: bytes, hash_alg: str = "sha512") -> bytes:
     h = hashlib.sha512(msg).digest() if hash_alg == "sha512" else hashlib.sha256(msg).digest()
-    return b"SSHSIG" + ssh_string(ns.encode()) + ssh_string(b"") + ssh_string(hash_alg.encode()) + ssh_string(h)
+    return (
+        b"SSHSIG"
+        + ssh_string(ns.encode())
+        + ssh_string(b"")
+        + ssh_string(hash_alg.encode())
+        + ssh_string(h)
+    )
 
 
-def sshsig_blob(pk: bytes, ns: str, sig: bytes, hash_alg="sha512", reserved=b"", trailing=b"") -> bytes:
+def sshsig_blob(
+    pk: bytes, ns: str, sig: bytes, hash_alg="sha512", reserved=b"", trailing=b""
+) -> bytes:
     return (
         b"SSHSIG"
         + struct.pack(">I", 1)
@@ -379,14 +391,20 @@ def sshsig_blob(pk: bytes, ns: str, sig: bytes, hash_alg="sha512", reserved=b"",
 def armor(blob: bytes) -> bytes:
     b64 = base64.b64encode(blob).decode()
     lines = [b64[i : i + 70] for i in range(0, len(b64), 70)]
-    return ("-----BEGIN SSH SIGNATURE-----\n" + "\n".join(lines) + "\n-----END SSH SIGNATURE-----\n").encode()
+    return (
+        "-----BEGIN SSH SIGNATURE-----\n" + "\n".join(lines) + "\n-----END SSH SIGNATURE-----\n"
+    ).encode()
 
 
 def detached(key: str, ns: str, msg: bytes, **kw) -> bytes:
     """Armored SSHSIG by key name `key` (K1..K4)."""
     hash_alg = kw.get("hash_alg", "sha512")
     sig = raw_sign(SEEDS[key], signed_data(ns, msg, hash_alg))
-    return armor(sshsig_blob(pub(SEEDS[key]), ns, sig, hash_alg, kw.get("reserved", b""), kw.get("trailing", b"")))
+    return armor(
+        sshsig_blob(
+            pub(SEEDS[key]), ns, sig, hash_alg, kw.get("reserved", b""), kw.get("trailing", b"")
+        )
+    )
 
 
 class SigError(Exception):
@@ -422,7 +440,11 @@ def parse_sshsig(text: bytes, ns: str) -> tuple[bytes, bytes]:
     if take(6) != b"SSHSIG" or struct.unpack(">I", take(4))[0] != 1:
         raise SigError("malformed", "magic/version")
     kb = string()
-    if kb[:15] != ssh_string(b"ssh-ed25519") or len(kb) != 15 + 4 + 32 or kb[15:19] != struct.pack(">I", 32):
+    if (
+        kb[:15] != ssh_string(b"ssh-ed25519")
+        or len(kb) != 15 + 4 + 32
+        or kb[15:19] != struct.pack(">I", 32)
+    ):
         raise SigError("key_type" if not kb.startswith(ssh_string(b"ssh-ed25519")) else "malformed")
     pk = kb[19:]
     if string() != ns.encode():
@@ -477,7 +499,14 @@ def parse_cjson(b: bytes, max_depth: int = 5) -> Any:
     return obj
 
 
-FORBIDDEN = [(0x00, 0x1F), (0x7F, 0x9F), (0x2028, 0x2029), (0x200E, 0x200F), (0x202A, 0x202E), (0x2066, 0x2069)]
+FORBIDDEN = [
+    (0x00, 0x1F),
+    (0x7F, 0x9F),
+    (0x2028, 0x2029),
+    (0x200E, 0x200F),
+    (0x202A, 0x202E),
+    (0x2066, 0x2069),
+]
 
 
 def bad_string(s: str) -> bool:
@@ -489,7 +518,17 @@ def bad_string(s: str) -> bool:
 # ---------------------------------------------------------------------------
 
 
-def header(index: int, log_id: bytes, pk: bytes, prev_final: bytes, *, sig_alg=1, reserved=0, version=2, kid=None) -> bytes:
+def header(
+    index: int,
+    log_id: bytes,
+    pk: bytes,
+    prev_final: bytes,
+    *,
+    sig_alg=1,
+    reserved=0,
+    version=2,
+    kid=None,
+) -> bytes:
     body = (
         b"OGAU"
         + struct.pack("<HHHH", version, index, sig_alg, reserved)
@@ -501,7 +540,18 @@ def header(index: int, log_id: bytes, pk: bytes, prev_final: bytes, *, sig_alg=1
     return body + struct.pack("<I", zlib.crc32(body) & 0xFFFFFFFF)
 
 
-def envelope(rid: int, prev: bytes, ts: str, mono: int, event: str, kid: bytes, schema: int, seg: int, body_hash: bytes, extra=()) -> bytes:
+def envelope(
+    rid: int,
+    prev: bytes,
+    ts: str,
+    mono: int,
+    event: str,
+    kid: bytes,
+    schema: int,
+    seg: int,
+    body_hash: bytes,
+    extra=(),
+) -> bytes:
     items = [
         (1, c_uint(rid)),
         (2, c_bstr(prev)),
@@ -514,7 +564,8 @@ def envelope(rid: int, prev: bytes, ts: str, mono: int, event: str, kid: bytes, 
         (11, c_uint(seg)),
         (12, c_uint(1)),
         (13, c_bstr(body_hash)),
-    ] + list(extra)
+        *list(extra),
+    ]
     return c_map_int(items)
 
 
@@ -522,7 +573,7 @@ def body(actor: str, payload: dict, nonce: bytes) -> bytes:
     return c_map_int([(6, c_tstr(actor)), (8, c_map_text(payload)), (14, c_bstr(nonce))])
 
 
-def frame(env: bytes, sig: bytes, bod: Optional[bytes]) -> bytes:
+def frame(env: bytes, sig: bytes, bod: bytes | None) -> bytes:
     bod = bod or b""
     n = struct.pack("<I", len(env))
     return n + env + sig + struct.pack("<I", len(bod)) + bod + n
@@ -535,7 +586,9 @@ def ts_of(i: int) -> str:
 def ts_ms(ts: str) -> int:
     import datetime
 
-    d = datetime.datetime.strptime(ts, "%Y-%m-%dT%H:%M:%S.%fZ").replace(tzinfo=datetime.timezone.utc)
+    d = datetime.datetime.strptime(ts, "%Y-%m-%dT%H:%M:%S.%fZ").replace(
+        tzinfo=datetime.timezone.utc
+    )
     return int(d.timestamp() * 1000)
 
 
@@ -548,7 +601,14 @@ def ms_ts(ms: int) -> str:
 
 def record_inputs(n: int, event="page.released", actor="user:clerk") -> list[dict]:
     return [
-        {"ts_wall": ts_of(i), "ts_mono_delta": i * 1000, "actor": actor, "event": event, "schema_version": 1, "payload": {"page": i}}
+        {
+            "ts_wall": ts_of(i),
+            "ts_mono_delta": i * 1000,
+            "actor": actor,
+            "event": event,
+            "schema_version": 1,
+            "payload": {"page": i},
+        }
         for i in range(n)
     ]
 
@@ -582,14 +642,20 @@ class Log:
 class Writer:
     """Mirrors SignedWriter: rollover estimate, finalize, seal, nonces."""
 
-    def __init__(self, key: str, log_id: bytes, segment_size: int = 64 * 1024 * 1024, mutate_finalize: Optional[Callable[[dict], None]] = None):
+    def __init__(
+        self,
+        key: str,
+        log_id: bytes,
+        segment_size: int = 64 * 1024 * 1024,
+        mutate_finalize: Callable[[dict], None] | None = None,
+    ):
         self.key, self.pk = key, pub(SEEDS[key])
         self.kid = key_id(self.pk)
         self.log = Log(key, log_id)
         self.size = segment_size
         self.nonce_i = 0
         self.mutate_finalize = mutate_finalize
-        self.last_ts: Optional[tuple[str, int]] = None
+        self.last_ts: tuple[str, int] | None = None
         self._new_segment(0, b"\x00" * 32)
 
     def _new_segment(self, idx: int, prev_final: bytes) -> None:
@@ -600,7 +666,17 @@ class Writer:
         self.prev, self.rid, self.seg = self.cs, 0, idx
 
     def _framed_len(self, rec: dict, bod_len: int) -> int:
-        env = envelope(2**64 - 1, self.prev, rec["ts_wall"], rec["ts_mono_delta"], rec["event"], self.kid, rec["schema_version"], self.seg, b"\x00" * 32)
+        env = envelope(
+            2**64 - 1,
+            self.prev,
+            rec["ts_wall"],
+            rec["ts_mono_delta"],
+            rec["event"],
+            self.kid,
+            rec["schema_version"],
+            self.seg,
+            b"\x00" * 32,
+        )
         return 4 + len(env) + 64 + 4 + bod_len + 4
 
     def _write(self, rec: dict) -> WrittenRecord:
@@ -608,11 +684,23 @@ class Writer:
         self.nonce_i += 1
         bod = body(rec["actor"], rec["payload"], nonce)
         bh = th("ogentic-audit/v0.2/body", bod)
-        env = envelope(self.rid, self.prev, rec["ts_wall"], rec["ts_mono_delta"], rec["event"], self.kid, rec["schema_version"], self.seg, bh)
+        env = envelope(
+            self.rid,
+            self.prev,
+            rec["ts_wall"],
+            rec["ts_mono_delta"],
+            rec["event"],
+            self.kid,
+            rec["schema_version"],
+            self.seg,
+            bh,
+        )
         sig = raw_sign(SEEDS[self.key], signed_data(NS_RECORD, env))
         self.log.segments[-1] += frame(env, sig, bod)
         rh = th("ogentic-audit/v0.2/record", env)
-        w = WrittenRecord(self.seg, self.rid, env, sig, bod, rh, bh, self.prev, rec["event"], rec["ts_wall"])
+        w = WrittenRecord(
+            self.seg, self.rid, env, sig, bod, rh, bh, self.prev, rec["event"], rec["ts_wall"]
+        )
         self.log.records.append(w)
         self.prev, self.rid = rh, self.rid + 1
         self.last_ts = (rec["ts_wall"], rec["ts_mono_delta"])
@@ -627,7 +715,12 @@ class Writer:
             nonce_len_body = len(body(rec["actor"], rec["payload"], b"\x00" * 32))
             this = self._framed_len(rec, nonce_len_body)
             fin = self._framed_len(
-                {"ts_wall": rec["ts_wall"], "ts_mono_delta": rec["ts_mono_delta"], "event": "segment.finalized", "schema_version": 1},
+                {
+                    "ts_wall": rec["ts_wall"],
+                    "ts_mono_delta": rec["ts_mono_delta"],
+                    "event": "segment.finalized",
+                    "schema_version": 1,
+                },
                 160,
             )
             if len(self.log.segments[-1]) + this + fin > self.size:
@@ -639,15 +732,41 @@ class Writer:
         payload = {"records": self.rid, "final_hash": self.prev}
         if self.mutate_finalize:
             self.mutate_finalize(payload)
-        self._write({"ts_wall": ts, "ts_mono_delta": mono, "actor": "system:audit", "event": "segment.finalized", "schema_version": 1, "payload": payload})
+        self._write(
+            {
+                "ts_wall": ts,
+                "ts_mono_delta": mono,
+                "actor": "system:audit",
+                "event": "segment.finalized",
+                "schema_version": 1,
+                "payload": payload,
+            }
+        )
         self._new_segment(self.seg + 1, self.prev)
 
     def seal(self) -> WrittenRecord:
         ts, mono = self._bump()
-        return self._write({"ts_wall": ts, "ts_mono_delta": mono, "actor": "system:audit", "event": "log.sealed", "schema_version": 1, "payload": {}})
+        return self._write(
+            {
+                "ts_wall": ts,
+                "ts_mono_delta": mono,
+                "actor": "system:audit",
+                "event": "log.sealed",
+                "schema_version": 1,
+                "payload": {},
+            }
+        )
 
 
-def write_log(key: str, log_id: bytes, recs: list[dict], *, size=64 * 1024 * 1024, seal=False, mutate_finalize=None) -> Log:
+def write_log(
+    key: str,
+    log_id: bytes,
+    recs: list[dict],
+    *,
+    size=64 * 1024 * 1024,
+    seal=False,
+    mutate_finalize=None,
+) -> Log:
     w = Writer(key, log_id, size, mutate_finalize)
     for r in recs:
         w.append(r)
@@ -669,10 +788,16 @@ def offsets(seg: bytes) -> list[tuple[int, int, int, int, int]]:
     return out
 
 
-def head_of(log: Log, upto: Optional[WrittenRecord] = None) -> dict:
+def head_of(log: Log, upto: WrittenRecord | None = None) -> dict:
     r = upto or log.records[-1]
     count = log.records.index(r) + 1
-    return {"log_id": log.log_id.hex(), "record_count": count, "record_hash": r.record_hash.hex(), "record_id": r.record_id, "segment": r.segment}
+    return {
+        "log_id": log.log_id.hex(),
+        "record_count": count,
+        "record_hash": r.record_hash.hex(),
+        "record_id": r.record_id,
+        "segment": r.segment,
+    }
 
 
 def chain_json(log: Log, *, tampered: bool = False) -> bytes:
@@ -686,7 +811,9 @@ def chain_json(log: Log, *, tampered: bool = False) -> bytes:
             {
                 "index": i,
                 "chain_start": cs.hex(),
-                "final": next((r.record_hash.hex() for r in reversed(log.records) if r.segment == i), cs.hex()),
+                "final": next(
+                    (r.record_hash.hex() for r in reversed(log.records) if r.segment == i), cs.hex()
+                ),
             }
             for i, cs in enumerate(log.chain_starts)
         ],
@@ -710,7 +837,13 @@ def chain_json(log: Log, *, tampered: bool = False) -> bytes:
 # ---------------------------------------------------------------------------
 
 
-def checkpoint_obj(log: Log, rec: Optional[WrittenRecord] = None, *, standalone=True, observed_at="2026-10-03T13:00:00.000Z") -> dict:
+def checkpoint_obj(
+    log: Log,
+    rec: WrittenRecord | None = None,
+    *,
+    standalone=True,
+    observed_at="2026-10-03T13:00:00.000Z",
+) -> dict:
     r = rec or log.records[-1]
     o = dict(head_of(log, r))
     o.update({"alg": "ed25519", "head_ts_wall": r.ts, "key_id": key_id(pub(SEEDS[log.key])).hex()})
@@ -719,7 +852,9 @@ def checkpoint_obj(log: Log, rec: Optional[WrittenRecord] = None, *, standalone=
     return o
 
 
-def transition_doc(old: str, new: str, heads=(), releases=(), issued="2027-01-15T09:00:00.000Z") -> bytes:
+def transition_doc(
+    old: str, new: str, heads=(), releases=(), issued="2027-01-15T09:00:00.000Z"
+) -> bytes:
     npk = pub(SEEDS[new])
     return cjson(
         {
@@ -735,7 +870,14 @@ def transition_doc(old: str, new: str, heads=(), releases=(), issued="2027-01-15
     )
 
 
-def revocation_doc(revoker: str, revoked: str, heads=(), releases=(), successors=(), issued="2027-02-01T00:00:00.000Z") -> bytes:
+def revocation_doc(
+    revoker: str,
+    revoked: str,
+    heads=(),
+    releases=(),
+    successors=(),
+    issued="2027-02-01T00:00:00.000Z",
+) -> bytes:
     return cjson(
         {
             "format": "ogentic-audit-key-revocation/v1",
@@ -777,7 +919,14 @@ Release: {release_id}
 """
 
 
-def release_files(log: Log, *, elide=(), head: Optional[WrittenRecord] = None, release_id="2026-0147", extra_files: Optional[dict] = None) -> tuple[dict[str, bytes], dict]:
+def release_files(
+    log: Log,
+    *,
+    elide=(),
+    head: WrittenRecord | None = None,
+    release_id="2026-0147",
+    extra_files: dict | None = None,
+) -> tuple[dict[str, bytes], dict]:
     """Release folder contents (unsigned attestation document)."""
     files: dict[str, bytes] = {
         "pages/0001.pdf": b"%PDF-1.7\n% page 1 of the released set\n",
@@ -788,7 +937,13 @@ def release_files(log: Log, *, elide=(), head: Optional[WrittenRecord] = None, r
     }
     if extra_files:
         files.update(extra_files)
-    roles = {"pages/0001.pdf": "page", "pages/0002.pdf": "page", "doc.pdf": "document", "Decisions.csv": "index", "HOW-TO-VERIFY.txt": "instructions"}
+    roles = {
+        "pages/0001.pdf": "page",
+        "pages/0002.pdf": "page",
+        "doc.pdf": "document",
+        "Decisions.csv": "index",
+        "HOW-TO-VERIFY.txt": "instructions",
+    }
     parts = {"Decisions.csv": [("header", 0, 14), ("row 1", 14, 10), ("row 2", 24, 10)]}
     # The log copy, through the head, with elided bodies.
     hd = head or log.records[-1]
@@ -810,7 +965,10 @@ def release_files(log: Log, *, elide=(), head: Optional[WrittenRecord] = None, r
         if path in roles:
             e["role"] = roles[path]
         if path in parts:
-            e["parts"] = [{"length": n, "name": nm, "offset": o, "sha256": sha256(data[o : o + n]).hex()} for nm, o, n in parts[path]]
+            e["parts"] = [
+                {"length": n, "name": nm, "offset": o, "sha256": sha256(data[o : o + n]).hex()}
+                for nm, o, n in parts[path]
+            ]
         entries.append(e)
     cp = checkpoint_obj(log, hd, standalone=False)
     doc = {
@@ -825,12 +983,16 @@ def release_files(log: Log, *, elide=(), head: Optional[WrittenRecord] = None, r
     return files, doc
 
 
-def sign_release(files: dict[str, bytes], doc: Any, key: str = "K1", *, raw: Optional[bytes] = None, **sigkw) -> dict[str, bytes]:
+def sign_release(
+    files: dict[str, bytes], doc: Any, key: str = "K1", *, raw: bytes | None = None, **sigkw
+) -> dict[str, bytes]:
     att = raw if raw is not None else cjson(doc)
     out = dict(files)
     out["ogentic-audit-release.json"] = att
     out["ogentic-audit-release.json.sig"] = detached(key, sigkw.pop("ns", NS_RELEASE), att, **sigkw)
-    out["ogentic-audit-signer.pub"] = (openssh_line(pub(SEEDS[key]), "ogentic-audit-release-signer") + "\n").encode()
+    out["ogentic-audit-signer.pub"] = (
+        openssh_line(pub(SEEDS[key]), "ogentic-audit-release-signer") + "\n"
+    ).encode()
     return out
 
 
@@ -845,9 +1007,9 @@ class Vector:
     description: str
     files: dict[str, bytes]
     runs: list[dict]
-    writer: Optional[dict] = None
+    writer: dict | None = None
     extra: dict = field(default_factory=dict)
-    chain: Optional[Log] = None
+    chain: Log | None = None
     tampered: bool = False
 
 
@@ -888,11 +1050,21 @@ def logfiles(log: Log, prefix="log/") -> dict[str, bytes]:
     return {prefix + k: v for k, v in log.files().items()}
 
 
-def writer_spec(key: str, log_id: bytes, recs: list[dict], size=64 * 1024 * 1024, seal=False) -> dict:
-    return {"key": key, "log_id": log_id.hex(), "session_id": SESSION.hex(), "segment_size_bytes": size, "seal": seal, "records": recs, "nonce_rule": "test_nonce"}
+def writer_spec(
+    key: str, log_id: bytes, recs: list[dict], size=64 * 1024 * 1024, seal=False
+) -> dict:
+    return {
+        "key": key,
+        "log_id": log_id.hex(),
+        "session_id": SESSION.hex(),
+        "segment_size_bytes": size,
+        "seal": seal,
+        "records": recs,
+        "nonce_rule": "test_nonce",
+    }
 
 
-def trust_file(lines: list[tuple[str, str, Optional[str]]]) -> bytes:
+def trust_file(lines: list[tuple[str, str, str | None]]) -> bytes:
     out = []
     for principal, k, scope in lines:
         opt = f' namespaces="{scope}"' if scope else ""
@@ -900,7 +1072,9 @@ def trust_file(lines: list[tuple[str, str, Optional[str]]]) -> bytes:
     return ("\n".join(out) + "\n").encode()
 
 
-def statement_files(prefix: str, name: str, doc: bytes, signer: str, ns: str, accept: Optional[str] = None) -> dict[str, bytes]:
+def statement_files(
+    prefix: str, name: str, doc: bytes, signer: str, ns: str, accept: str | None = None
+) -> dict[str, bytes]:
     f = {f"{prefix}/{name}.json": doc, f"{prefix}/{name}.json.sig": detached(signer, ns, doc)}
     if accept:
         f[f"{prefix}/{name}.json.accept.sig"] = detached(accept, NS_ACCEPT, doc)
@@ -913,16 +1087,63 @@ def build_vectors() -> list[Vector]:
 
     # --- Logs --------------------------------------------------------------
     empty = write_log("K1", LOG_A, [])
-    V.append(Vector("signed-empty", "Header only.", logfiles(empty), [run(err(4, verdict="SelfConsistent", reason="no_signed_records"), **pin("K1"))], writer_spec("K1", LOG_A, [])))
+    V.append(
+        Vector(
+            "signed-empty",
+            "Header only.",
+            logfiles(empty),
+            [run(err(4, verdict="SelfConsistent", reason="no_signed_records"), **pin("K1"))],
+            writer_spec("K1", LOG_A, []),
+        )
+    )
     one = write_log("K1", LOG_A, record_inputs(1))
-    V.append(Vector("signed-single-record", "One record.", logfiles(one), [run(ok(head_anchored=False), **pin("K1"))], writer_spec("K1", LOG_A, record_inputs(1))))
-    V.append(Vector("signed-single-record-unpinned", "No trust input.", logfiles(one), [run(err(4, verdict="SelfConsistent", reason="not_pinned"))]))
+    V.append(
+        Vector(
+            "signed-single-record",
+            "One record.",
+            logfiles(one),
+            [run(ok(head_anchored=False), **pin("K1"))],
+            writer_spec("K1", LOG_A, record_inputs(1)),
+        )
+    )
+    V.append(
+        Vector(
+            "signed-single-record-unpinned",
+            "No trust input.",
+            logfiles(one),
+            [run(err(4, verdict="SelfConsistent", reason="not_pinned"))],
+        )
+    )
     sealed = write_log("K1", LOG_A, record_inputs(3), seal=True)
-    V.append(Vector("signed-sealed", "Three records then log.sealed.", logfiles(sealed), [run(ok(head_anchored=True), **pin("K1"))], writer_spec("K1", LOG_A, record_inputs(3), seal=True)))
+    V.append(
+        Vector(
+            "signed-sealed",
+            "Three records then log.sealed.",
+            logfiles(sealed),
+            [run(ok(head_anchored=True), **pin("K1"))],
+            writer_spec("K1", LOG_A, record_inputs(3), seal=True),
+        )
+    )
     k1000 = write_log("K1", LOG_A, record_inputs(1000))
-    V.append(Vector("signed-1k-records", "1000 records.", logfiles(k1000), [run(ok(), **pin("K1"))], writer_spec("K1", LOG_A, record_inputs(1000))))
+    V.append(
+        Vector(
+            "signed-1k-records",
+            "1000 records.",
+            logfiles(k1000),
+            [run(ok(), **pin("K1"))],
+            writer_spec("K1", LOG_A, record_inputs(1000)),
+        )
+    )
     roll = write_log("K1", LOG_A, record_inputs(6), size=1024)
-    V.append(Vector("signed-segment-rollover", "segment_size_bytes 1024: several segments.", logfiles(roll), [run(ok(), **pin("K1"))], writer_spec("K1", LOG_A, record_inputs(6), size=1024)))
+    V.append(
+        Vector(
+            "signed-segment-rollover",
+            "segment_size_bytes 1024: several segments.",
+            logfiles(roll),
+            [run(ok(), **pin("K1"))],
+            writer_spec("K1", LOG_A, record_inputs(6), size=1024),
+        )
+    )
 
     base5 = write_log("K1", LOG_A, five)
 
@@ -959,13 +1180,62 @@ def build_vectors() -> list[Vector]:
         r3 = bytes(seg[o[3][0] : o[4][0]])
         seg[o[2][0] : o[4][0]] = r3 + r2
 
-    V.append(Vector("signed-tampered-envelope", "Byte 10 of r2's envelope XOR 0xff.", mutated(xor_env), [run(bad("SignatureInvalid@s0r2", reason="mismatch"), **pin("K1"))]))
-    V.append(Vector("signed-tampered-body", "Byte 3 of r2's body XOR 0x01.", mutated(xor_body), [run(bad("SignatureInvalid@s0r2", reason="body_mismatch"), **pin("K1"))]))
-    V.append(Vector("signed-tampered-signature", "Byte 5 of r2's signature XOR 0x01.", mutated(xor_sig), [run(bad("SignatureInvalid@s0r2", reason="mismatch"), **pin("K1"))]))
-    V.append(Vector("signed-reencoded-s", "r2's S replaced by S + L.", mutated(reenc), [run(bad("SignatureInvalid@s0r2", reason="reencoded"), **pin("K1"))]))
-    V.append(Vector("signed-elided", "Bodies of r1 and r3 elided.", mutated(elide13), [run(ok(elided=["s0r1", "s0r3"]), **pin("K1"))]))
-    V.append(Vector("signed-missing-record", "r2 removed.", mutated(drop2), [run(bad("ChainBreak@s0r2"), **pin("K1"))]))
-    V.append(Vector("signed-reordered", "r2 and r3 swapped.", mutated(swap23), [run(bad("ChainBreak@s0r2"), **pin("K1"))]))
+    V.append(
+        Vector(
+            "signed-tampered-envelope",
+            "Byte 10 of r2's envelope XOR 0xff.",
+            mutated(xor_env),
+            [run(bad("SignatureInvalid@s0r2", reason="mismatch"), **pin("K1"))],
+        )
+    )
+    V.append(
+        Vector(
+            "signed-tampered-body",
+            "Byte 3 of r2's body XOR 0x01.",
+            mutated(xor_body),
+            [run(bad("SignatureInvalid@s0r2", reason="body_mismatch"), **pin("K1"))],
+        )
+    )
+    V.append(
+        Vector(
+            "signed-tampered-signature",
+            "Byte 5 of r2's signature XOR 0x01.",
+            mutated(xor_sig),
+            [run(bad("SignatureInvalid@s0r2", reason="mismatch"), **pin("K1"))],
+        )
+    )
+    V.append(
+        Vector(
+            "signed-reencoded-s",
+            "r2's S replaced by S + L.",
+            mutated(reenc),
+            [run(bad("SignatureInvalid@s0r2", reason="reencoded"), **pin("K1"))],
+        )
+    )
+    V.append(
+        Vector(
+            "signed-elided",
+            "Bodies of r1 and r3 elided.",
+            mutated(elide13),
+            [run(ok(elided=["s0r1", "s0r3"]), **pin("K1"))],
+        )
+    )
+    V.append(
+        Vector(
+            "signed-missing-record",
+            "r2 removed.",
+            mutated(drop2),
+            [run(bad("ChainBreak@s0r2"), **pin("K1"))],
+        )
+    )
+    V.append(
+        Vector(
+            "signed-reordered",
+            "r2 and r3 swapped.",
+            mutated(swap23),
+            [run(bad("ChainBreak@s0r2"), **pin("K1"))],
+        )
+    )
 
     roll3 = write_log("K1", LOG_A, record_inputs(4), size=1024)
     # Elide the body of s0's segment.finalized (its last record).
@@ -977,10 +1247,24 @@ def build_vectors() -> list[Vector]:
     seg0[bo - 4 : bo] = struct.pack("<I", 0)
     files = logfiles(roll3)
     files["log/audit-0000.cbor"] = bytes(seg0)
-    V.append(Vector("signed-elided-structural", "The body of s0's segment.finalized is elided.", files, [run(bad(f"RecordCorrupt@s0r{fin_idx}", reason="ElidedStructural"), **pin("K1"))]))
+    V.append(
+        Vector(
+            "signed-elided-structural",
+            "The body of s0's segment.finalized is elided.",
+            files,
+            [run(bad(f"RecordCorrupt@s0r{fin_idx}", reason="ElidedStructural"), **pin("K1"))],
+        )
+    )
 
     k2log = write_log("K2", LOG_A, five)
-    V.append(Vector("signed-other-key", "The same records signed by K2; pin K1.", logfiles(k2log), [run(bad("UntrustedSigner@s0", reason="not_trusted"), **pin("K1"))]))
+    V.append(
+        Vector(
+            "signed-other-key",
+            "The same records signed by K2; pin K1.",
+            logfiles(k2log),
+            [run(bad("UntrustedSigner@s0", reason="not_trusted"), **pin("K1"))],
+        )
+    )
     V.append(
         Vector(
             "signed-out-of-scope",
@@ -992,9 +1276,26 @@ def build_vectors() -> list[Vector]:
     # Weak key in the header: the identity point.
     ident = bytes.fromhex("01" + "00" * 31)
     hdr = header(0, LOG_A, ident, b"\x00" * 32)
-    env = envelope(0, th("ogentic-audit/v0.2/header", hdr[:124]), ts_of(0), 0, "page.released", key_id(ident), 1, 0, b"\x00" * 32)
+    env = envelope(
+        0,
+        th("ogentic-audit/v0.2/header", hdr[:124]),
+        ts_of(0),
+        0,
+        "page.released",
+        key_id(ident),
+        1,
+        0,
+        b"\x00" * 32,
+    )
     forged = bytes([1] + [0] * 63)
-    V.append(Vector("signed-weak-key-header", "Header key is the identity point; a forged record.", {"log/audit-0000.cbor": hdr + frame(env, forged, None)}, [run(bad("SignatureInvalid@s0", reason="weak_key"))]))
+    V.append(
+        Vector(
+            "signed-weak-key-header",
+            "Header key is the identity point; a forged record.",
+            {"log/audit-0000.cbor": hdr + frame(env, forged, None)},
+            [run(bad("SignatureInvalid@s0", reason="weak_key"))],
+        )
+    )
 
     def header_patch(src: Log, seg: int, **kw) -> dict[str, bytes]:
         files = logfiles(src)
@@ -1004,38 +1305,117 @@ def build_vectors() -> list[Vector]:
         files[f"log/audit-{seg:04d}.cbor"] = h + old[128:]
         return files
 
-    V.append(Vector("signed-key-change-s1", "Segment 1's header names K2.", header_patch(roll3, 1, pk=pub(SEEDS["K2"])), [run(bad("KeyIdMismatch@s1"), **pin("K1"))]))
-    V.append(Vector("signed-log-id-change-s1", "Segment 1's header has another log_id.", header_patch(roll3, 1, log_id=LOG_B), [run(bad("LogIdMismatch@s1"), **pin("K1"))]))
+    V.append(
+        Vector(
+            "signed-key-change-s1",
+            "Segment 1's header names K2.",
+            header_patch(roll3, 1, pk=pub(SEEDS["K2"])),
+            [run(bad("KeyIdMismatch@s1"), **pin("K1"))],
+        )
+    )
+    V.append(
+        Vector(
+            "signed-log-id-change-s1",
+            "Segment 1's header has another log_id.",
+            header_patch(roll3, 1, log_id=LOG_B),
+            [run(bad("LogIdMismatch@s1"), **pin("K1"))],
+        )
+    )
     files = logfiles(roll3)
     files["log/audit-0001.cbor"] = roll3.segments[1][:128]
-    V.append(Vector("signed-empty-middle-segment", "Segment 1 holds only its header; segment 2 follows.", files, [run(bad("SegmentDiscontinuity@s2"), **pin("K1"))]))
+    V.append(
+        Vector(
+            "signed-empty-middle-segment",
+            "Segment 1 holds only its header; segment 2 follows.",
+            files,
+            [run(bad("SegmentDiscontinuity@s2"), **pin("K1"))],
+        )
+    )
     files = logfiles(roll3)
     del files["log/audit-0001.cbor"]
-    V.append(Vector("signed-segment-gap", "audit-0001.cbor missing.", files, [run(bad("SegmentDiscontinuity@s1"), **pin("K1"))]))
+    V.append(
+        Vector(
+            "signed-segment-gap",
+            "audit-0001.cbor missing.",
+            files,
+            [run(bad("SegmentDiscontinuity@s1"), **pin("K1"))],
+        )
+    )
 
     def wrong_records(p):
         p["records"] += 1
 
     badroll = write_log("K1", LOG_A, record_inputs(4), size=1024, mutate_finalize=wrong_records)
     fin = next(r for r in badroll.records if r.event == "segment.finalized")
-    V.append(Vector("signed-bad-rollover", "A validly signed segment.finalized with a wrong records count.", logfiles(badroll), [run(bad(f"RecordCorrupt@s0r{fin.record_id}", reason="BadRollover"), **pin("K1"))]))
+    V.append(
+        Vector(
+            "signed-bad-rollover",
+            "A validly signed segment.finalized with a wrong records count.",
+            logfiles(badroll),
+            [run(bad(f"RecordCorrupt@s0r{fin.record_id}", reason="BadRollover"), **pin("K1"))],
+        )
+    )
     roll2 = write_log("K1", LOG_A, record_inputs(2), size=1024)
     files = logfiles(roll2)
     last = max(files)
     del files[last]
-    V.append(Vector("signed-rolled-over-no-successor", "The last segment deleted after a rollover.", files, [run(ok(head_anchored=False, warnings=["RolledOverWithoutSuccessor"]), **pin("K1"))]))
+    V.append(
+        Vector(
+            "signed-rolled-over-no-successor",
+            "The last segment deleted after a rollover.",
+            files,
+            [run(ok(head_anchored=False, warnings=["RolledOverWithoutSuccessor"]), **pin("K1"))],
+        )
+    )
     three = write_log("K1", LOG_A, record_inputs(3))
     files = logfiles(three)
     files["log/audit-0001.cbor"] = header(1, LOG_A, pub(SEEDS["K1"]), three.records[-1].record_hash)
-    V.append(Vector("signed-forged-header-tail", "A header-only segment appended (anyone can make one).", files, [run(ok(warnings=["UnsignedLastSegment"]), **pin("K1"))]))
+    V.append(
+        Vector(
+            "signed-forged-header-tail",
+            "A header-only segment appended (anyone can make one).",
+            files,
+            [run(ok(warnings=["UnsignedLastSegment"]), **pin("K1"))],
+        )
+    )
     w = Writer("K1", LOG_A)
     for r in record_inputs(2):
         w.append(r)
     w.seal()
-    extra = w._write({"ts_wall": ts_of(5), "ts_mono_delta": 5000, "actor": "user:clerk", "event": "page.released", "schema_version": 1, "payload": {"page": 5}})
-    V.append(Vector("signed-after-seal", "A record after log.sealed.", logfiles(w.log), [run(bad(f"SealedLogExtended@s0r{extra.record_id}"), **pin("K1"))]))
-    big = header(0, LOG_A, pub(SEEDS["K1"]), b"\x00" * 32) + struct.pack("<I", 5000) + b"\x00" * 5000 + b"\x00" * 64 + struct.pack("<I", 0) + struct.pack("<I", 5000)
-    V.append(Vector("signed-envelope-too-large", "len_prefix 5000 (over 4096).", {"log/audit-0000.cbor": big}, [run(bad("RecordCorrupt@s0r0", reason="TooLarge"), **pin("K1"))]))
+    extra = w._write(
+        {
+            "ts_wall": ts_of(5),
+            "ts_mono_delta": 5000,
+            "actor": "user:clerk",
+            "event": "page.released",
+            "schema_version": 1,
+            "payload": {"page": 5},
+        }
+    )
+    V.append(
+        Vector(
+            "signed-after-seal",
+            "A record after log.sealed.",
+            logfiles(w.log),
+            [run(bad(f"SealedLogExtended@s0r{extra.record_id}"), **pin("K1"))],
+        )
+    )
+    big = (
+        header(0, LOG_A, pub(SEEDS["K1"]), b"\x00" * 32)
+        + struct.pack("<I", 5000)
+        + b"\x00" * 5000
+        + b"\x00" * 64
+        + struct.pack("<I", 0)
+        + struct.pack("<I", 5000)
+    )
+    V.append(
+        Vector(
+            "signed-envelope-too-large",
+            "len_prefix 5000 (over 4096).",
+            {"log/audit-0000.cbor": big},
+            [run(bad("RecordCorrupt@s0r0", reason="TooLarge"), **pin("K1"))],
+        )
+    )
 
     def single_custom(env_bytes_fn) -> dict[str, bytes]:
         h = header(0, LOG_A, pub(SEEDS["K1"]), b"\x00" * 32)
@@ -1053,18 +1433,71 @@ def build_vectors() -> list[Vector]:
         return e[:2] + b"\x18\x00" + e[3:]
 
     def unknown_key(cs, bh):
-        return envelope(0, cs, ts_of(0), 0, "page.released", kid1, 1, 0, bh, extra=[(20, c_uint(1))])
+        return envelope(
+            0, cs, ts_of(0), 0, "page.released", kid1, 1, 0, bh, extra=[(20, c_uint(1))]
+        )
 
-    V.append(Vector("signed-noncanonical-envelope", "A signed envelope with a non-canonical integer.", single_custom(noncanon), [run(bad("RecordCorrupt@s0r0", reason="DecodeError"), **pin("K1"))]))
-    V.append(Vector("signed-unknown-envelope-key", "A signed envelope with key 20.", single_custom(unknown_key), [run(bad("RecordCorrupt@s0r0", reason="DecodeError"), **pin("K1"))]))
-    V.append(Vector("signed-unsupported-alg", "Header sig_alg 0x0002 (reserved, not implemented).", header_patch(one, 0, sig_alg=2), [run(bad("UnsupportedAlgorithm@s0"), **pin("K1"))]))
-    V.append(Vector("signed-key-id-mismatch", "Header key_id wrong.", header_patch(one, 0, kid=b"\x11" * 32), [run(bad("KeyIdMismatch@s0"), **pin("K1"))]))
-    V.append(Vector("signed-reserved-nonzero", "Header reserved = 1.", header_patch(one, 0, reserved=1), [run(bad("HeaderCorrupt@s0", reason="ReservedBytesNonZero"), **pin("K1"))]))
+    V.append(
+        Vector(
+            "signed-noncanonical-envelope",
+            "A signed envelope with a non-canonical integer.",
+            single_custom(noncanon),
+            [run(bad("RecordCorrupt@s0r0", reason="DecodeError"), **pin("K1"))],
+        )
+    )
+    V.append(
+        Vector(
+            "signed-unknown-envelope-key",
+            "A signed envelope with key 20.",
+            single_custom(unknown_key),
+            [run(bad("RecordCorrupt@s0r0", reason="DecodeError"), **pin("K1"))],
+        )
+    )
+    V.append(
+        Vector(
+            "signed-unsupported-alg",
+            "Header sig_alg 0x0002 (reserved, not implemented).",
+            header_patch(one, 0, sig_alg=2),
+            [run(bad("UnsupportedAlgorithm@s0"), **pin("K1"))],
+        )
+    )
+    V.append(
+        Vector(
+            "signed-key-id-mismatch",
+            "Header key_id wrong.",
+            header_patch(one, 0, kid=b"\x11" * 32),
+            [run(bad("KeyIdMismatch@s0"), **pin("K1"))],
+        )
+    )
+    V.append(
+        Vector(
+            "signed-reserved-nonzero",
+            "Header reserved = 1.",
+            header_patch(one, 0, reserved=1),
+            [run(bad("HeaderCorrupt@s0", reason="ReservedBytesNonZero"), **pin("K1"))],
+        )
+    )
     files = logfiles(roll3)
     v01_body = b"OGAU" + struct.pack("<HH", 1, 1) + b"\x22" * 32 + roll3.records[-1].record_hash
-    files["log/audit-0001.cbor"] = v01_body + struct.pack("<I", zlib.crc32(v01_body) & 0xFFFFFFFF) + b"\x00" * 4
-    V.append(Vector("signed-mixed-v01-segment", "Segment 1 is a v0.1 (HMAC) segment.", files, [run(bad("FormatDowngrade@s1"), **pin("K1"))]))
-    V.append(Vector("signed-expect-log-id", "--expect-log-id of another log.", logfiles(one), [run(bad("LogIdMismatch@s0"), expect_log_id=LOG_B.hex(), **pin("K1"))]))
+    files["log/audit-0001.cbor"] = (
+        v01_body + struct.pack("<I", zlib.crc32(v01_body) & 0xFFFFFFFF) + b"\x00" * 4
+    )
+    V.append(
+        Vector(
+            "signed-mixed-v01-segment",
+            "Segment 1 is a v0.1 (HMAC) segment.",
+            files,
+            [run(bad("FormatDowngrade@s1"), **pin("K1"))],
+        )
+    )
+    V.append(
+        Vector(
+            "signed-expect-log-id",
+            "--expect-log-id of another log.",
+            logfiles(one),
+            [run(bad("LogIdMismatch@s0"), expect_log_id=LOG_B.hex(), **pin("K1"))],
+        )
+    )
     files = logfiles(roll3)
     seg0 = bytearray(roll3.segments[0])
     o = offsets(bytes(seg0))
@@ -1081,13 +1514,57 @@ def build_vectors() -> list[Vector]:
             ],
         )
     )
-    v01 = {f"log/{p.name}": p.read_bytes() for p in sorted((V01_DIR / "single-record").glob("audit-*.cbor"))}
+    v01 = {
+        f"log/{p.name}": p.read_bytes()
+        for p in sorted((V01_DIR / "single-record").glob("audit-*.cbor"))
+    }
     v01_key = json.loads((V01_DIR / "single-record" / "inputs.json").read_text())["key_hex"]
-    V.append(Vector("v01-under-signed-mode", "The v0.1 single-record log, pin K1.", v01, [run(err(3, error="HmacLog"), **pin("K1"))]))
-    V.append(Vector("v01-no-key", "The v0.1 single-record log, no key, env var set.", v01, [run(err(3), env={"OGENTIC_AUDIT_KEY_HEX": v01_key})]))
-    V.append(Vector("v01-explicit-key", "The v0.1 single-record log, key named explicitly.", v01, [run({"exit": 0, "verdict": "Verified", "authentication": "shared-key"}, hmac_key_source="env", env={"OGENTIC_AUDIT_KEY_HEX": v01_key})]))
-    V.append(Vector("v02-under-hmac-key", "A signed log with an explicit HMAC key.", logfiles(one), [run(err(3), hmac_key_source="env", env={"OGENTIC_AUDIT_KEY_HEX": v01_key})]))
-    V.append(Vector("v02-on-old-verifier", "Recorded: a 0.3.x verifier reports a signed log as UnknownVersion (exit 1). Checked with the v0.1 verifier of this crate.", logfiles(one), [run(bad("UnknownVersion@s0"), command="v01-verifier", hmac_key_hex=v01_key)]))
+    V.append(
+        Vector(
+            "v01-under-signed-mode",
+            "The v0.1 single-record log, pin K1.",
+            v01,
+            [run(err(3, error="HmacLog"), **pin("K1"))],
+        )
+    )
+    V.append(
+        Vector(
+            "v01-no-key",
+            "The v0.1 single-record log, no key, env var set.",
+            v01,
+            [run(err(3), env={"OGENTIC_AUDIT_KEY_HEX": v01_key})],
+        )
+    )
+    V.append(
+        Vector(
+            "v01-explicit-key",
+            "The v0.1 single-record log, key named explicitly.",
+            v01,
+            [
+                run(
+                    {"exit": 0, "verdict": "Verified", "authentication": "shared-key"},
+                    hmac_key_source="env",
+                    env={"OGENTIC_AUDIT_KEY_HEX": v01_key},
+                )
+            ],
+        )
+    )
+    V.append(
+        Vector(
+            "v02-under-hmac-key",
+            "A signed log with an explicit HMAC key.",
+            logfiles(one),
+            [run(err(3), hmac_key_source="env", env={"OGENTIC_AUDIT_KEY_HEX": v01_key})],
+        )
+    )
+    V.append(
+        Vector(
+            "v02-on-old-verifier",
+            "Recorded: a 0.3.x verifier reports a signed log as UnknownVersion (exit 1). Checked with the v0.1 verifier of this crate.",
+            logfiles(one),
+            [run(bad("UnknownVersion@s0"), command="v01-verifier", hmac_key_hex=v01_key)],
+        )
+    )
 
     # --- Inputs and keys -----------------------------------------------------
     small = [
@@ -1106,30 +1583,96 @@ def build_vectors() -> list[Vector]:
         "eeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f",
         "eeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
     ]
-    V.append(Vector("pin-weak-key", "Each Appendix A encoding as --public-key.", logfiles(one), [run(err(3), public_key=k, name=f"weak-{i}") for i, k in enumerate(small)], extra={"appendix_a": [{"encoding": k, "fingerprint": key_id(bytes.fromhex(k)).hex()} for k in small]}))
+    V.append(
+        Vector(
+            "pin-weak-key",
+            "Each Appendix A encoding as --public-key.",
+            logfiles(one),
+            [run(err(3), public_key=k, name=f"weak-{i}") for i, k in enumerate(small)],
+            extra={
+                "appendix_a": [
+                    {"encoding": k, "fingerprint": key_id(bytes.fromhex(k)).hex()} for k in small
+                ]
+            },
+        )
+    )
     k1pt = decode_point(pub(SEEDS["K1"]))[0]
     t8 = decode_point(bytes.fromhex(small[4]))[0]
     mixed = _add(k1pt, t8)
     zinv = pow(mixed[2], P - 2, P)
     mx, my = mixed[0] * zinv % P, mixed[1] * zinv % P
     menc = (my | ((mx & 1) << 255)).to_bytes(32, "little")
-    V.append(Vector("pin-mixed-order-key", "K1 plus a point of order 8: not small-order, not torsion-free.", logfiles(one), [run(err(3), public_key=menc.hex())]))
+    V.append(
+        Vector(
+            "pin-mixed-order-key",
+            "K1 plus a point of order 8: not small-order, not torsion-free.",
+            logfiles(one),
+            [run(err(3), public_key=menc.hex())],
+        )
+    )
     h64 = key_id(pub(SEEDS["K1"])).hex()
-    V.append(Vector("fingerprint-63-hex", "63 hex digits.", logfiles(one), [run(err(3), key_fingerprint=[h64[:63]])]))
-    V.append(Vector("fingerprint-65-hex", "65 hex digits.", logfiles(one), [run(err(3), key_fingerprint=[h64 + "0"])]))
-    V.append(Vector("fingerprint-sha256-31-bytes", "SHA256: with 31 bytes.", logfiles(one), [run(err(3), key_fingerprint=["SHA256:" + base64.b64encode(bytes(31)).decode().rstrip("=")])]))
-    V.append(Vector("trust-file-unknown-option", "cert-authority option.", {**logfiles(one), "allowed_signers": f"signer cert-authority {openssh_line(pub(SEEDS['K1']))}\n".encode()}, [run(err(3), trust="allowed_signers")]))
+    V.append(
+        Vector(
+            "fingerprint-63-hex",
+            "63 hex digits.",
+            logfiles(one),
+            [run(err(3), key_fingerprint=[h64[:63]])],
+        )
+    )
+    V.append(
+        Vector(
+            "fingerprint-65-hex",
+            "65 hex digits.",
+            logfiles(one),
+            [run(err(3), key_fingerprint=[h64 + "0"])],
+        )
+    )
+    V.append(
+        Vector(
+            "fingerprint-sha256-31-bytes",
+            "SHA256: with 31 bytes.",
+            logfiles(one),
+            [
+                run(
+                    err(3),
+                    key_fingerprint=["SHA256:" + base64.b64encode(bytes(31)).decode().rstrip("=")],
+                )
+            ],
+        )
+    )
+    V.append(
+        Vector(
+            "trust-file-unknown-option",
+            "cert-authority option.",
+            {
+                **logfiles(one),
+                "allowed_signers": f"signer cert-authority {openssh_line(pub(SEEDS['K1']))}\n".encode(),
+            },
+            [run(err(3), trust="allowed_signers")],
+        )
+    )
     cases = json.loads((Path(__file__).parent / "ed25519_speccheck_cases.json").read_text())
     expected = []
     for i, c in enumerate(cases):
-        r = strict_verify(bytes.fromhex(c["pub_key"]), bytes.fromhex(c["message"]), bytes.fromhex(c["signature"]))
+        r = strict_verify(
+            bytes.fromhex(c["pub_key"]), bytes.fromhex(c["message"]), bytes.fromhex(c["signature"])
+        )
         expected.append({"case": i, "accept": r is None, "reason": r})
     V.append(
         Vector(
             "ed25519-edge",
             'The 12 cases of "Taming the many EdDSAs" (Chalkias, Garillot, Nikolaenko, 2020; github.com/novifinancial/ed25519-speccheck, Apache-2.0), judged under spec §3.5.',
-            {"cases.json": (json.dumps(cases, indent=1) + "\n").encode(), "expected.json": (json.dumps(expected, indent=1) + "\n").encode()},
-            [{"command": "ed25519", "target": "cases.json", "expect": {"exit": 0, "file": "expected.json"}}],
+            {
+                "cases.json": (json.dumps(cases, indent=1) + "\n").encode(),
+                "expected.json": (json.dumps(expected, indent=1) + "\n").encode(),
+            },
+            [
+                {
+                    "command": "ed25519",
+                    "target": "cases.json",
+                    "expect": {"exit": 0, "file": "expected.json"},
+                }
+            ],
         )
     )
 
@@ -1138,105 +1681,310 @@ def build_vectors() -> list[Vector]:
     cp4 = cjson(checkpoint_obj(six, six.records[4]))
     cpfiles = {"cp.json": cp4, "cp.json.sig": detached("K1", NS_CHECKPOINT, cp4)}
     cut = write_log("K1", LOG_A, record_inputs(3))
-    V.append(Vector("checkpoint-truncated", "Signed at r4; the log cut to r2.", {**logfiles(cut), **cpfiles}, [run(bad("CheckpointTruncated@s0r4"), checkpoints=["cp.json"], **pin("K1"))]))
+    V.append(
+        Vector(
+            "checkpoint-truncated",
+            "Signed at r4; the log cut to r2.",
+            {**logfiles(cut), **cpfiles},
+            [run(bad("CheckpointTruncated@s0r4"), checkpoints=["cp.json"], **pin("K1"))],
+        )
+    )
     re_recs = record_inputs(2) + record_inputs(6, event="page.withheld")[2:]
     rewritten = write_log("K1", LOG_A, re_recs)
-    V.append(Vector("checkpoint-rewritten", "K1 re-chains from r2, same log_id.", {**logfiles(rewritten), **cpfiles}, [run(bad("CheckpointMismatch@s0r4"), checkpoints=["cp.json"], **pin("K1"))]))
+    V.append(
+        Vector(
+            "checkpoint-rewritten",
+            "K1 re-chains from r2, same log_id.",
+            {**logfiles(rewritten), **cpfiles},
+            [run(bad("CheckpointMismatch@s0r4"), checkpoints=["cp.json"], **pin("K1"))],
+        )
+    )
     cp0 = cjson(checkpoint_obj(six, six.records[0]))
     full = write_log("K1", LOG_A, record_inputs(6, event="page.withheld"))
-    V.append(Vector("checkpoint-full-rewrite-same-id", "K1 rewrites from r0 with the same log_id.", {**logfiles(full), "cp.json": cp0, "cp.json.sig": detached("K1", NS_CHECKPOINT, cp0)}, [run(bad("CheckpointMismatch@s0r0"), checkpoints=["cp.json"], **pin("K1"))]))
+    V.append(
+        Vector(
+            "checkpoint-full-rewrite-same-id",
+            "K1 rewrites from r0 with the same log_id.",
+            {**logfiles(full), "cp.json": cp0, "cp.json.sig": detached("K1", NS_CHECKPOINT, cp0)},
+            [run(bad("CheckpointMismatch@s0r0"), checkpoints=["cp.json"], **pin("K1"))],
+        )
+    )
     logb = write_log("K1", LOG_B, record_inputs(6))
-    V.append(Vector("checkpoint-other-log", "K1's checkpoint of log A against K1's log B.", {**logfiles(logb), **cpfiles}, [run(bad("CheckpointForDifferentLog@s0"), checkpoints=["cp.json"], **pin("K1"))]))
+    V.append(
+        Vector(
+            "checkpoint-other-log",
+            "K1's checkpoint of log A against K1's log B.",
+            {**logfiles(logb), **cpfiles},
+            [run(bad("CheckpointForDifferentLog@s0"), checkpoints=["cp.json"], **pin("K1"))],
+        )
+    )
     k2six = write_log("K2", LOG_A, record_inputs(6))
     V.append(
         Vector(
             "checkpoint-other-signer",
             "K2's log, K1's checkpoint; both keys trusted.",
-            {**logfiles(k2six), **cpfiles, "allowed_signers": trust_file([("one", "K1", None), ("two", "K2", None)])},
-            [run(err(3, error="CheckpointForDifferentSigner"), checkpoints=["cp.json"], trust="allowed_signers")],
+            {
+                **logfiles(k2six),
+                **cpfiles,
+                "allowed_signers": trust_file([("one", "K1", None), ("two", "K2", None)]),
+            },
+            [
+                run(
+                    err(3, error="CheckpointForDifferentSigner"),
+                    checkpoints=["cp.json"],
+                    trust="allowed_signers",
+                )
+            ],
         )
     )
     cpk2 = json.loads(cp4)
     cpk2["key_id"] = key_id(pub(SEEDS["K2"])).hex()
     cpk2b = cjson(cpk2)
-    V.append(Vector("checkpoint-untrusted-signer", "A checkpoint signed by K2; pin K1.", {**logfiles(six), "cp.json": cpk2b, "cp.json.sig": detached("K2", NS_CHECKPOINT, cpk2b)}, [run(err(3, error="CheckpointSignerUntrusted"), checkpoints=["cp.json"], **pin("K1"))]))
+    V.append(
+        Vector(
+            "checkpoint-untrusted-signer",
+            "A checkpoint signed by K2; pin K1.",
+            {
+                **logfiles(six),
+                "cp.json": cpk2b,
+                "cp.json.sig": detached("K2", NS_CHECKPOINT, cpk2b),
+            },
+            [run(err(3, error="CheckpointSignerUntrusted"), checkpoints=["cp.json"], **pin("K1"))],
+        )
+    )
     cp_last = cjson(checkpoint_obj(three))
     anch = {"cp.json": cp_last, "cp.json.sig": detached("K1", NS_CHECKPOINT, cp_last)}
-    V.append(Vector("checkpoint-anchors-head", "A K1 checkpoint naming the last record.", {**logfiles(three), **anch}, [run(ok(head_anchored=True), checkpoints=["cp.json"], **pin("K1"))]))
-    wdoc = cjson({"checkpoint_sha256": sha256(cp_last).hex(), "format": "ogentic-audit-witness/v1", "observed_at": "2026-10-03T13:05:00.000Z", "witness_key_id": key_id(pub(SEEDS["K3"])).hex()})
+    V.append(
+        Vector(
+            "checkpoint-anchors-head",
+            "A K1 checkpoint naming the last record.",
+            {**logfiles(three), **anch},
+            [run(ok(head_anchored=True), checkpoints=["cp.json"], **pin("K1"))],
+        )
+    )
+    wdoc = cjson(
+        {
+            "checkpoint_sha256": sha256(cp_last).hex(),
+            "format": "ogentic-audit-witness/v1",
+            "observed_at": "2026-10-03T13:05:00.000Z",
+            "witness_key_id": key_id(pub(SEEDS["K3"])).hex(),
+        }
+    )
     V.append(
         Vector(
             "witness-cosigned",
             "K3, pinned with the witness scope, co-signs.",
-            {**logfiles(three), **anch, "w.json": wdoc, "w.json.sig": detached("K3", NS_WITNESS, wdoc), "allowed_signers": trust_file([("log-signer", "K1", None), ("auditor", "K3", NS_WITNESS)])},
-            [run(ok(head_anchored=True, witnesses=["auditor"]), checkpoints=["cp.json"], witnesses=["w.json"], trust="allowed_signers")],
+            {
+                **logfiles(three),
+                **anch,
+                "w.json": wdoc,
+                "w.json.sig": detached("K3", NS_WITNESS, wdoc),
+                "allowed_signers": trust_file(
+                    [("log-signer", "K1", None), ("auditor", "K3", NS_WITNESS)]
+                ),
+            },
+            [
+                run(
+                    ok(head_anchored=True, witnesses=["auditor"]),
+                    checkpoints=["cp.json"],
+                    witnesses=["w.json"],
+                    trust="allowed_signers",
+                )
+            ],
         )
     )
     k3log = write_log("K3", LOG_A, record_inputs(2))
-    V.append(Vector("witness-as-signer", "K3 pinned as a witness signs a log.", {**logfiles(k3log), "allowed_signers": trust_file([("auditor", "K3", NS_WITNESS)])}, [run(bad("UntrustedSigner@s0", reason="out_of_scope"), trust="allowed_signers")]))
+    V.append(
+        Vector(
+            "witness-as-signer",
+            "K3 pinned as a witness signs a log.",
+            {**logfiles(k3log), "allowed_signers": trust_file([("auditor", "K3", NS_WITNESS)])},
+            [run(bad("UntrustedSigner@s0", reason="out_of_scope"), trust="allowed_signers")],
+        )
+    )
     other = json.loads(cp4)
     other["record_hash"] = rewritten.records[4].record_hash.hex()
     ob = cjson(other)
-    V.append(Vector("equivocation", "Two K1 checkpoints, same position, different hash.", {"a.json": cp4, "a.json.sig": detached("K1", NS_CHECKPOINT, cp4), "b.json": ob, "b.json.sig": detached("K1", NS_CHECKPOINT, ob)}, [{"command": "checkpoint-compare", "target": "a.json", "other": "b.json", "expect": {"exit": 1, "equivocation": True}}]))
+    V.append(
+        Vector(
+            "equivocation",
+            "Two K1 checkpoints, same position, different hash.",
+            {
+                "a.json": cp4,
+                "a.json.sig": detached("K1", NS_CHECKPOINT, cp4),
+                "b.json": ob,
+                "b.json.sig": detached("K1", NS_CHECKPOINT, ob),
+            },
+            [
+                {
+                    "command": "checkpoint-compare",
+                    "target": "a.json",
+                    "other": "b.json",
+                    "expect": {"exit": 1, "equivocation": True},
+                }
+            ],
+        )
+    )
 
     # --- Statements -------------------------------------------------------------
     k1old = write_log("K1", LOG_B, record_inputs(3), seal=True)
     k2new = write_log("K2", LOG_A, record_inputs(3))
     t12 = transition_doc("K1", "K2", heads=[head_of(k1old)])
     st12 = statement_files("keys", "k1-k2", t12, "K1", NS_TRANSITION, accept="K2")
-    V.append(Vector("transition", "Log by K2; K1→K2 with acceptance; pin K1.", {**logfiles(k2new), **st12}, [run(ok(trust_path=[fp("K1"), fp("K2")]), statements=["keys"], **pin("K1"))]))
+    V.append(
+        Vector(
+            "transition",
+            "Log by K2; K1→K2 with acceptance; pin K1.",
+            {**logfiles(k2new), **st12},
+            [run(ok(trust_path=[fp("K1"), fp("K2")]), statements=["keys"], **pin("K1"))],
+        )
+    )
     k3new = write_log("K3", LOG_A, record_inputs(2))
     t23 = transition_doc("K2", "K3", heads=[head_of(k2new)])
-    V.append(Vector("transition-two-hop", "K1→K2→K3; log by K3.", {**logfiles(k3new), **st12, **statement_files("keys", "k2-k3", t23, "K2", NS_TRANSITION, accept="K3")}, [run(ok(), statements=["keys"], **pin("K1"))]))
+    V.append(
+        Vector(
+            "transition-two-hop",
+            "K1→K2→K3; log by K3.",
+            {
+                **logfiles(k3new),
+                **st12,
+                **statement_files("keys", "k2-k3", t23, "K2", NS_TRANSITION, accept="K3"),
+            },
+            [run(ok(), statements=["keys"], **pin("K1"))],
+        )
+    )
     V.append(
         Vector(
             "transition-no-accept",
             "Acceptance missing.",
             {**logfiles(k2new), **statement_files("keys", "k1-k2", t12, "K1", NS_TRANSITION)},
             [
-                run(bad("UntrustedSigner@s0", warnings=["IgnoredStatement"]), statements=["keys"], statements_source="bundle", **pin("K1"), name="bundle"),
+                run(
+                    bad("UntrustedSigner@s0", warnings=["IgnoredStatement"]),
+                    statements=["keys"],
+                    statements_source="bundle",
+                    **pin("K1"),
+                    name="bundle",
+                ),
                 run(err(3), statements=["keys"], **pin("K1"), name="operator"),
             ],
         )
     )
-    stranger = {"keys/forged.json": t12, "keys/forged.json.sig": detached("K3", NS_TRANSITION, t12), "keys/forged.json.accept.sig": detached("K2", NS_ACCEPT, t12)}
+    stranger = {
+        "keys/forged.json": t12,
+        "keys/forged.json.sig": detached("K3", NS_TRANSITION, t12),
+        "keys/forged.json.accept.sig": detached("K2", NS_ACCEPT, t12),
+    }
     V.append(
         Vector(
             "transition-stranger-signed",
             "Signed by K3, claims old_key_id K1.",
             {**logfiles(k2new), **stranger},
             [
-                run(bad("UntrustedSigner@s0"), statements=["keys"], statements_source="bundle", **pin("K1"), name="bundle"),
+                run(
+                    bad("UntrustedSigner@s0"),
+                    statements=["keys"],
+                    statements_source="bundle",
+                    **pin("K1"),
+                    name="bundle",
+                ),
                 run(err(3), statements=["keys"], **pin("K1"), name="operator"),
             ],
         )
     )
     k1late = write_log("K1", LOG_A, record_inputs(2))
-    V.append(Vector("transition-retired-new-log", "A new log by K1 after K1→K2.", {**logfiles(k1late), **st12}, [run(bad("RetiredKey@s0r0"), statements=["keys"], **pin("K1"))]))
-    V.append(Vector("transition-retired-final-head", "K1's log within final_heads.", {**logfiles(k1old), **st12}, [run(ok(), statements=["keys"], **pin("K1"))]))
+    V.append(
+        Vector(
+            "transition-retired-new-log",
+            "A new log by K1 after K1→K2.",
+            {**logfiles(k1late), **st12},
+            [run(bad("RetiredKey@s0r0"), statements=["keys"], **pin("K1"))],
+        )
+    )
+    V.append(
+        Vector(
+            "transition-retired-final-head",
+            "K1's log within final_heads.",
+            {**logfiles(k1old), **st12},
+            [run(ok(), statements=["keys"], **pin("K1"))],
+        )
+    )
     t13 = transition_doc("K1", "K3")
     V.append(
         Vector(
             "transition-equivocation",
             "K1→K2 and K1→K3, both accepted; log by K2.",
-            {**logfiles(k2new), **st12, **statement_files("keys", "k1-k3", t13, "K1", NS_TRANSITION, accept="K3")},
-            [run(bad(f"TransitionEquivocation@key:{key_id(pub(SEEDS['K1'])).hex()}"), statements=["keys"], **pin("K1"))],
+            {
+                **logfiles(k2new),
+                **st12,
+                **statement_files("keys", "k1-k3", t13, "K1", NS_TRANSITION, accept="K3"),
+            },
+            [
+                run(
+                    bad(f"TransitionEquivocation@key:{key_id(pub(SEEDS['K1'])).hex()}"),
+                    statements=["keys"],
+                    **pin("K1"),
+                )
+            ],
         )
     )
     k2eight = write_log("K2", LOG_A, record_inputs(8))
     h4 = head_of(k2eight, k2eight.records[4])
     h6 = head_of(k2eight, k2eight.records[6])
-    ops = trust_file([("ops", "K2", None), ("ops", "K1", NS_REVOCATION), ("ops", "K3", NS_REVOCATION)])
+    ops = trust_file(
+        [("ops", "K2", None), ("ops", "K1", NS_REVOCATION), ("ops", "K3", NS_REVOCATION)]
+    )
     selfrev = revocation_doc("K2", "K2", heads=[h6])
-    V.append(Vector("revoked-self", "K2 self-revoked (lists set, ignored).", {**logfiles(k2eight), "allowed_signers": ops, **statement_files("rev", "self", selfrev, "K2", NS_REVOCATION)}, [run(bad("RevokedKey@s0r0"), trust="allowed_signers", revocations=["rev/self.json"])]))
+    V.append(
+        Vector(
+            "revoked-self",
+            "K2 self-revoked (lists set, ignored).",
+            {
+                **logfiles(k2eight),
+                "allowed_signers": ops,
+                **statement_files("rev", "self", selfrev, "K2", NS_REVOCATION),
+            },
+            [run(bad("RevokedKey@s0r0"), trust="allowed_signers", revocations=["rev/self.json"])],
+        )
+    )
     auth4 = revocation_doc("K1", "K2", heads=[h4])
-    V.append(Vector("revoked-authority-trusted-head", "K1 revokes K2 with trusted_heads at r4.", {**logfiles(k2eight), "allowed_signers": ops, **statement_files("rev", "auth", auth4, "K1", NS_REVOCATION)}, [run(bad("RevokedKey@s0r5"), trust="allowed_signers", revocations=["rev/auth.json"])]))
+    V.append(
+        Vector(
+            "revoked-authority-trusted-head",
+            "K1 revokes K2 with trusted_heads at r4.",
+            {
+                **logfiles(k2eight),
+                "allowed_signers": ops,
+                **statement_files("rev", "auth", auth4, "K1", NS_REVOCATION),
+            },
+            [run(bad("RevokedKey@s0r5"), trust="allowed_signers", revocations=["rev/auth.json"])],
+        )
+    )
     V.append(
         Vector(
             "revoked-stranger-signed",
             "Claims revoker K1, signed by K3.",
-            {**logfiles(k2eight), "allowed_signers": ops, "rev/forged.json": auth4, "rev/forged.json.sig": detached("K3", NS_REVOCATION, auth4)},
-            [run(err(3), trust="allowed_signers", revocations=["rev/forged.json"], name="operator"), run(ok(warnings=["IgnoredStatement"]), trust="allowed_signers", statements=["rev"], statements_source="bundle", name="bundle")],
+            {
+                **logfiles(k2eight),
+                "allowed_signers": ops,
+                "rev/forged.json": auth4,
+                "rev/forged.json.sig": detached("K3", NS_REVOCATION, auth4),
+            },
+            [
+                run(
+                    err(3),
+                    trust="allowed_signers",
+                    revocations=["rev/forged.json"],
+                    name="operator",
+                ),
+                run(
+                    ok(warnings=["IgnoredStatement"]),
+                    trust="allowed_signers",
+                    statements=["rev"],
+                    statements_source="bundle",
+                    name="bundle",
+                ),
+            ],
         )
     )
     witrev = revocation_doc("K3", "K1")
@@ -1245,33 +1993,72 @@ def build_vectors() -> list[Vector]:
         Vector(
             "revoked-by-witness",
             "K3 has the witness scope only and revokes K1.",
-            {**logfiles(k1eight), "allowed_signers": trust_file([("ops", "K1", None), ("ops", "K3", NS_WITNESS)]), **statement_files("rev", "w", witrev, "K3", NS_REVOCATION)},
-            [run(err(3), trust="allowed_signers", revocations=["rev/w.json"], name="operator"), run(ok(warnings=["IgnoredStatement"]), trust="allowed_signers", statements=["rev"], statements_source="bundle", name="bundle")],
+            {
+                **logfiles(k1eight),
+                "allowed_signers": trust_file([("ops", "K1", None), ("ops", "K3", NS_WITNESS)]),
+                **statement_files("rev", "w", witrev, "K3", NS_REVOCATION),
+            },
+            [
+                run(err(3), trust="allowed_signers", revocations=["rev/w.json"], name="operator"),
+                run(
+                    ok(warnings=["IgnoredStatement"]),
+                    trust="allowed_signers",
+                    statements=["rev"],
+                    statements_source="bundle",
+                    name="bundle",
+                ),
+            ],
         )
     )
     a46 = revocation_doc("K1", "K2", heads=[h4, h6])
     b4 = revocation_doc("K3", "K2", heads=[h4])
-    conf = {**statement_files("rev", "a", a46, "K1", NS_REVOCATION), **statement_files("rev", "b", b4, "K3", NS_REVOCATION)}
+    conf = {
+        **statement_files("rev", "a", a46, "K1", NS_REVOCATION),
+        **statement_files("rev", "b", b4, "K3", NS_REVOCATION),
+    }
     V.append(
         Vector(
             "revoked-conflicting",
             "Two authority revocations, trusted_heads {r4, r6} and {r4}: the intersection applies, in either order.",
             {**logfiles(k2eight), "allowed_signers": ops, **conf},
             [
-                run(bad("RevokedKey@s0r5"), trust="allowed_signers", revocations=["rev/a.json", "rev/b.json"], name="a-then-b"),
-                run(bad("RevokedKey@s0r5"), trust="allowed_signers", revocations=["rev/b.json", "rev/a.json"], name="b-then-a"),
+                run(
+                    bad("RevokedKey@s0r5"),
+                    trust="allowed_signers",
+                    revocations=["rev/a.json", "rev/b.json"],
+                    name="a-then-b",
+                ),
+                run(
+                    bad("RevokedKey@s0r5"),
+                    trust="allowed_signers",
+                    revocations=["rev/b.json", "rev/a.json"],
+                    name="b-then-a",
+                ),
             ],
         )
     )
-    sta = {**statement_files("rev", "self", selfrev, "K2", NS_REVOCATION), **statement_files("rev", "auth", auth4, "K1", NS_REVOCATION)}
+    sta = {
+        **statement_files("rev", "self", selfrev, "K2", NS_REVOCATION),
+        **statement_files("rev", "auth", auth4, "K1", NS_REVOCATION),
+    }
     V.append(
         Vector(
             "revoked-self-then-authority",
             "Self-revocation and an authority revocation (r4), in either order.",
             {**logfiles(k2eight), "allowed_signers": ops, **sta},
             [
-                run(bad("RevokedKey@s0r5"), trust="allowed_signers", revocations=["rev/self.json", "rev/auth.json"], name="self-first"),
-                run(bad("RevokedKey@s0r5"), trust="allowed_signers", revocations=["rev/auth.json", "rev/self.json"], name="authority-first"),
+                run(
+                    bad("RevokedKey@s0r5"),
+                    trust="allowed_signers",
+                    revocations=["rev/self.json", "rev/auth.json"],
+                    name="self-first",
+                ),
+                run(
+                    bad("RevokedKey@s0r5"),
+                    trust="allowed_signers",
+                    revocations=["rev/auth.json", "rev/self.json"],
+                    name="authority-first",
+                ),
             ],
         )
     )
@@ -1282,8 +2069,19 @@ def build_vectors() -> list[Vector]:
         Vector(
             "revoked-attacker-successor",
             "K2 self-revokes listing K4 as successor, and K2→K4 exists: K4 is not trusted.",
-            {**logfiles(k4log), **statement_files("keys", "k2-k4", t24, "K2", NS_TRANSITION, accept="K4"), **statement_files("rev", "self", atk, "K2", NS_REVOCATION)},
-            [run(bad("UntrustedSigner@s0"), statements=["keys"], revocations=["rev/self.json"], **pin("K2"))],
+            {
+                **logfiles(k4log),
+                **statement_files("keys", "k2-k4", t24, "K2", NS_TRANSITION, accept="K4"),
+                **statement_files("rev", "self", atk, "K2", NS_REVOCATION),
+            },
+            [
+                run(
+                    bad("UntrustedSigner@s0"),
+                    statements=["keys"],
+                    revocations=["rev/self.json"],
+                    **pin("K2"),
+                )
+            ],
         )
     )
 
@@ -1300,9 +2098,24 @@ def build_vectors() -> list[Vector]:
         return run(expect, **kw)
 
     clean = sign_release(base_files, base_doc)
-    V.append(Vector("release-clean", "Clean release.", rel(clean), [rrun(ok(), **pin("K1"))], extra={"builder": {"log": "signed-release-source", "elide": []}}))
+    V.append(
+        Vector(
+            "release-clean",
+            "Clean release.",
+            rel(clean),
+            [rrun(ok(), **pin("K1"))],
+            extra={"builder": {"log": "signed-release-source", "elide": []}},
+        )
+    )
     ef, ed = release_files(rlog, elide={(0, 1), (0, 3)})
-    V.append(Vector("release-elided-log", "The log's r1 and r3 bodies withheld.", rel(sign_release(ef, ed)), [rrun(ok(elided=["s0r1", "s0r3"]), **pin("K1"))]))
+    V.append(
+        Vector(
+            "release-elided-log",
+            "The log's r1 and r3 bodies withheld.",
+            rel(sign_release(ef, ed)),
+            [rrun(ok(elided=["s0r1", "s0r3"]), **pin("K1"))],
+        )
+    )
 
     def altered(path: str, fn) -> dict[str, bytes]:
         f = dict(clean)
@@ -1317,83 +2130,312 @@ def build_vectors() -> list[Vector]:
 
         return g
 
-    V.append(Vector("release-file-byte", "One byte of a page file.", altered("pages/0001.pdf", flip(3)), [rrun(bad("FileAltered@file:pages/0001.pdf", reason="content"), **pin("K1"))]))
-    V.append(Vector("release-multipage-byte", "One byte of a multi-page file.", altered("doc.pdf", flip(20)), [rrun(bad("FileAltered@file:doc.pdf", reason="content"), **pin("K1"))]))
-    V.append(Vector("release-part-byte", "One byte of index row 1.", altered("Decisions.csv", flip(16)), [rrun(bad("FileAltered@file:Decisions.csv#row 1", reason="part"), **pin("K1"))]))
-    V.append(Vector("release-appended", "Bytes appended to a file with parts.", altered("Decisions.csv", lambda b: b.extend(b"3,release\n")), [rrun(bad("FileAltered@file:Decisions.csv", reason="size"), **pin("K1"))]))
-    V.append(Vector("release-attestation-byte", "One byte of the attestation.", altered("ogentic-audit-release.json", flip(40)), [rrun(bad("SignatureInvalid@attestation", reason="mismatch"), **pin("K1"))]))
+    V.append(
+        Vector(
+            "release-file-byte",
+            "One byte of a page file.",
+            altered("pages/0001.pdf", flip(3)),
+            [rrun(bad("FileAltered@file:pages/0001.pdf", reason="content"), **pin("K1"))],
+        )
+    )
+    V.append(
+        Vector(
+            "release-multipage-byte",
+            "One byte of a multi-page file.",
+            altered("doc.pdf", flip(20)),
+            [rrun(bad("FileAltered@file:doc.pdf", reason="content"), **pin("K1"))],
+        )
+    )
+    V.append(
+        Vector(
+            "release-part-byte",
+            "One byte of index row 1.",
+            altered("Decisions.csv", flip(16)),
+            [rrun(bad("FileAltered@file:Decisions.csv#row 1", reason="part"), **pin("K1"))],
+        )
+    )
+    V.append(
+        Vector(
+            "release-appended",
+            "Bytes appended to a file with parts.",
+            altered("Decisions.csv", lambda b: b.extend(b"3,release\n")),
+            [rrun(bad("FileAltered@file:Decisions.csv", reason="size"), **pin("K1"))],
+        )
+    )
+    V.append(
+        Vector(
+            "release-attestation-byte",
+            "One byte of the attestation.",
+            altered("ogentic-audit-release.json", flip(40)),
+            [rrun(bad("SignatureInvalid@attestation", reason="mismatch"), **pin("K1"))],
+        )
+    )
     ff = dict(base_files)
     ff["pages/0001.pdf"] = b"%PDF-1.7\n% a different page\n"
     _, fd = release_files(rlog, extra_files={"pages/0001.pdf": ff["pages/0001.pdf"]})
-    V.append(Vector("release-forged-other-key", "Files altered, attestation re-signed by K2, signer.pub replaced.", rel(sign_release(ff, fd, "K2")), [rrun(bad("UntrustedSigner@attestation", reason="not_trusted"), **pin("K1"))]))
-    V.append(Vector("release-sha256-sshsig", "SSHSIG hash algorithm sha256.", rel(sign_release(base_files, base_doc, hash_alg="sha256")), [rrun(bad("SignatureInvalid@attestation", reason="hash_alg"), **pin("K1"))]))
-    V.append(Vector("release-namespace-swap", "Signed in the checkpoint namespace.", rel(sign_release(base_files, base_doc, ns=NS_CHECKPOINT)), [rrun(bad("SignatureInvalid@attestation", reason="namespace"), **pin("K1"))]))
-    V.append(Vector("release-reserved-nonzero", "SSHSIG reserved field not empty.", rel(sign_release(base_files, base_doc, reserved=b"x")), [rrun(bad("SignatureInvalid@attestation", reason="malformed"), **pin("K1"))]))
-    V.append(Vector("release-trailing-bytes", "Bytes after the SSHSIG signature blob.", rel(sign_release(base_files, base_doc, trailing=b"\x00")), [rrun(bad("SignatureInvalid@attestation", reason="malformed"), **pin("K1"))]))
-    V.append(Vector("release-noncanonical-json", "Pretty-printed attestation, signed.", rel(sign_release(base_files, base_doc, raw=json.dumps(base_doc, indent=1, sort_keys=True, ensure_ascii=False).encode())), [rrun(bad("AttestationMalformed@attestation"), **pin("K1"))]))
+    V.append(
+        Vector(
+            "release-forged-other-key",
+            "Files altered, attestation re-signed by K2, signer.pub replaced.",
+            rel(sign_release(ff, fd, "K2")),
+            [rrun(bad("UntrustedSigner@attestation", reason="not_trusted"), **pin("K1"))],
+        )
+    )
+    V.append(
+        Vector(
+            "release-sha256-sshsig",
+            "SSHSIG hash algorithm sha256.",
+            rel(sign_release(base_files, base_doc, hash_alg="sha256")),
+            [rrun(bad("SignatureInvalid@attestation", reason="hash_alg"), **pin("K1"))],
+        )
+    )
+    V.append(
+        Vector(
+            "release-namespace-swap",
+            "Signed in the checkpoint namespace.",
+            rel(sign_release(base_files, base_doc, ns=NS_CHECKPOINT)),
+            [rrun(bad("SignatureInvalid@attestation", reason="namespace"), **pin("K1"))],
+        )
+    )
+    V.append(
+        Vector(
+            "release-reserved-nonzero",
+            "SSHSIG reserved field not empty.",
+            rel(sign_release(base_files, base_doc, reserved=b"x")),
+            [rrun(bad("SignatureInvalid@attestation", reason="malformed"), **pin("K1"))],
+        )
+    )
+    V.append(
+        Vector(
+            "release-trailing-bytes",
+            "Bytes after the SSHSIG signature blob.",
+            rel(sign_release(base_files, base_doc, trailing=b"\x00")),
+            [rrun(bad("SignatureInvalid@attestation", reason="malformed"), **pin("K1"))],
+        )
+    )
+    V.append(
+        Vector(
+            "release-noncanonical-json",
+            "Pretty-printed attestation, signed.",
+            rel(
+                sign_release(
+                    base_files,
+                    base_doc,
+                    raw=json.dumps(base_doc, indent=1, sort_keys=True, ensure_ascii=False).encode(),
+                )
+            ),
+            [rrun(bad("AttestationMalformed@attestation"), **pin("K1"))],
+        )
+    )
     canon = cjson(base_doc)
     dup = canon.replace(b'"release_id":', b'"release_id":"other","release_id":', 1)
-    V.append(Vector("release-duplicate-key", "release_id twice, signed.", rel(sign_release(base_files, base_doc, raw=dup)), [rrun(bad("AttestationMalformed@attestation"), **pin("K1"))]))
+    V.append(
+        Vector(
+            "release-duplicate-key",
+            "release_id twice, signed.",
+            rel(sign_release(base_files, base_doc, raw=dup)),
+            [rrun(bad("AttestationMalformed@attestation"), **pin("K1"))],
+        )
+    )
     size_key = f'"size":{len(base_files["Decisions.csv"])}'.encode()
     flt = canon.replace(size_key, size_key + b".0", 1)
-    V.append(Vector("release-float-integer", "A size written 1.0-style, signed.", rel(sign_release(base_files, base_doc, raw=flt)), [rrun(bad("AttestationMalformed@attestation"), **pin("K1"))]))
+    V.append(
+        Vector(
+            "release-float-integer",
+            "A size written 1.0-style, signed.",
+            rel(sign_release(base_files, base_doc, raw=flt)),
+            [rrun(bad("AttestationMalformed@attestation"), **pin("K1"))],
+        )
+    )
     evil = "x\n" + sha256(base_files["pages/0001.pdf"]).hex() + "  pages/0001.pdf"
     cf = dict(base_files)
     cf[evil] = b"planted"
     _, cd = release_files(rlog, extra_files={evil: b"planted"})
-    V.append(Vector("release-control-char-path", "A path with a newline, a hash and a file name, signed.", {k: v for k, v in rel(sign_release(base_files, cd)).items()}, [rrun(bad("AttestationMalformed@attestation"), **pin("K1"))]))
+    V.append(
+        Vector(
+            "release-control-char-path",
+            "A path with a newline, a hash and a file name, signed.",
+            {k: v for k, v in rel(sign_release(base_files, cd)).items()},
+            [rrun(bad("AttestationMalformed@attestation"), **pin("K1"))],
+        )
+    )
     bd = json.loads(canon)
     for f in bd["files"]:
         if "parts" in f:
             f["parts"][1]["name"] = "row \u202e1"
-    V.append(Vector("release-bidi-name", "U+202E in a part name, signed.", rel(sign_release(base_files, bd)), [rrun(bad("AttestationMalformed@attestation"), **pin("K1"))]))
+    V.append(
+        Vector(
+            "release-bidi-name",
+            "U+202E in a part name, signed.",
+            rel(sign_release(base_files, bd)),
+            [rrun(bad("AttestationMalformed@attestation"), **pin("K1"))],
+        )
+    )
     mf = dict(clean)
     del mf["pages/0002.pdf"]
-    V.append(Vector("release-missing-file", "A page file removed.", rel(mf), [rrun(bad("FileMissing@file:pages/0002.pdf"), **pin("K1"))]))
+    V.append(
+        Vector(
+            "release-missing-file",
+            "A page file removed.",
+            rel(mf),
+            [rrun(bad("FileMissing@file:pages/0002.pdf"), **pin("K1"))],
+        )
+    )
     V.append(
         Vector(
             "release-unattested",
             "extra.pdf added.",
             rel({**clean, "extra.pdf": b"%PDF planted\n"}),
-            [rrun(bad("UnattestedFile@file:extra.pdf"), **pin("K1"), name="default"), rrun(ok(warnings=["UnattestedFile"]), allow_unattested=True, **pin("K1"), name="allowed")],
+            [
+                rrun(bad("UnattestedFile@file:extra.pdf"), **pin("K1"), name="default"),
+                rrun(
+                    ok(warnings=["UnattestedFile"]),
+                    allow_unattested=True,
+                    **pin("K1"),
+                    name="allowed",
+                ),
+            ],
         )
     )
-    V.append(Vector("release-ds-store", ".DS_Store added.", rel({**clean, ".DS_Store": b"\x00\x00\x00\x01Bud1"}), [rrun(ok(ignored=[".DS_Store"]), **pin("K1"))]))
+    V.append(
+        Vector(
+            "release-ds-store",
+            ".DS_Store added.",
+            rel({**clean, ".DS_Store": b"\x00\x00\x00\x01Bud1"}),
+            [rrun(ok(ignored=[".DS_Store"]), **pin("K1"))],
+        )
+    )
     tr = dict(clean)
     seg = tr["Audit log/audit-0000.cbor"]
     tr["Audit log/audit-0000.cbor"] = seg[: offsets(seg)[3][0]]
-    V.append(Vector("release-log-truncated", "The bundled log cut before the attested head.", rel(tr), [rrun(bad("CheckpointTruncated@log:Audit log/s0r5"), **pin("K1"))]))
+    V.append(
+        Vector(
+            "release-log-truncated",
+            "The bundled log cut before the attested head.",
+            rel(tr),
+            [rrun(bad("CheckpointTruncated@log:Audit log/s0r5"), **pin("K1"))],
+        )
+    )
     open5 = write_log("K1", LOG_A, five)
     of, od = release_files(open5, head=open5.records[3])
     after = dict(sign_release(of, od))
     r4 = open5.records[4]
-    after["Audit log/audit-0000.cbor"] = after["Audit log/audit-0000.cbor"] + frame(r4.envelope, r4.signature, r4.body)
-    V.append(Vector("release-records-after-head", "Head attested at r3; r4 present after it.", rel(after), [rrun(ok(records_after_head=1), **pin("K1"))]))
+    after["Audit log/audit-0000.cbor"] = after["Audit log/audit-0000.cbor"] + frame(
+        r4.envelope, r4.signature, r4.body
+    )
+    V.append(
+        Vector(
+            "release-records-after-head",
+            "Head attested at r3; r4 present after it.",
+            rel(after),
+            [rrun(ok(records_after_head=1), **pin("K1"))],
+        )
+    )
     torn = dict(sign_release(of, od))
     torn["Audit log/audit-0000.cbor"] = torn["Audit log/audit-0000.cbor"] + b"\x10\x00\x00"
-    V.append(Vector("release-torn-after-head", "A torn tail after the attested head.", rel(torn), [rrun(ok(warnings=["TornTailAfterHead"]), **pin("K1"))]))
+    V.append(
+        Vector(
+            "release-torn-after-head",
+            "A torn tail after the attested head.",
+            rel(torn),
+            [rrun(ok(warnings=["TornTailAfterHead"]), **pin("K1"))],
+        )
+    )
     hm = {k: v for k, v in clean.items() if not k.startswith("Audit log/")}
     for k, v in v01.items():
         hm["Audit log/" + k.split("/", 1)[1]] = v
-    V.append(Vector("release-hmac-log", "The signed log replaced by a v0.1 (HMAC) log.", rel(hm), [rrun(bad("FormatDowngrade@log:Audit log/s0"), **pin("K1"))]))
+    V.append(
+        Vector(
+            "release-hmac-log",
+            "The signed log replaced by a v0.1 (HMAC) log.",
+            rel(hm),
+            [rrun(bad("FormatDowngrade@log:Audit log/s0"), **pin("K1"))],
+        )
+    )
     rsha = sha256(clean["ogentic-audit-release.json"]).hex()
     rops = trust_file([("ops", "K1", None), ("ops", "K2", NS_REVOCATION)])
     rv = revocation_doc("K2", "K1")
-    V.append(Vector("release-revoked", "K1 revoked by authority; release not in trusted_releases.", {**rel(clean), "allowed_signers": rops, **statement_files("rev", "r", rv, "K2", NS_REVOCATION)}, [rrun(bad("RevokedKey@attestation"), trust="allowed_signers", revocations=["rev/r.json"])]))
+    V.append(
+        Vector(
+            "release-revoked",
+            "K1 revoked by authority; release not in trusted_releases.",
+            {
+                **rel(clean),
+                "allowed_signers": rops,
+                **statement_files("rev", "r", rv, "K2", NS_REVOCATION),
+            },
+            [
+                rrun(
+                    bad("RevokedKey@attestation"),
+                    trust="allowed_signers",
+                    revocations=["rev/r.json"],
+                )
+            ],
+        )
+    )
     rvt = revocation_doc("K2", "K1", heads=[head_of(rlog)], releases=[rsha])
-    V.append(Vector("release-revoked-trusted", "The release and its log head in the cut points.", {**rel(clean), "allowed_signers": rops, **statement_files("rev", "r", rvt, "K2", NS_REVOCATION)}, [rrun(ok(), trust="allowed_signers", revocations=["rev/r.json"])]))
+    V.append(
+        Vector(
+            "release-revoked-trusted",
+            "The release and its log head in the cut points.",
+            {
+                **rel(clean),
+                "allowed_signers": rops,
+                **statement_files("rev", "r", rvt, "K2", NS_REVOCATION),
+            },
+            [rrun(ok(), trust="allowed_signers", revocations=["rev/r.json"])],
+        )
+    )
     tret = transition_doc("K1", "K2", heads=[head_of(rlog)], releases=[rsha])
-    V.append(Vector("release-retired", "K1 retired; the release in final_releases.", {**rel(clean), **statement_files("keys", "k1-k2", tret, "K1", NS_TRANSITION, accept="K2")}, [rrun(ok(), statements=["keys"], **pin("K1"))]))
-    V.append(Vector("release-id-mismatch", "--expect-release-id of another release.", rel(clean), [rrun(bad("ReleaseIdMismatch@attestation"), expect_release_id="2026-0999", **pin("K1"))]))
-    vf, vd = release_files(rlog, extra_files={"ogentic-audit-verifier/verify.sh": b"#!/bin/sh\necho checking\n"})
+    V.append(
+        Vector(
+            "release-retired",
+            "K1 retired; the release in final_releases.",
+            {
+                **rel(clean),
+                **statement_files("keys", "k1-k2", tret, "K1", NS_TRANSITION, accept="K2"),
+            },
+            [rrun(ok(), statements=["keys"], **pin("K1"))],
+        )
+    )
+    V.append(
+        Vector(
+            "release-id-mismatch",
+            "--expect-release-id of another release.",
+            rel(clean),
+            [
+                rrun(
+                    bad("ReleaseIdMismatch@attestation"), expect_release_id="2026-0999", **pin("K1")
+                )
+            ],
+        )
+    )
+    vf, vd = release_files(
+        rlog, extra_files={"ogentic-audit-verifier/verify.sh": b"#!/bin/sh\necho checking\n"}
+    )
     for f in vd["files"]:
         if f["path"].startswith("ogentic-audit-verifier/"):
             f["role"] = "verifier"
     swapped = sign_release(vf, vd)
     swapped["ogentic-audit-verifier/verify.sh"] = b"#!/bin/sh\necho Verified\n"
-    V.append(Vector("release-verifier-swapped", "A verifier shipped in the bundle replaced.", rel(swapped), [rrun(bad("FileAltered@file:ogentic-audit-verifier/verify.sh"), **pin("K1"))]))
+    V.append(
+        Vector(
+            "release-verifier-swapped",
+            "A verifier shipped in the bundle replaced.",
+            rel(swapped),
+            [rrun(bad("FileAltered@file:ogentic-audit-verifier/verify.sh"), **pin("K1"))],
+        )
+    )
     # The source log of the release vectors, for the Rust builder cross-check.
-    V.append(Vector("signed-release-source", "The sealed log the release vectors bundle.", logfiles(rlog), [run(ok(head_anchored=True), **pin("K1"))], writer_spec("K1", LOG_A, five, seal=True)))
+    V.append(
+        Vector(
+            "signed-release-source",
+            "The sealed log the release vectors bundle.",
+            logfiles(rlog),
+            [run(ok(head_anchored=True), **pin("K1"))],
+            writer_spec("K1", LOG_A, five, seal=True),
+        )
+    )
     chains = {
         "signed-empty": (empty, False),
         "signed-single-record": (one, False),
@@ -1402,7 +2444,15 @@ def build_vectors() -> list[Vector]:
         "signed-segment-rollover": (roll, False),
         "signed-release-source": (rlog, False),
     }
-    for n in ("signed-tampered-envelope", "signed-tampered-body", "signed-tampered-signature", "signed-reencoded-s", "signed-elided", "signed-missing-record", "signed-reordered"):
+    for n in (
+        "signed-tampered-envelope",
+        "signed-tampered-body",
+        "signed-tampered-signature",
+        "signed-reencoded-s",
+        "signed-elided",
+        "signed-missing-record",
+        "signed-reordered",
+    ):
         chains[n] = (base5, True)
     for v in V:
         if v.name in chains:
@@ -1417,13 +2467,23 @@ def build_vectors() -> list[Vector]:
 
 def vector_files(v: Vector) -> dict[str, bytes]:
     files = dict(v.files)
-    inputs = {"vector": v.name, "description": v.description, "keys": {k: {"seed": s, "public_key": pub(s).hex(), "fingerprint": fp(k)} for k, s in SEEDS.items()}, "runs": v.runs}
+    inputs = {
+        "vector": v.name,
+        "description": v.description,
+        "keys": {
+            k: {"seed": s, "public_key": pub(s).hex(), "fingerprint": fp(k)}
+            for k, s in SEEDS.items()
+        },
+        "runs": v.runs,
+    }
     if v.writer:
         inputs["writer"] = v.writer
     inputs.update(v.extra)
     if v.chain is not None:
         files["chain.json"] = chain_json(v.chain, tampered=v.tampered)
-    files["inputs.json"] = (json.dumps(inputs, indent=2, sort_keys=True, ensure_ascii=False) + "\n").encode()
+    files["inputs.json"] = (
+        json.dumps(inputs, indent=2, sort_keys=True, ensure_ascii=False) + "\n"
+    ).encode()
     return files
 
 
@@ -1437,10 +2497,16 @@ def write_all(check: bool) -> int:
     for name, files in vecs.items():
         d = OUT_DIR / name
         if check:
-            on_disk = {str(p.relative_to(d)): p.read_bytes() for p in d.rglob("*") if p.is_file()} if d.exists() else {}
+            on_disk = (
+                {str(p.relative_to(d)): p.read_bytes() for p in d.rglob("*") if p.is_file()}
+                if d.exists()
+                else {}
+            )
             if on_disk != files:
                 drift += 1
-                print(f"DRIFT {name}: {sorted(set(on_disk) ^ set(files)) or [k for k in files if on_disk.get(k) != files[k]]}")
+                print(
+                    f"DRIFT {name}: {sorted(set(on_disk) ^ set(files)) or [k for k in files if on_disk.get(k) != files[k]]}"
+                )
             continue
         if d.exists():
             shutil.rmtree(d)
@@ -1449,7 +2515,11 @@ def write_all(check: bool) -> int:
             p.parent.mkdir(parents=True, exist_ok=True)
             p.write_bytes(data)
     if check:
-        extra = sorted(p.name for p in OUT_DIR.iterdir() if p.is_dir() and p.name not in vecs) if OUT_DIR.exists() else []
+        extra = (
+            sorted(p.name for p in OUT_DIR.iterdir() if p.is_dir() and p.name not in vecs)
+            if OUT_DIR.exists()
+            else []
+        )
         for e in extra:
             print(f"DRIFT stale vector directory {e}")
         drift += len(extra)
@@ -1498,7 +2568,9 @@ class Trust:
                 raise OracleError("fingerprint") from None
         if len(raw) != 32:
             raise OracleError("fingerprint")
-        self.pins.append({"kid": raw, "principal": principal, "scope": set(DEFAULT_SCOPE), "pk": None})
+        self.pins.append(
+            {"kid": raw, "principal": principal, "scope": set(DEFAULT_SCOPE), "pk": None}
+        )
 
     def trust_file(self, text: str) -> None:
         for line in text.splitlines():
@@ -1545,14 +2617,31 @@ class Trust:
             apk, asig = parse_sshsig(acc, NS_ACCEPT)
             if apk != npk or strict_verify(apk, signed_data(NS_ACCEPT, b), asig):
                 raise OracleError("acceptance")
-            self.transitions.append({"sha": sha256(b), "old": old, "new": key_id(npk), "heads": doc["final_heads"], "releases": doc["final_releases"], "issued": doc["issued_at"]})
+            self.transitions.append(
+                {
+                    "sha": sha256(b),
+                    "old": old,
+                    "new": key_id(npk),
+                    "heads": doc["final_heads"],
+                    "releases": doc["final_releases"],
+                    "issued": doc["issued_at"],
+                }
+            )
         elif doc["format"] == "ogentic-audit-key-revocation/v1":
             rk = bytes.fromhex(doc["revoker_key_id"])
             pk, s = parse_sshsig(sig, NS_REVOCATION)
             if key_id(pk) != rk or strict_verify(pk, signed_data(NS_REVOCATION, b), s):
                 raise OracleError("revocation not signed by revoker_key_id")
             self.revocations.append(
-                {"sha": sha256(b), "revoked": bytes.fromhex(doc["revoked_key_id"]), "revoker": rk, "heads": doc["trusted_heads"], "releases": doc["trusted_releases"], "successors": [bytes.fromhex(x) for x in doc["trusted_successors"]], "operator": True}
+                {
+                    "sha": sha256(b),
+                    "revoked": bytes.fromhex(doc["revoked_key_id"]),
+                    "revoker": rk,
+                    "heads": doc["trusted_heads"],
+                    "releases": doc["trusted_releases"],
+                    "successors": [bytes.fromhex(x) for x in doc["trusted_successors"]],
+                    "operator": True,
+                }
             )
         else:
             raise OracleError("unknown statement")
@@ -1560,7 +2649,14 @@ class Trust:
     def evaluate(self, revocation_sources: dict) -> dict:
         base: dict[bytes, list[dict]] = {}
         for p in self.pins:
-            base.setdefault(p["kid"], []).append({"principal": p["principal"], "scope": p["scope"], "path": [p["kid"]], "pinned": True})
+            base.setdefault(p["kid"], []).append(
+                {
+                    "principal": p["principal"],
+                    "scope": p["scope"],
+                    "path": [p["kid"]],
+                    "pinned": True,
+                }
+            )
         by_old: dict[bytes, dict] = {}
         for t in self.transitions:
             by_old.setdefault(t["old"], {})[t["sha"]] = t
@@ -1581,7 +2677,14 @@ class Trust:
                             lst = ent.setdefault(t["new"], [])
                             if any(x["principal"] == e["principal"] for x in lst):
                                 continue
-                            lst.append({"principal": e["principal"], "scope": e["scope"], "path": e["path"] + [t["new"]], "pinned": False})
+                            lst.append(
+                                {
+                                    "principal": e["principal"],
+                                    "scope": e["scope"],
+                                    "path": e["path"] + [t["new"]],
+                                    "pinned": False,
+                                }
+                            )
                             changed = True
             return ent
 
@@ -1593,7 +2696,10 @@ class Trust:
                 revoked.setdefault(r["revoked"], {})
                 continue
             kp = {e["principal"] for e in principals.get(r["revoked"], [])}
-            ok_ = any(p["kid"] == r["revoker"] and NS_REVOCATION in p["scope"] and p["principal"] in kp for p in self.pins)
+            ok_ = any(
+                p["kid"] == r["revoker"] and NS_REVOCATION in p["scope"] and p["principal"] in kp
+                for p in self.pins
+            )
             if ok_:
                 revoked.setdefault(r["revoked"], {})
                 auth.setdefault(r["revoked"], []).append(r)
@@ -1625,10 +2731,16 @@ class Trust:
             t = next(iter(ts.values()))
             if any(NS_TRANSITION in e["scope"] for e in ent.get(old, [])) and follow(t):
                 retired[old] = t
-        return {"entries": ent, "cuts": cuts, "retired": retired, "equiv": [k for k in sorted(equiv) if k in ent], "has_pins": bool(self.pins)}
+        return {
+            "entries": ent,
+            "cuts": cuts,
+            "retired": retired,
+            "equiv": [k for k in sorted(equiv) if k in ent],
+            "has_pins": bool(self.pins),
+        }
 
 
-def accept(ev: dict, kid: bytes, ns: str, obj: tuple) -> Optional[str]:
+def accept(ev: dict, kid: bytes, ns: str, obj: tuple) -> str | None:
     es = ev["entries"].get(kid, [])
     if not es:
         return "NotTrusted"
@@ -1641,8 +2753,15 @@ def accept(ev: dict, kid: bytes, ns: str, obj: tuple) -> Optional[str]:
             return None
         _, log_id, seg, rid, rh = obj
         for h in heads:
-            if bytes.fromhex(h["log_id"]) == log_id and (seg, rid) <= (h["segment"], h["record_id"]):
-                if kind == "record" and (seg, rid) == (h["segment"], h["record_id"]) and h["record_hash"] != rh.hex():
+            if bytes.fromhex(h["log_id"]) == log_id and (seg, rid) <= (
+                h["segment"],
+                h["record_id"],
+            ):
+                if (
+                    kind == "record"
+                    and (seg, rid) == (h["segment"], h["record_id"])
+                    and h["record_hash"] != rh.hex()
+                ):
                     return "HeadMismatch"
                 return "ok"
         return "no"
@@ -1684,18 +2803,32 @@ def accept(ev: dict, kid: bytes, ns: str, obj: tuple) -> Optional[str]:
 class Result:
     exit: int
     verdict: str = ""
-    reason: Optional[str] = None
-    error: Optional[str] = None
+    reason: str | None = None
+    error: str | None = None
     info: dict = field(default_factory=dict)
 
 
-def seg_index(name: str) -> Optional[int]:
-    if len(name) == 15 and name.startswith("audit-") and name.endswith(".cbor") and name[6:10].isdigit():
+def seg_index(name: str) -> int | None:
+    if (
+        len(name) == 15
+        and name.startswith("audit-")
+        and name.endswith(".cbor")
+        and name[6:10].isdigit()
+    ):
         return int(name[6:10])
     return None
 
 
-def oracle_log(d: Path, ev: dict, *, expect_log_id=None, checkpoints=(), witnesses=(), attested=None, forensic=False) -> Result:
+def oracle_log(
+    d: Path,
+    ev: dict,
+    *,
+    expect_log_id=None,
+    checkpoints=(),
+    witnesses=(),
+    attested=None,
+    forensic=False,
+) -> Result:
     segs = sorted(i for p in d.iterdir() if (i := seg_index(p.name)) is not None)
     if not segs:
         return Result(2, error="NoSegments")
@@ -1706,7 +2839,7 @@ def oracle_log(d: Path, ev: dict, *, expect_log_id=None, checkpoints=(), witness
             return Result(3, error="HmacLog")
         if ver > 2:
             return Result(3, error="NewerFormat")
-    viol: list[tuple[str, Optional[str]]] = []
+    viol: list[tuple[str, str | None]] = []
     warnings: list[str] = []
     info: dict = {"elided": [], "records_after_head": 0}
     for k in ev["equiv"]:
@@ -1714,7 +2847,7 @@ def oracle_log(d: Path, ev: dict, *, expect_log_id=None, checkpoints=(), witness
     stop = False
     trusted_sig = False
     seg0 = None
-    prev_final: Optional[bytes] = b"\x00" * 32
+    prev_final: bytes | None = b"\x00" * 32
     expected = 0
     prev_had_records = True
     sealed_at = None
@@ -1829,7 +2962,10 @@ def oracle_log(d: Path, ev: dict, *, expect_log_id=None, checkpoints=(), witness
                     torn = True
                 else:
                     bl = struct.unpack("<I", b[pos + 4 + ln + 64 : pos + fixed])[0]
-                    if rem < fixed + bl + 4 or struct.unpack("<I", b[pos + fixed + bl : pos + fixed + bl + 4])[0] != ln:
+                    if (
+                        rem < fixed + bl + 4
+                        or struct.unpack("<I", b[pos + fixed + bl : pos + fixed + bl + 4])[0] != ln
+                    ):
                         torn = True
             if torn:
                 if after_head(n, p):
@@ -1861,7 +2997,19 @@ def oracle_log(d: Path, ev: dict, *, expect_log_id=None, checkpoints=(), witness
                 assert isinstance(e, tuple)
                 em = dict(e[1])
                 keys = set(em)
-                if not all(isinstance(k, int) for k in keys) or {k for k in keys if k < 100} != {1, 2, 3, 4, 5, 7, 9, 10, 11, 12, 13}:
+                if not all(isinstance(k, int) for k in keys) or {k for k in keys if k < 100} != {
+                    1,
+                    2,
+                    3,
+                    4,
+                    5,
+                    7,
+                    9,
+                    10,
+                    11,
+                    12,
+                    13,
+                }:
                     raise CborError("envelope keys")
                 ev_ = em[7]
                 if not (1 <= len(ev_) <= 128 and all(0x21 <= ord(c) <= 0x7E for c in ev_)):
@@ -1939,19 +3087,30 @@ def oracle_log(d: Path, ev: dict, *, expect_log_id=None, checkpoints=(), witness
                 return Result(3, error="CheckpointSignatureInvalid")
             if key_id(spk) != ckid or strict_verify(spk, signed_data(NS_CHECKPOINT, cb), s):
                 return Result(3, error="CheckpointSignatureInvalid")
-            if ev["has_pins"] and accept(ev, ckid, NS_CHECKPOINT, ("checkpoint", bytes.fromhex(cp["log_id"]), cp["segment"], cp["record_id"], None)):
+            if ev["has_pins"] and accept(
+                ev,
+                ckid,
+                NS_CHECKPOINT,
+                ("checkpoint", bytes.fromhex(cp["log_id"]), cp["segment"], cp["record_id"], None),
+            ):
                 return Result(3, error="CheckpointSignerUntrusted")
         for wp, ws in witnesses:
             wb = wp.read_bytes()
             w = parse_cjson(wb, 1)
             wk = bytes.fromhex(w["witness_key_id"])
             wpk, s = parse_sshsig(ws.read_bytes(), NS_WITNESS)
-            if key_id(wpk) != wk or strict_verify(wpk, signed_data(NS_WITNESS, wb), s) or w["checkpoint_sha256"] != sha256(cb).hex():
+            if (
+                key_id(wpk) != wk
+                or strict_verify(wpk, signed_data(NS_WITNESS, wb), s)
+                or w["checkpoint_sha256"] != sha256(cb).hex()
+            ):
                 return Result(3, error="CheckpointSignatureInvalid")
             es = ev["entries"].get(wk, [])
             if ev["has_pins"] and accept(ev, wk, NS_WITNESS, ("witness",)):
                 return Result(3, error="CheckpointSignerUntrusted")
-            wit_principals.append(next((e["principal"] for e in es if NS_WITNESS in e["scope"]), "?"))
+            wit_principals.append(
+                next((e["principal"] for e in es if NS_WITNESS in e["scope"]), "?")
+            )
         if seg0 is None:
             continue
         if ckid != seg0[1]:
@@ -1969,7 +3128,10 @@ def oracle_log(d: Path, ev: dict, *, expect_log_id=None, checkpoints=(), witness
         elif last and (last[0], last[1]) == pos_:
             anchored = True
     if attested is not None and seg0 is not None:
-        if bytes.fromhex(attested["key_id"]) != seg0[1] or bytes.fromhex(attested["log_id"]) != seg0[0]:
+        if (
+            bytes.fromhex(attested["key_id"]) != seg0[1]
+            or bytes.fromhex(attested["log_id"]) != seg0[0]
+        ):
             viol.append(("CheckpointMismatch@s0", None))
         else:
             pos_ = (attested["segment"], attested["record_id"])
@@ -1982,16 +3144,25 @@ def oracle_log(d: Path, ev: dict, *, expect_log_id=None, checkpoints=(), witness
                 anchored = True
     if rolled_no_successor and attested is None:
         anchored = False
-    info.update({"head_anchored": anchored, "warnings": warnings, "witnesses": wit_principals, "violations": [x for x, _ in viol]})
+    info.update(
+        {
+            "head_anchored": anchored,
+            "warnings": warnings,
+            "witnesses": wit_principals,
+            "violations": [x for x, _ in viol],
+        }
+    )
     if viol:
         return Result(1, viol[0][0], viol[0][1], info=info)
     if trusted_sig:
         return Result(0, "Verified", info=info)
-    return Result(4, "SelfConsistent", "no_signed_records" if count == 0 else "not_pinned", info=info)
+    return Result(
+        4, "SelfConsistent", "no_signed_records" if count == 0 else "not_pinned", info=info
+    )
 
 
 def oracle_release(d: Path, ev: dict, *, expect_release_id=None, allow_unattested=False) -> Result:
-    viol: list[tuple[str, Optional[str]]] = []
+    viol: list[tuple[str, str | None]] = []
     info: dict = {"warnings": [], "ignored": [], "elided": [], "records_after_head": 0}
     ap = d / "ogentic-audit-release.json"
     if not ap.is_file():
@@ -2007,7 +3178,11 @@ def oracle_release(d: Path, ev: dict, *, expect_release_id=None, allow_unatteste
     if ev["has_pins"]:
         rj = accept(ev, key_id(pk), NS_RELEASE, ("release", sha256(att)))
         if rj in ("NotTrusted", "OutOfScope"):
-            return Result(1, "UntrustedSigner@attestation", "not_trusted" if rj == "NotTrusted" else "out_of_scope")
+            return Result(
+                1,
+                "UntrustedSigner@attestation",
+                "not_trusted" if rj == "NotTrusted" else "out_of_scope",
+            )
         if rj:
             return Result(1, f"{rj if rj != 'HeadMismatch' else 'RevokedKey'}@attestation")
     r = strict_verify(pk, signed_data(NS_RELEASE, att), sig)
@@ -2017,8 +3192,14 @@ def oracle_release(d: Path, ev: dict, *, expect_release_id=None, allow_unatteste
         doc = parse_cjson(att, 5)
         if doc["key_id"] != key_id(pk).hex() or doc["alg"] != "ed25519":
             return Result(1, "KeyIdMismatch@attestation")
-        names = [doc["release_id"]] + [f["path"] for f in doc["files"]] + [f.get("role", "") for f in doc["files"]]
-        names += [p["name"] for f in doc["files"] for p in f.get("parts", [])] + [lg["path"] for lg in doc["logs"]]
+        names = (
+            [doc["release_id"]]
+            + [f["path"] for f in doc["files"]]
+            + [f.get("role", "") for f in doc["files"]]
+        )
+        names += [p["name"] for f in doc["files"] for p in f.get("parts", [])] + [
+            lg["path"] for lg in doc["logs"]
+        ]
         if any(bad_string(s) for s in names):
             raise ValueError("forbidden character")
         for f in doc["files"]:
@@ -2047,15 +3228,28 @@ def oracle_release(d: Path, ev: dict, *, expect_release_id=None, allow_unatteste
         if len(data) != f["size"]:
             viol.append((f"FileAltered@file:{f['path']}", "size"))
             continue
-        bad_part = next((pt for pt in f.get("parts", []) if sha256(data[pt["offset"] : pt["offset"] + pt["length"]]).hex() != pt["sha256"]), None)
+        bad_part = next(
+            (
+                pt
+                for pt in f.get("parts", [])
+                if sha256(data[pt["offset"] : pt["offset"] + pt["length"]]).hex() != pt["sha256"]
+            ),
+            None,
+        )
         if bad_part:
             viol.append((f"FileAltered@file:{f['path']}#{bad_part['name']}", "part"))
         else:
-            viol.append((f"FileAltered@file:{f['path']}", "outside_parts" if f.get("parts") else "content"))
+            viol.append(
+                (f"FileAltered@file:{f['path']}", "outside_parts" if f.get("parts") else "content")
+            )
     log_dirs = {lg["path"] for lg in doc["logs"]}
     for lg in doc["logs"]:
         ld = d / lg["path"]
-        res = oracle_log(ld, ev, attested=lg["checkpoint"], forensic=True) if ld.is_dir() else Result(1, error="FileMissing")
+        res = (
+            oracle_log(ld, ev, attested=lg["checkpoint"], forensic=True)
+            if ld.is_dir()
+            else Result(1, error="FileMissing")
+        )
         if res.error == "HmacLog":
             viol.append((f"FormatDowngrade@log:{lg['path']}/s0", None))
             continue
@@ -2063,20 +3257,39 @@ def oracle_release(d: Path, ev: dict, *, expect_release_id=None, allow_unatteste
             return res
         for x in res.info["violations"]:
             loc = x.split("@", 1)
-            viol.append((f"{loc[0]}@log:{lg['path']}/{loc[1]}" if not loc[1].startswith("key:") else x, None))
+            viol.append(
+                (
+                    f"{loc[0]}@log:{lg['path']}/{loc[1]}" if not loc[1].startswith("key:") else x,
+                    None,
+                )
+            )
         info["elided"] += res.info["elided"]
         info["records_after_head"] += res.info["records_after_head"]
         info["warnings"] += res.info["warnings"]
         if res.exit == 4:
             pass
-    reserved = {"ogentic-audit-release.json", "ogentic-audit-release.json.sig", "ogentic-audit-signer.pub", "ogentic-audit-keys", "ogentic-audit-witness"}
+    reserved = {
+        "ogentic-audit-release.json",
+        "ogentic-audit-release.json.sig",
+        "ogentic-audit-signer.pub",
+        "ogentic-audit-keys",
+        "ogentic-audit-witness",
+    }
     for path in sorted(present):
         if path in covered or path.split("/")[0] in reserved:
             continue
-        if "/" in path and path.rsplit("/", 1)[0] in log_dirs and seg_index(path.rsplit("/", 1)[1]) is not None:
+        if (
+            "/" in path
+            and path.rsplit("/", 1)[0] in log_dirs
+            and seg_index(path.rsplit("/", 1)[1]) is not None
+        ):
             continue
         last_comp = path.split("/")[-1]
-        if last_comp in (".DS_Store", "Thumbs.db", "desktop.ini") or last_comp.startswith("._") or any(c in ("__MACOSX", ".Spotlight-V100", ".Trashes") for c in path.split("/")[:-1]):
+        if (
+            last_comp in (".DS_Store", "Thumbs.db", "desktop.ini")
+            or last_comp.startswith("._")
+            or any(c in ("__MACOSX", ".Spotlight-V100", ".Trashes") for c in path.split("/")[:-1])
+        ):
             info["ignored"].append(path)
             continue
         if allow_unattested:
@@ -2096,7 +3309,11 @@ def oracle_run(vdir: Path, r: dict) -> Result:
         cases = json.loads((vdir / r["target"]).read_text())
         exp = json.loads((vdir / r["expect"]["file"]).read_text())
         for c, e in zip(cases, exp):
-            got = strict_verify(bytes.fromhex(c["pub_key"]), bytes.fromhex(c["message"]), bytes.fromhex(c["signature"]))
+            got = strict_verify(
+                bytes.fromhex(c["pub_key"]),
+                bytes.fromhex(c["message"]),
+                bytes.fromhex(c["signature"]),
+            )
             if (got is None) != e["accept"]:
                 return Result(1, f"case {e['case']}")
         return Result(0)
@@ -2105,7 +3322,9 @@ def oracle_run(vdir: Path, r: dict) -> Result:
         ca, cb = parse_cjson(a.read_bytes(), 1), parse_cjson(b.read_bytes(), 1)
         for p, c in ((a, ca), (b, cb)):
             pk, s = parse_sshsig(Path(str(p) + ".sig").read_bytes(), NS_CHECKPOINT)
-            if key_id(pk).hex() != c["key_id"] or strict_verify(pk, signed_data(NS_CHECKPOINT, p.read_bytes()), s):
+            if key_id(pk).hex() != c["key_id"] or strict_verify(
+                pk, signed_data(NS_CHECKPOINT, p.read_bytes()), s
+            ):
                 return Result(3)
         same = all(ca[k] == cb[k] for k in ("key_id", "log_id", "segment", "record_id"))
         differ = ca["record_hash"] != cb["record_hash"] or ca["record_count"] != cb["record_count"]
@@ -2153,18 +3372,54 @@ def oracle_run(vdir: Path, r: dict) -> Result:
             first = sorted(target.glob("audit-*.cbor"))[0].read_bytes()
             if struct.unpack("<H", first[4:6])[0] == 1:
                 return Result(3, error="no implicit HMAC key")
-        cps = [(vdir / c, (vdir / (c + ".sig")) if (vdir / (c + ".sig")).exists() else None) for c in r.get("checkpoints", [])]
+        cps = [
+            (vdir / c, (vdir / (c + ".sig")) if (vdir / (c + ".sig")).exists() else None)
+            for c in r.get("checkpoints", [])
+        ]
         ws = [(vdir / w, vdir / (w + ".sig")) for w in r.get("witnesses", [])]
-        res = oracle_log(target, ev, expect_log_id=bytes.fromhex(r["expect_log_id"]) if "expect_log_id" in r else None, checkpoints=cps, witnesses=ws, forensic="segment" in r)
+        res = oracle_log(
+            target,
+            ev,
+            expect_log_id=bytes.fromhex(r["expect_log_id"]) if "expect_log_id" in r else None,
+            checkpoints=cps,
+            witnesses=ws,
+            forensic="segment" in r,
+        )
         if "segment" in r and res.exit == 1:
             seg = r["segment"]
-            keep = [x for x in res.info["violations"] if f"@s{seg}" in x or not x.split("@")[1].startswith("s") or x.startswith(("UntrustedSigner", "FormatDowngrade", "UnsupportedAlgorithm", "RevokedKey", "RetiredKey", "LogIdMismatch", "TransitionEquivocation", "CheckpointForDifferentLog"))]
+            keep = [
+                x
+                for x in res.info["violations"]
+                if f"@s{seg}" in x
+                or not x.split("@")[1].startswith("s")
+                or x.startswith(
+                    (
+                        "UntrustedSigner",
+                        "FormatDowngrade",
+                        "UnsupportedAlgorithm",
+                        "RevokedKey",
+                        "RetiredKey",
+                        "LogIdMismatch",
+                        "TransitionEquivocation",
+                        "CheckpointForDifferentLog",
+                    )
+                )
+            ]
             res.verdict = keep[0] if keep else "Violation"
-        res.info["warnings"] = res.info.get("warnings", []) + (["IgnoredStatement"] if t.warnings else [])
+        res.info["warnings"] = res.info.get("warnings", []) + (
+            ["IgnoredStatement"] if t.warnings else []
+        )
         return res
     if cmd == "verify-release":
-        res = oracle_release(vdir / r["target"], ev, expect_release_id=r.get("expect_release_id"), allow_unattested=r.get("allow_unattested", False))
-        res.info["warnings"] = res.info.get("warnings", []) + (["IgnoredStatement"] if t.warnings else [])
+        res = oracle_release(
+            vdir / r["target"],
+            ev,
+            expect_release_id=r.get("expect_release_id"),
+            allow_unattested=r.get("allow_unattested", False),
+        )
+        res.info["warnings"] = res.info.get("warnings", []) + (
+            ["IgnoredStatement"] if t.warnings else []
+        )
         return res
     raise ValueError(cmd)
 
@@ -2210,9 +3465,19 @@ def verify_all() -> int:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--check", action="store_true", help="fail if committed vectors differ from what this script produces")
-    ap.add_argument("--verify", action="store_true", help="run the independent oracle over every run and compare with the expected results")
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    ap.add_argument(
+        "--check",
+        action="store_true",
+        help="fail if committed vectors differ from what this script produces",
+    )
+    ap.add_argument(
+        "--verify",
+        action="store_true",
+        help="run the independent oracle over every run and compare with the expected results",
+    )
     a = ap.parse_args()
     if a.verify:
         return verify_all()
