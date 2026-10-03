@@ -1046,6 +1046,36 @@ pub fn verify_release(
             .collect(),
         witnesses: Vec::new(),
     };
+    // Trust-level findings come first (spec §9.3 item 3). They are about
+    // the keys, so they hold whether or not the release carries a log.
+    for (k, a, b) in &eval.equivocations {
+        rep.violations.push(ReleaseFinding {
+            item: ReleaseItem::Key { key_id: *k },
+            kind: ViolationKind::TransitionEquivocation,
+            reason: None,
+            evidence: Value::object([
+                ("key_id_hex", Value::str(k.to_hex())),
+                (
+                    "statement_sha256",
+                    Value::Array(vec![Value::str(hex(a)), Value::str(hex(b))]),
+                ),
+            ]),
+            message: "this key signed two different successions; neither is followed".into(),
+        });
+    }
+    // Reserved entries that authenticate themselves: statements in
+    // `ogentic-audit-keys/` that parsed with every signature verified.
+    let keys_dir = dir.join(KEYS_DIR);
+    let mut authentic: BTreeSet<String> = BTreeSet::new();
+    for p in trust.bundle_statement_paths() {
+        let p = Path::new(p);
+        if let (Some(name), true) = (p.file_name(), p.parent() == Some(keys_dir.as_path())) {
+            let name = name.to_string_lossy();
+            for suffix in ["", ".sig", ".accept.sig"] {
+                authentic.insert(format!("{KEYS_DIR}/{name}{suffix}"));
+            }
+        }
+    }
     let fail = |rep: &mut ReleaseReport, kind, reason: Option<&str>, msg: String| {
         rep.violations.push(ReleaseFinding {
             item: ReleaseItem::Attestation,
@@ -1399,6 +1429,9 @@ pub fn verify_release(
         match verify_log(&log_dir, &eval, &opts) {
             Ok(r) => {
                 for v in &r.violations {
+                    if matches!(v.location, super::report::Location::Key { .. }) {
+                        continue; // reported once, above
+                    }
                     let (s, rec) = match &v.location {
                         super::report::Location::Segment { segment } => (Some(*segment), None),
                         super::report::Location::Record {
@@ -1406,14 +1439,8 @@ pub fn verify_release(
                         } => (Some(*segment), Some(*record)),
                         _ => (None, None),
                     };
-                    let item = match &v.location {
-                        super::report::Location::Key { key_id } => {
-                            ReleaseItem::Key { key_id: *key_id }
-                        },
-                        _ => li(s, rec),
-                    };
                     rep.violations.push(ReleaseFinding {
-                        item,
+                        item: li(s, rec),
                         kind: v.kind,
                         reason: v.reason.clone(),
                         evidence: v.evidence.clone(),
@@ -1466,12 +1493,85 @@ pub fn verify_release(
                 });
                 all_logs_trusted = false;
             },
+            Err(SignedVerifyError::NewerFormat(v)) => {
+                // The signed attestation says this is a v0.2 log, so a
+                // different version is a change to it, not a reason to
+                // drop every other finding (spec §11.4 L2).
+                rep.violations.push(ReleaseFinding {
+                    item: li(Some(0), None),
+                    kind: ViolationKind::UnknownVersion,
+                    reason: None,
+                    evidence: Value::object([
+                        ("expected_version", Value::Int(2)),
+                        ("actual_version", Value::Int(u64::from(v))),
+                    ]),
+                    message: format!("the attestation names a format 0x0002 log, but segment 0 says format 0x{v:04x}"),
+                });
+                rep.logs.push(ReleaseLog {
+                    path: path.clone(),
+                    report: None,
+                });
+                all_logs_trusted = false;
+            },
             Err(SignedVerifyError::Io(m)) => return Err(ReleaseError::Io(m)),
             Err(e) => return Err(ReleaseError::Invalid(e.to_string())),
         }
     }
 
-    // U1.
+    // Witness co-signatures (informational).
+    let mut witness_files: Vec<(PathBuf, bool)> =
+        opts.witnesses.iter().map(|p| (p.clone(), false)).collect();
+    if let Ok(rd) = std::fs::read_dir(dir.join(WITNESS_DIR)) {
+        let mut found: Vec<PathBuf> = rd
+            .filter_map(Result::ok)
+            .map(|e| e.path())
+            .filter(|p| p.extension().is_some_and(|x| x == "json"))
+            .collect();
+        found.sort();
+        witness_files.extend(found.into_iter().map(|p| (p, true)));
+    }
+    for (wf, bundled) in witness_files {
+        let shown = wf.display().to_string();
+        let mut sig_ok = false;
+        let res = (|| -> Result<(String, WitnessCosignature), String> {
+            let b = std::fs::read(&wf).map_err(|e| e.to_string())?;
+            let w = WitnessCosignature::parse(&b)?;
+            let mut s = wf.as_os_str().to_os_string();
+            s.push(".sig");
+            let sig = std::fs::read(PathBuf::from(s)).map_err(|e| format!("signature: {e}"))?;
+            verify_detached_by(&sig, NS_WITNESS, &b, &w.witness_key_id)?;
+            sig_ok = true;
+            let principal = eval
+                .accept(&w.witness_key_id, NS_WITNESS, &Object::Witness)
+                .map(|e| e.principal.clone())
+                .map_err(|_| "the witness key is not trusted as a witness".to_string())?;
+            Ok((principal, w))
+        })();
+        if bundled && sig_ok {
+            if let Some(name) = wf.file_name() {
+                let name = name.to_string_lossy();
+                authentic.insert(format!("{WITNESS_DIR}/{name}"));
+                authentic.insert(format!("{WITNESS_DIR}/{name}.sig"));
+            }
+        }
+        match res {
+            Ok(w) => rep.witnesses.push(w),
+            Err(m) => rep.warnings.push(Warning {
+                kind: "IgnoredWitness".into(),
+                item: shown,
+                message: m,
+            }),
+        }
+    }
+
+    // U1. Of the reserved entries, only the three top-level files and the
+    // self-authenticating statements and co-signatures are exempt; any
+    // other file under a reserved folder is planted (spec §11.1).
+    let reserved_ok = |e: &Entry| {
+        e.regular
+            && ([ATTESTATION_FILE, ATTESTATION_SIG_FILE, SIGNER_PUB_FILE].contains(&e.rel.as_str())
+                || authentic.contains(&e.rel))
+    };
     let log_dirs: BTreeSet<&str> = att.logs.iter().map(|(p, _)| p.as_str()).collect();
     for e in &entries {
         let n = names::nfc(&e.rel);
@@ -1490,7 +1590,7 @@ pub fn verify_release(
             });
             continue;
         }
-        if covered.contains(&n) || names::is_reserved(&n) || is_segment_of(&n, &log_dirs) {
+        if covered.contains(&n) || reserved_ok(e) || is_segment_of(&n, &log_dirs) {
             continue;
         }
         if names::is_os_litter(&n) {
@@ -1515,42 +1615,6 @@ pub fn verify_release(
                 evidence: Value::object([]),
                 message: "not covered by the signature".into(),
             });
-        }
-    }
-
-    // Witness co-signatures (informational).
-    let mut witness_files: Vec<PathBuf> = opts.witnesses.clone();
-    if let Ok(rd) = std::fs::read_dir(dir.join(WITNESS_DIR)) {
-        let mut found: Vec<PathBuf> = rd
-            .filter_map(Result::ok)
-            .map(|e| e.path())
-            .filter(|p| p.extension().is_some_and(|x| x == "json"))
-            .collect();
-        found.sort();
-        witness_files.extend(found);
-    }
-    for wf in witness_files {
-        let shown = wf.display().to_string();
-        let res = (|| -> Result<(String, WitnessCosignature), String> {
-            let b = std::fs::read(&wf).map_err(|e| e.to_string())?;
-            let w = WitnessCosignature::parse(&b)?;
-            let mut s = wf.as_os_str().to_os_string();
-            s.push(".sig");
-            let sig = std::fs::read(PathBuf::from(s)).map_err(|e| format!("signature: {e}"))?;
-            verify_detached_by(&sig, NS_WITNESS, &b, &w.witness_key_id)?;
-            let principal = eval
-                .accept(&w.witness_key_id, NS_WITNESS, &Object::Witness)
-                .map(|e| e.principal.clone())
-                .map_err(|_| "the witness key is not trusted as a witness".to_string())?;
-            Ok((principal, w))
-        })();
-        match res {
-            Ok(w) => rep.witnesses.push(w),
-            Err(m) => rep.warnings.push(Warning {
-                kind: "IgnoredWitness".into(),
-                item: shown,
-                message: m,
-            }),
         }
     }
 

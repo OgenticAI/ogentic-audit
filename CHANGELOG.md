@@ -49,11 +49,24 @@ existing logs verify unmodified.
   `checkpoint()`, `attest_release()`, `verify_release()`, typed exceptions per
   kind, `SignerNotPinnedError`, and `python -m ogentic_audit` with the same
   output and exit codes as the CLI.
-- **Golden vectors** `tests/vectors/v0.2` (100 vectors, 121 runs) from an
+- **Golden vectors** `tests/vectors/v0.2` (110 vectors, 132 runs) from an
   independent Python implementation (`tools/gen_vectors_v02.py`), with an oracle
   mode; Rust, CLI and Python conformance tests.
 - **Release workflow:** a sigstore bundle per artifact and `SHA256SUMS`, so a
   downloaded verifier can be checked offline.
+- **Adversarial tests** (`attack_keys`, `attack_downgrade`,
+  `attack_truncation_splice_replay`, CLI `attack_cli`): 112 attacks on keys,
+  pinning, downgrade, truncation, splicing and replay, kept as regression
+  tests. Fixed from them before release: a retired or revoked key's final
+  head must be in the log (cutting a log below it, or forging a log under its
+  `log_id` with the stolen key, is `CheckpointMismatch`); `verify-release`
+  reports `TransitionEquivocation` even with no log; only authenticated
+  statements and co-signatures are exempt inside the reserved folders; a
+  header-only segment is no successor and cannot follow `log.sealed`; plain
+  64-hex pins are fingerprints; a newer log version or a non-regular segment
+  inside a release is a finding, not an error that hides the report; format
+  detection reads segment 0. Each fixed class also has a golden vector, and
+  the independent oracle applies the same rules.
 
 ### Changed (breaking) — migration to 0.4.0
 

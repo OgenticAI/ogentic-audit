@@ -274,16 +274,21 @@ impl TrustContext {
         self.push_pin(fingerprint, None, principal, scope)
     }
 
-    /// Pin `text`, which is a public key in any §3.7 form or a fingerprint.
+    /// Pin `text`: an OpenSSH or PEM public key, or a fingerprint in any
+    /// §3.7 form. Plain 64 hex digits are read as a **fingerprint**, the
+    /// form people are given to check; a raw-hex public key is pinned
+    /// with [`pin_key`](Self::pin_key) after [`PublicKey::parse`].
     pub fn pin(
         &mut self,
         text: &str,
         principal: Option<&str>,
         scope: Scope,
     ) -> Result<(), TrustError> {
-        match PublicKey::parse(text) {
-            Ok(k) => self.pin_key(k, principal, scope),
-            Err(_) => self.pin_fingerprint(Fingerprint::parse(text)?, principal, scope),
+        let t = text.trim();
+        if t.starts_with("ssh-ed25519 ") || t.starts_with("-----BEGIN") {
+            self.pin_key(PublicKey::parse(t)?, principal, scope)
+        } else {
+            self.pin_fingerprint(Fingerprint::parse(t)?, principal, scope)
         }
     }
 
@@ -448,6 +453,20 @@ impl TrustContext {
             t.add_statements(dir, false)?;
         }
         Ok(t)
+    }
+
+    /// Paths of the statements loaded from a bundle, each parsed with
+    /// every signature verified (ignored ones are not listed).
+    #[must_use]
+    pub fn bundle_statement_paths(&self) -> BTreeSet<&str> {
+        let t = self.transitions.iter().map(|t| &t.source);
+        let r = self.revocations.iter().map(|r| &r.source);
+        t.chain(r)
+            .filter_map(|s| match s {
+                Source::Bundle(p) => Some(p.as_str()),
+                Source::Operator(_) => None,
+            })
+            .collect()
     }
 
     /// Evaluate the trust state (spec §9.5).
@@ -777,6 +796,16 @@ impl Evaluated {
     #[must_use]
     pub fn known_key(&self, key_id: &Fingerprint) -> Option<&PublicKey> {
         self.keys.get(key_id)
+    }
+
+    /// The log heads that `key_id`'s retirement and authority revocation
+    /// name. Each must be in its log with that `record_hash` (spec §9.3
+    /// item 2, §9.4), or the key's records there are not accepted.
+    #[must_use]
+    pub fn statement_heads(&self, key_id: &Fingerprint) -> Vec<Head> {
+        let retired = self.retired.get(key_id).into_iter().flat_map(|r| &r.heads);
+        let revoked = self.revoked.get(key_id).into_iter().flat_map(|c| &c.heads);
+        retired.chain(revoked).copied().collect()
     }
 
     /// Whether the key was retired by a followed transition.

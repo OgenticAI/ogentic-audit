@@ -271,7 +271,9 @@ fn checkpoint_sign_witness_and_verify() {
         .assert()
         .code(0)
         .stdout(predicate::str::contains("witnessed by auditor"))
-        .stdout(predicate::str::contains("the end of the log is confirmed"));
+        .stdout(predicate::str::contains(
+            "ends where the checkpoint observed at",
+        ));
     // Truncate: the checkpoint names a record that is gone.
     let seg = log.join("audit-0000.cbor");
     let len = std::fs::metadata(&seg).unwrap().len();

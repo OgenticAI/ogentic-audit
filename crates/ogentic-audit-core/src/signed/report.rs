@@ -688,7 +688,17 @@ impl SignedVerifyReport {
                     if l.sealed {
                         out.push_str(" · sealed: this is the end of the log\n");
                     } else {
-                        out.push_str(" · the end of the log is confirmed\n");
+                        // A checkpoint shows the log reached its head when
+                        // it was made, not that nothing was written later.
+                        match self.checkpoints.iter().find(|c| c.anchors_head) {
+                            Some(c) => out.push_str(&format!(
+                                " · ends where the checkpoint observed at {} says; anything written after that is not covered\n",
+                                escape(c.observed_at.as_deref().unwrap_or("an unknown time"))
+                            )),
+                            None => out.push_str(
+                                " · ends at the head the release attests; anything after it is not covered\n",
+                            ),
+                        }
                     }
                 } else {
                     out.push_str(

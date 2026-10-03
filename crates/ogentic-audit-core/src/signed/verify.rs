@@ -30,16 +30,22 @@ use super::{hex, sha256, FORMAT_VERSION_SIGNED, NS_CHECKPOINT, NS_RECORD, NS_WIT
 use crate::cbor::Value as Cbor;
 use crate::verifier::{Verdict, ViolationKind, MAX_TS_DRIFT_MS};
 
-/// The format version of the log in `dir`: the `version` field of its
-/// lowest-numbered segment. `None` when there are no segment files;
-/// `Some(0)` when the first segment is too short or lacks the magic.
+/// The format version of the log in `dir`: the `version` field of
+/// segment 0, which decides how the log is checked (spec §8.1). `None`
+/// when there are no segment files; `Some(0)` when segment 0 is missing,
+/// is not a regular file, is too short, or lacks the magic. The signed
+/// verifier then reports what is wrong with it.
 pub fn log_format(dir: impl AsRef<Path>) -> io::Result<Option<u16>> {
     let (segments, _) = list_segments(dir.as_ref())?;
-    let Some(first) = segments.first() else {
+    if segments.is_empty() {
         return Ok(None);
-    };
+    }
+    let path = segment_path(dir.as_ref(), 0);
+    if segments[0] != 0 || !is_regular(&path) {
+        return Ok(Some(0));
+    }
     let mut buf = [0u8; 6];
-    let mut f = File::open(segment_path(dir.as_ref(), *first))?;
+    let mut f = File::open(path)?;
     let n = read_up_to(&mut f, &mut buf)?;
     if n < 6 || &buf[..4] != crate::segment::FORMAT_MAGIC {
         return Ok(Some(0));
@@ -61,6 +67,12 @@ fn read_up_to(r: &mut impl Read, buf: &mut [u8]) -> io::Result<usize> {
 
 fn segment_path(dir: &Path, index: u16) -> PathBuf {
     dir.join(format!("audit-{index:04}.cbor"))
+}
+
+/// A regular file (after following links). A directory or a FIFO named
+/// like a segment is never opened: reading one fails or blocks.
+fn is_regular(path: &Path) -> bool {
+    std::fs::metadata(path).is_ok_and(|m| m.is_file())
 }
 
 /// Segment indices present (sorted) and near-miss names.
@@ -312,6 +324,7 @@ pub(crate) fn verify_log(
     w.run(&segments).map_err(io_err)?;
 
     let anchored_by_cp = w.check_checkpoints(&checkpoints)?;
+    w.check_statement_heads();
     w.check_attested();
     w.finish(anchored_by_cp);
     Ok(w.report)
@@ -463,6 +476,16 @@ impl<'a> Walk<'a> {
         is_last: bool,
     ) -> io::Result<Option<[u8; 32]>> {
         let path = segment_path(self.dir, n);
+        if !is_regular(&path) {
+            self.violation(Finding {
+                kind: ViolationKind::HeaderCorrupt,
+                reason: Some("NotRegularFile".into()),
+                location: Location::Segment { segment: n },
+                evidence: Value::Null,
+                message: format!("segment {n} is not a regular file"),
+            });
+            return Ok(None);
+        }
         let mut file = File::open(&path)?;
         let file_len = file.metadata()?.len();
         let mut hb = [0u8; HEADER_LEN];
@@ -480,6 +503,11 @@ impl<'a> Walk<'a> {
             self.report.log.key_id = Some(Fingerprint(header.key_id));
             if !self.segment0_trust(&header) {
                 return Ok(None);
+            }
+            for hd in self.statement_heads() {
+                self.interesting
+                    .entry((hd.segment, hd.record_id))
+                    .or_insert(None);
             }
         }
 
@@ -796,6 +824,35 @@ impl<'a> Walk<'a> {
                 item: format!("s{n}"),
                 message: "the last segment has a header but no records; a header is not signed, so it was not counted".into(),
             });
+            // Not counted means it is no successor either (spec §7
+            // inv. 2, 6, 7): anyone can forge it from public data.
+            if let Some((ss, sr)) = self.sealed_at {
+                self.violation(Finding {
+                    kind: ViolationKind::SealedLogExtended,
+                    reason: None,
+                    location: Location::Segment { segment: n },
+                    evidence: Value::object([("sealed_at", Value::str(format!("s{ss}r{sr}")))]),
+                    message: format!(
+                        "segment {n} was started after the log was sealed at s{ss}r{sr}"
+                    ),
+                });
+                return Ok(None);
+            }
+            if self
+                .last
+                .as_ref()
+                .is_some_and(|l| l.event == EVENT_FINALIZED)
+            {
+                self.ended_in_finalized_without_successor = true;
+                self.report.warnings.push(Warning {
+                    kind: "RolledOverWithoutSuccessor".into(),
+                    item: format!("s{}", n - 1),
+                    message: format!(
+                        "segment {} was rolled over, but segment {n} holds no signed record",
+                        n - 1
+                    ),
+                });
+            }
         }
         if finalized_at.is_some() && is_last {
             self.ended_in_finalized_without_successor = true;
@@ -1270,6 +1327,53 @@ impl<'a> Walk<'a> {
         Ok(anchors)
     }
 
+    /// Heads named by the signer's retirement or authority revocation for
+    /// this log (empty unless the signer is trusted and has one).
+    fn statement_heads(&self) -> Vec<Head> {
+        match &self.seg0 {
+            Some(h) if self.signer_ok => self
+                .eval
+                .statement_heads(&Fingerprint(h.key_id))
+                .into_iter()
+                .filter(|hd| hd.log_id == h.log_id)
+                .collect(),
+            _ => Vec::new(),
+        }
+    }
+
+    /// Spec §9.3 item 2, §9.4: a retired or revoked key's records count
+    /// only up to a head its statement names, and that head MUST be in the
+    /// log, otherwise `CheckpointMismatch`. A different record at the head
+    /// is already reported by R8; this catches a head that is not there:
+    /// the log was cut below it, or another log was written under its
+    /// `log_id` with a stolen key.
+    fn check_statement_heads(&mut self) {
+        if !self.walk_complete && !self.report.violations.is_empty() {
+            return;
+        }
+        for head in self.statement_heads() {
+            let pos = (head.segment, head.record_id);
+            let found = self.interesting.get(&pos).copied().flatten();
+            if let Some((hash, ordinal)) = found {
+                if hash != head.record_hash || ordinal == head.record_count {
+                    continue;
+                }
+            }
+            self.violation_nostop(Finding {
+                kind: ViolationKind::CheckpointMismatch,
+                reason: None,
+                location: rec_loc(head.segment, head.record_id, head.record_count, 0),
+                evidence: Value::object([
+                    ("statement_record_hash_hex", Value::str(hex(&head.record_hash))),
+                    ("statement_record_count", Value::Int(head.record_count)),
+                    ("actual_record_hash_hex", found.map(|(h, _)| hex(&h)).into()),
+                    ("records_inspected", Value::Int(self.report.log.records_inspected)),
+                ]),
+                message: "a key statement names this record as the log's final head, but the log does not contain it: history was cut, or the log was replaced".into(),
+            });
+        }
+    }
+
     fn violation_nostop(&mut self, f: Finding) {
         self.report.violations.push(f);
     }
@@ -1424,7 +1528,11 @@ pub fn visit_records(
     let dir = dir.as_ref();
     let (segments, _) = list_segments(dir)?;
     for n in segments {
-        let mut file = File::open(segment_path(dir, n))?;
+        let path = segment_path(dir, n);
+        if !is_regular(&path) {
+            return Ok(());
+        }
+        let mut file = File::open(path)?;
         let len = file.metadata()?.len();
         if len < HEADER_LEN as u64 {
             return Ok(());

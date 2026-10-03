@@ -815,7 +815,15 @@ fn release_log_truncated_or_replaced() {
 fn pins_refuse_weak_keys_and_bad_fingerprints() {
     let mut t = TrustContext::new();
     for enc in ogentic_audit_core::signed::ed25519::SMALL_ORDER_ENCODINGS {
-        assert!(t.pin(enc, None, Scope::DEFAULT).is_err(), "{enc}");
+        // Plain hex is a fingerprint to `pin`; a raw-hex key goes to `pin_key`.
+        let key = ogentic_audit_core::signed::PublicKey::parse(enc).unwrap();
+        assert!(t.pin_key(key, None, Scope::DEFAULT).is_err(), "{enc}");
+        let fp = key.fingerprint().to_hex();
+        assert!(t.pin(&fp, None, Scope::DEFAULT).is_err(), "{enc}");
+        assert!(
+            t.pin(&key.to_openssh(""), None, Scope::DEFAULT).is_err(),
+            "{enc}"
+        );
     }
     assert!(t.pin(&"ab".repeat(31), None, Scope::DEFAULT).is_err());
     assert!(t
