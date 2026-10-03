@@ -15,10 +15,9 @@ pub fn run(global: &GlobalArgs, args: VerifyArgs) -> Result<ExitCodeKind, AppErr
         Some(path) => Some(crate::checkpoint_file::load(path)?),
         None => None,
     };
-    let opts = VerifyOptions {
-        forensic_mode: args.forensic,
-        checkpoint,
-    };
+    let opts = VerifyOptions::new()
+        .forensic(args.forensic)
+        .checkpoint(checkpoint);
 
     // --segment scoping: validate the argument range first.
     // Values > 65535 are user errors (ArgumentError, exit 3), not I/O errors.
@@ -80,7 +79,7 @@ pub fn run(global: &GlobalArgs, args: VerifyArgs) -> Result<ExitCodeKind, AppErr
 
     match report.verdict {
         Verdict::Verified => Ok(ExitCodeKind::Success),
-        Verdict::Violation => Ok(ExitCodeKind::VerificationFailed),
+        _ => Ok(ExitCodeKind::VerificationFailed),
     }
 }
 
@@ -111,7 +110,7 @@ fn print_summary(report: &ogentic_audit_core::VerifyReport) {
                 v.kind, v.location.segment_index, rid
             );
         },
-        (Verdict::Violation, None) => {
+        _ => {
             println!("✗ Verification failed · Unknown violation");
         },
     }
@@ -169,7 +168,7 @@ fn print_json(report: &ogentic_audit_core::VerifyReport) -> Result<(), AppError>
     // relying on those keys must update to "status".
     let status = match report.verdict {
         Verdict::Verified => "ok",
-        Verdict::Violation => "tampered",
+        _ => "tampered",
     };
 
     let log_block = json!({
@@ -228,7 +227,7 @@ fn print_json(report: &ogentic_audit_core::VerifyReport) -> Result<(), AppError>
                 "log": log_block,
             })
         },
-        (Verdict::Violation, None) => {
+        _ => {
             eprintln!("violation: unknown — verdict was Violation but no violation populated");
             json!({
                 "status": status,

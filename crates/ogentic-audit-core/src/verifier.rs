@@ -66,6 +66,7 @@ pub const MAX_TS_DRIFT_MS: i64 = 60_000;
 /// Verifier-side options. The `mode` field controls whether the
 /// verifier stops at the first violation or continues for forensics.
 #[derive(Debug, Clone, Default)]
+#[non_exhaustive]
 pub struct VerifyOptions {
     /// Continue scanning past the first violation. The first violation
     /// still appears in `report.violation`; the remainder accumulate
@@ -79,6 +80,28 @@ pub struct VerifyOptions {
     /// answer whether this is the same history as before. See
     /// [`crate::checkpoint`].
     pub checkpoint: Option<Checkpoint>,
+}
+
+impl VerifyOptions {
+    /// Default options (stop at the first violation, no checkpoint).
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Continue past the first violation.
+    #[must_use]
+    pub fn forensic(mut self, on: bool) -> Self {
+        self.forensic_mode = on;
+        self
+    }
+
+    /// Check the log against a previously observed head.
+    #[must_use]
+    pub fn checkpoint(mut self, checkpoint: Option<Checkpoint>) -> Self {
+        self.checkpoint = checkpoint;
+        self
+    }
 }
 
 /// Top-level verifier — owns the signing key handle.
@@ -516,6 +539,7 @@ impl fmt::Debug for Verifier {
 /// Top-level verifier outcome. Maps onto the JSON shape defined in
 /// `docs/spec/violation-report.md`.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct VerifyReport {
     /// The on-disk format version this report was produced against.
     pub format_version: u16,
@@ -545,24 +569,34 @@ impl VerifyReport {
                 Some(rid) => format!("{}@s{}r{}", v.kind.as_str(), v.location.segment_index, rid),
                 None => format!("{}@s{}", v.kind.as_str(), v.location.segment_index),
             },
-            (Verdict::Violation, None) => "Violation".to_string(),
+            (Verdict::SelfConsistent, _) => "SelfConsistent".to_string(),
+            _ => "Violation".to_string(),
         }
     }
 }
 
 /// Coarse-grained verdict.
+///
+/// A wildcard arm over this enum MUST fail closed: an unknown verdict is
+/// not a verification.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum Verdict {
     /// Chain intact end-to-end.
     Verified,
     /// At least one violation found.
     Violation,
+    /// Signed logs only (format `0x0002`): no violation, but either no key
+    /// was supplied or the log has no records to check a key against.
+    /// **Not a verification.** Never produced for format `0x0001`.
+    SelfConsistent,
 }
 
 /// Per-log summary block. Carries enough context for an auditor to
 /// reconcile the report against the log directory without re-running
 /// the verifier.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct LogSummary {
     /// Filesystem path of the log directory.
     pub log_dir: PathBuf,
@@ -587,6 +621,7 @@ pub struct LogSummary {
 /// `evidence` carry enough context for an auditor to reproduce the
 /// failure.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct Violation {
     /// High-level violation category. Matches the nine kinds in the
     /// spec's violation taxonomy.
@@ -600,8 +635,12 @@ pub struct Violation {
     pub message: String,
 }
 
-/// Violation category. Maps 1:1 onto `docs/spec/v0.1.md`'s table.
+/// Violation category. Maps 1:1 onto `docs/spec/v0.1.md`'s table, plus
+/// the kinds of `docs/spec/v0.2.md` §14 (signed logs and releases).
+///
+/// A wildcard arm over this enum MUST fail closed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum ViolationKind {
     /// Computed HMAC ≠ stored HMAC.
     HmacMismatch,
@@ -629,6 +668,40 @@ pub enum ViolationKind {
     /// chain was cut short of history that was previously observed.
     /// Only produced when a checkpoint is supplied.
     CheckpointTruncated,
+    /// v0.2: a signature does not verify strictly (reason names how).
+    SignatureInvalid,
+    /// v0.2: signed by a key that is not trusted, or not for this purpose.
+    UntrustedSigner,
+    /// v0.2: signed by a revoked key outside its cut points.
+    RevokedKey,
+    /// v0.2: signed by a retired key outside its final heads and releases.
+    RetiredKey,
+    /// v0.2: two verified transitions from one key.
+    TransitionEquivocation,
+    /// v0.2: `sig_alg` differs within a log.
+    AlgorithmMismatch,
+    /// v0.2: `sig_alg` not implemented.
+    UnsupportedAlgorithm,
+    /// v0.2: `log_id` differs within a log, or from the expected one.
+    LogIdMismatch,
+    /// v0.2: a record after `log.sealed`.
+    SealedLogExtended,
+    /// v0.2: a checkpoint by this log's signer names a different log.
+    CheckpointForDifferentLog,
+    /// v0.2: an HMAC (`0x0001`) part where a signed one was required.
+    FormatDowngrade,
+    /// v0.2 release: the attestation file is missing.
+    AttestationMissing,
+    /// v0.2 release: the attestation is not canonical or breaks the schema.
+    AttestationMalformed,
+    /// v0.2 release: `release_id` is not the expected one.
+    ReleaseIdMismatch,
+    /// v0.2 release: an attested file is missing.
+    FileMissing,
+    /// v0.2 release: an attested file differs from what was signed.
+    FileAltered,
+    /// v0.2 release: a file the attestation does not cover.
+    UnattestedFile,
 }
 
 impl ViolationKind {
@@ -647,6 +720,23 @@ impl ViolationKind {
             ViolationKind::UnknownVersion => "UnknownVersion",
             ViolationKind::CheckpointMismatch => "CheckpointMismatch",
             ViolationKind::CheckpointTruncated => "CheckpointTruncated",
+            ViolationKind::SignatureInvalid => "SignatureInvalid",
+            ViolationKind::UntrustedSigner => "UntrustedSigner",
+            ViolationKind::RevokedKey => "RevokedKey",
+            ViolationKind::RetiredKey => "RetiredKey",
+            ViolationKind::TransitionEquivocation => "TransitionEquivocation",
+            ViolationKind::AlgorithmMismatch => "AlgorithmMismatch",
+            ViolationKind::UnsupportedAlgorithm => "UnsupportedAlgorithm",
+            ViolationKind::LogIdMismatch => "LogIdMismatch",
+            ViolationKind::SealedLogExtended => "SealedLogExtended",
+            ViolationKind::CheckpointForDifferentLog => "CheckpointForDifferentLog",
+            ViolationKind::FormatDowngrade => "FormatDowngrade",
+            ViolationKind::AttestationMissing => "AttestationMissing",
+            ViolationKind::AttestationMalformed => "AttestationMalformed",
+            ViolationKind::ReleaseIdMismatch => "ReleaseIdMismatch",
+            ViolationKind::FileMissing => "FileMissing",
+            ViolationKind::FileAltered => "FileAltered",
+            ViolationKind::UnattestedFile => "UnattestedFile",
         }
     }
 }
@@ -667,6 +757,7 @@ pub struct ViolationLocation {
 /// Kind-specific evidence. The shape of each variant mirrors
 /// `docs/spec/violation-report.md`.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub enum ViolationEvidence {
     /// HMAC didn't match.
     HmacMismatch {
@@ -780,6 +871,7 @@ pub enum ViolationEvidence {
 
 /// `RecordCorrupt` sub-kind.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub enum RecordCorruptSubkind {
     /// `len_trailer != len_prefix`, or file ended mid-record.
     TornTail,
@@ -792,6 +884,7 @@ pub enum RecordCorruptSubkind {
 
 /// `HeaderCorrupt` sub-kind.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub enum HeaderCorruptSubkind {
     /// CRC32 over `[0, 72)` didn't match the value at offset 72.
     CrcMismatch {

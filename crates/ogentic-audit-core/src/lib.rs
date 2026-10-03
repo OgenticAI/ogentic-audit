@@ -83,6 +83,7 @@ pub mod key;
 pub mod policy;
 pub mod reader;
 pub mod segment;
+pub mod signed;
 pub mod sync_compat;
 pub mod verifier;
 pub mod writer;

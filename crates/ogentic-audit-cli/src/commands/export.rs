@@ -83,7 +83,7 @@ pub fn run(global: &GlobalArgs, args: ExportArgs) -> Result<ExitCodeKind, AppErr
     pdf.skip();
     let verdict_line = match &report.verdict {
         Verdict::Verified => "VERIFIED".to_string(),
-        Verdict::Violation => format!("VIOLATION - {}", report.compact_verdict()),
+        _ => format!("VIOLATION - {}", report.compact_verdict()),
     };
     pdf.h2(&format!("Verdict: {verdict_line}"));
     pdf.skip();

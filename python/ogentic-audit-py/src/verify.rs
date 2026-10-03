@@ -62,10 +62,9 @@ pub fn verify(
         Some(d) => Some(parse_checkpoint_dict(d)?),
         None => None,
     };
-    let opts = VerifyOptions {
-        forensic_mode: forensic,
-        checkpoint,
-    };
+    let opts = VerifyOptions::new()
+        .forensic(forensic)
+        .checkpoint(checkpoint);
     let report = verifier
         .verify_with_options(log_dir, opts)
         .map_err(map_verify_error)?;
@@ -136,7 +135,7 @@ impl PyVerifyReport {
         let compact = report.compact_verdict();
         let verdict_kind = match &report.verdict {
             Verdict::Verified => "Verified".to_string(),
-            Verdict::Violation => report
+            _ => report
                 .violation
                 .as_ref()
                 .map(|v| format!("{:?}", v.kind))
