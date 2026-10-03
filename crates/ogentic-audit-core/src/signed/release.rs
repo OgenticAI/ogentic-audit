@@ -1412,7 +1412,7 @@ pub fn verify_release(
                         message: v.message.clone(),
                     });
                 }
-                for w in &r.warnings {
+                for w in r.warnings.iter().filter(|w| w.kind != "IgnoredStatement") {
                     rep.warnings.push(Warning {
                         kind: w.kind.clone(),
                         item: format!("log:{path}/{}", w.item),

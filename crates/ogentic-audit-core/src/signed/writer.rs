@@ -312,10 +312,12 @@ impl SignedWriter {
                 input.event
             )));
         }
-        let nonce = self.next_nonce();
-        let body = encode_body(&input.actor, &input.payload, &nonce);
+        // The rollover decision uses the body's length, which does not
+        // depend on the nonce; the nonce is drawn after any rollover, so
+        // nonces are consumed in the order records are written.
         if self.config.finalize_on_rollover && self.current.next_record_id > 0 {
-            let this = self.framed_len(&input, &body);
+            let sized = encode_body(&input.actor, &input.payload, &[0u8; 32]);
+            let this = self.framed_len(&input, &sized);
             let fin = self.framed_len(
                 &finalize_input(&input.ts_wall, input.ts_mono_delta, u64::MAX, &[0; 32]),
                 &[0u8; 160],
@@ -324,6 +326,8 @@ impl SignedWriter {
                 self.rollover()?;
             }
         }
+        let nonce = self.next_nonce();
+        let body = encode_body(&input.actor, &input.payload, &nonce);
         self.write_record(&input, &body)
     }
 

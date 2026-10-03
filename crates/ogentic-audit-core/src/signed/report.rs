@@ -404,6 +404,9 @@ pub struct SignedVerifyReport {
     pub violations: Vec<Finding>,
     /// Warnings.
     pub warnings: Vec<Warning>,
+    /// `--segment N`: the segment, and how many violations elsewhere were
+    /// left out of `violations`.
+    pub segment_filter: Option<(u16, usize)>,
 }
 
 pub(crate) fn thousands(n: u64) -> String {
@@ -548,26 +551,16 @@ impl SignedVerifyReport {
     }
 
     /// Narrow to segment `n` (spec §13.4): remove violations located in
-    /// other segments, keep every log-level kind, and never improve the
-    /// verdict beyond what the log-level result allows.
+    /// other segments and keep every log-level kind. The verdict is never
+    /// improved: it stays the whole log's verdict, so a log with a
+    /// violation elsewhere is still a failure, and an unpinned log stays
+    /// `SelfConsistent`. The report records how many were hidden.
     #[must_use]
     pub fn filter_segment(mut self, n: u16) -> Self {
+        let before = self.violations.len();
         self.violations
             .retain(|v| v.is_log_level() || v.location.segment().is_none_or(|s| s == n));
-        if self.violations.is_empty() && self.verdict == Verdict::Violation {
-            // Only violations elsewhere: the filtered segment is clean, but
-            // without a trusted signature the log-level verdict stays
-            // SelfConsistent.
-            let signer_trusted = self.signer.as_ref().is_some_and(|s| s.trusted);
-            self.verdict = if signer_trusted {
-                Verdict::Verified
-            } else {
-                Verdict::SelfConsistent
-            };
-            if self.verdict == Verdict::SelfConsistent && self.not_verified_reason.is_none() {
-                self.not_verified_reason = Some(NotVerifiedReason::NotPinned);
-            }
-        }
+        self.segment_filter = Some((n, before - self.violations.len()));
         self
     }
 
@@ -651,6 +644,15 @@ impl SignedVerifyReport {
                 Value::Array(self.warnings.iter().map(Warning::to_json).collect()),
             ),
         ];
+        if let Some((seg, hidden)) = self.segment_filter {
+            m.push((
+                "segment_filter",
+                Value::object([
+                    ("segment", Value::Int(u64::from(seg))),
+                    ("violations_outside", Value::Int(hidden as u64)),
+                ]),
+            ));
+        }
         if !self.checkpoints.is_empty() {
             m.push((
                 "checkpoints",
@@ -734,12 +736,20 @@ impl SignedVerifyReport {
                 },
             },
             _ => {
-                out.push_str(&format!(
-                    "{} Verification failed: {} problem{}\n",
-                    marks.fail,
-                    self.violations.len(),
-                    if self.violations.len() == 1 { "" } else { "s" }
-                ));
+                match self.segment_filter {
+                    Some((seg, hidden)) => out.push_str(&format!(
+                        "{} Verification failed: {} problem{} in segment {seg}, {hidden} elsewhere (not shown; run without --segment)\n",
+                        marks.fail,
+                        self.violations.len(),
+                        if self.violations.len() == 1 { "" } else { "s" }
+                    )),
+                    None => out.push_str(&format!(
+                        "{} Verification failed: {} problem{}\n",
+                        marks.fail,
+                        self.violations.len(),
+                        if self.violations.len() == 1 { "" } else { "s" }
+                    )),
+                }
                 for v in &self.violations {
                     out.push_str(&format!(
                         "  {} at {}: {}\n",
@@ -821,6 +831,7 @@ pub(crate) fn empty_report(log_dir: PathBuf) -> SignedVerifyReport {
         checkpoints: Vec::new(),
         violations: Vec::new(),
         warnings: Vec::new(),
+        segment_filter: None,
     }
 }
 

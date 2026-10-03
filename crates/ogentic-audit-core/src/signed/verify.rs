@@ -285,17 +285,31 @@ pub(crate) fn verify_log(
         w.interesting
             .insert((a.head.segment, a.head.record_id), None);
     }
-    w.run(&segments).map_err(io_err)?;
-
-    for (k, _, _) in &eval.equivocations {
-        w.violation(Finding {
+    // Trust-level findings come first: they are about the keys, before
+    // any record is read.
+    for (k, a, b) in &eval.equivocations {
+        w.violation_nostop(Finding {
             kind: ViolationKind::TransitionEquivocation,
             reason: None,
             location: Location::Key { key_id: *k },
-            evidence: Value::object([("key_id_hex", Value::str(k.to_hex()))]),
-            message: "two different verified transitions from one key".into(),
+            evidence: Value::object([
+                ("key_id_hex", Value::str(k.to_hex())),
+                (
+                    "statement_sha256",
+                    Value::Array(vec![Value::str(hex(a)), Value::str(hex(b))]),
+                ),
+            ]),
+            message: "this key signed two different successions; neither is followed".into(),
         });
     }
+    for warning in &eval.warnings {
+        w.report.warnings.push(Warning {
+            kind: "IgnoredStatement".into(),
+            item: "statements".into(),
+            message: warning.clone(),
+        });
+    }
+    w.run(&segments).map_err(io_err)?;
 
     let anchored_by_cp = w.check_checkpoints(&checkpoints)?;
     w.check_attested();
