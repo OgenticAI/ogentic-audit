@@ -814,6 +814,16 @@ struct Entry {
     regular: bool,
 }
 
+/// Whether any component of `rel` under `root` is a symlink or reparse
+/// point (a bundled log is never reached through one).
+fn through_link(root: &Path, rel: &str) -> bool {
+    let mut p = root.to_path_buf();
+    rel.split('/').any(|c| {
+        p.push(c);
+        std::fs::symlink_metadata(&p).is_ok_and(|m| m.file_type().is_symlink() || is_reparse(&m))
+    })
+}
+
 /// Enumerate the release folder without following symlinks or reparse
 /// points.
 fn enumerate(root: &Path) -> io::Result<Vec<Entry>> {
@@ -1366,9 +1376,7 @@ pub fn verify_release(
             segment: s,
             record: r,
         };
-        if !log_dir.is_dir()
-            || std::fs::symlink_metadata(&log_dir).is_ok_and(|m| m.file_type().is_symlink())
-        {
+        if !log_dir.is_dir() || through_link(dir, path) {
             rep.violations.push(ReleaseFinding {
                 item: li(None, None),
                 kind: ViolationKind::FileMissing,
@@ -1467,6 +1475,21 @@ pub fn verify_release(
     let log_dirs: BTreeSet<&str> = att.logs.iter().map(|(p, _)| p.as_str()).collect();
     for e in &entries {
         let n = names::nfc(&e.rel);
+        if is_segment_of(&n, &log_dirs) && !e.regular {
+            // A segment of a bundled log is read by the log verifier; it
+            // must be a plain file, never a link to something else.
+            rep.violations.push(ReleaseFinding {
+                item: ReleaseItem::File {
+                    path: e.rel.clone(),
+                    part: None,
+                },
+                kind: ViolationKind::FileAltered,
+                reason: Some("not_regular_file".into()),
+                evidence: Value::object([]),
+                message: "a segment of a bundled log is not a regular file".into(),
+            });
+            continue;
+        }
         if covered.contains(&n) || names::is_reserved(&n) || is_segment_of(&n, &log_dirs) {
             continue;
         }

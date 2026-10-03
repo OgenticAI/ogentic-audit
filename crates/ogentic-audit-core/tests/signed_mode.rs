@@ -875,6 +875,24 @@ fn release_symlink_is_not_followed() {
     assert_eq!(first.reason.as_deref(), Some("not_regular_file"));
 }
 
+#[cfg(unix)]
+#[test]
+fn release_segment_symlink_is_not_followed() {
+    let (_log, rel) = build_release(&k(1));
+    let seg = rel.path().join("Audit log/audit-0000.cbor");
+    let real = rel.path().join("elsewhere.cbor");
+    std::fs::rename(&seg, &real).unwrap();
+    std::os::unix::fs::symlink(&real, &seg).unwrap();
+    let r = verify_release(rel.path(), &pin(1), &ReleaseOptions::new()).unwrap();
+    assert!(
+        r.violations
+            .iter()
+            .any(|v| v.compact() == "FileAltered@file:Audit log/audit-0000.cbor"),
+        "{:?}",
+        r.violations.iter().map(|v| v.compact()).collect::<Vec<_>>()
+    );
+}
+
 /// Two names equal after case folding are ambiguous and fail closed.
 /// Needs a case-sensitive filesystem (Linux; skipped where the second
 /// name lands on the first).
