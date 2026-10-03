@@ -41,7 +41,7 @@ pub fn detect_format(dir: &Path) -> Result<u16, AppError> {
     match log_format(dir) {
         Err(e) => Err(AppError::io(anyhow!("{}: {e}", dir.display()))),
         Ok(None) => Err(AppError::io(anyhow!(
-            "no audit-NNNN.cbor segment files in {}",
+            "no audit segments (audit-NNNN.cbor) in {}: nothing to verify",
             dir.display()
         ))),
         Ok(Some(v)) if v > FORMAT_VERSION_SIGNED => Err(AppError::argument(anyhow!(

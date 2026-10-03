@@ -150,7 +150,7 @@ def _strs(v: str | Sequence[str] | None) -> list[str]:
 def _detect_format(log_dir: _PathLike) -> int:
     fmt = log_format(str(log_dir))
     if fmt is None:
-        raise IoFailure(f"no audit-NNNN.cbor segment files in {log_dir}")
+        raise IoFailure(f"no audit segments (audit-NNNN.cbor) in {log_dir}: nothing to verify")
     if fmt > FORMAT_VERSION_SIGNED:
         raise ArgumentError(f"this log uses format 0x{fmt:04x}; upgrade ogentic-audit")
     return fmt

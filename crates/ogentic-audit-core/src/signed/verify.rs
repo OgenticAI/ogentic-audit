@@ -177,7 +177,7 @@ impl SignedVerifyOptions {
 #[non_exhaustive]
 pub enum SignedVerifyError {
     /// No segment files (exit 2).
-    #[error("no audit-NNNN.cbor segment files in {0}")]
+    #[error("no audit segments (audit-NNNN.cbor) in {0}: nothing to verify")]
     NoSegments(String),
     /// I/O (exit 2).
     #[error("{0}")]
