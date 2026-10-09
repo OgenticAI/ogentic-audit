@@ -100,11 +100,9 @@ run_case ".env.local is blocked" "block"
 # Before the `--` fix, BSD grep parsed the leading `-` of the regex as a
 # flag and silently failed. This case proves the content scan actually fires.
 mkdir -p config
-# Use a PKCS8-style `BEGIN PRIVATE KEY` header — the one the current
-# FORBIDDEN_CONTENT regex actually matches. Before the `--` fix, BSD grep
-# parsed the leading dash of the pattern as a flag and printed `usage:` for
-# every staged file, so this content scan silently passed even on a real
-# key. With the fix it must block.
+# Before the `--` fix, BSD grep parsed the leading dash of the pattern as a
+# flag and printed `usage:` for every staged file, so this content scan
+# silently passed even on a real key. With the fix it must block.
 cat > config/notes.txt <<'EOF'
 Pasted from old server, do not commit:
 -----BEGIN PRIVATE KEY-----
@@ -113,6 +111,21 @@ MIIEpAIBAAKCAQEAtVERYFAKEKEYMATERIALFORTESTONLY
 EOF
 git add config/notes.txt
 run_case "PEM private key in file content is blocked" "block"
+
+# --- Case 7: every common private-key header is blocked -------------------
+# The original regex only matched PKCS8 `BEGIN PRIVATE KEY`; RSA, EC, DSA,
+# OpenSSH, encrypted and PGP keys slipped through.
+for header in "RSA PRIVATE KEY" "EC PRIVATE KEY" "DSA PRIVATE KEY" \
+              "OPENSSH PRIVATE KEY" "ENCRYPTED PRIVATE KEY" "PGP PRIVATE KEY BLOCK"; do
+  printf -- '-----BEGIN %s-----\nMIIFAKEKEYMATERIALFORTESTONLY\n' "$header" > key.txt
+  git add key.txt
+  run_case "BEGIN $header in content is blocked" "block"
+done
+
+# --- Case 8: a public key is not a secret ---------------------------------
+printf -- '-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8A\n' > pub.txt
+git add pub.txt
+run_case "BEGIN PUBLIC KEY is allowed" "allow"
 
 echo ""
 echo "Results: $passes passed, $fails failed"
