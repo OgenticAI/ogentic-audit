@@ -41,7 +41,9 @@ FORBIDDEN_CONTENT=(
   'ghp_[A-Za-z0-9]{36}'                      # GitHub PAT classic
   'github_pat_[A-Za-z0-9_]{50,}'             # GitHub PAT fine-grained
   'xox[baprs]-[A-Za-z0-9-]{10,}'             # Slack token
-  '-----BEGIN (RSA |EC |DSA |OPENSSH |PRIVATE) ?KEY-----'
+  # Any PEM private-key header: PRIVATE KEY (PKCS8), RSA/EC/DSA/OPENSSH/
+  # ENCRYPTED PRIVATE KEY, and PGP PRIVATE KEY BLOCK. Public keys pass.
+  '-----BEGIN ([A-Z0-9]+ )*PRIVATE KEY( BLOCK)?-----'
 )
 
 errors=0

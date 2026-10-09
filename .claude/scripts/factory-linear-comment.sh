@@ -1,80 +1,52 @@
 #!/usr/bin/env bash
-# factory-linear-comment.sh — post a [factory:*] comment authored by the OgenticAI
-# Factory Bot, via the Linear API (NOT an MCP connector). This is how the factory
-# keeps its Linear audit trail attributed to the bot when there's no connector slot
-# for it (Claude caps Linear connectors at two; both are human). See
-# docs/LINEAR-BOT-SETUP.md and .claude/LINEAR-INTEGRATION.md §14.
+# factory-linear-comment.sh — post a [factory:*] comment authored by the factory's
+# Linear agent (the OgenticAI Factory Bot OAuth app), via Mission Control. The box
+# holds NO Linear token (OGE-2796): it POSTs to MC's factory-comment endpoint with
+# the box→MC bearer, and MC posts the comment as the app. MC resolves an OGE-123
+# identifier to a UUID server-side, so --issue takes either.
 #
-# Requires: LINEAR_FACTORY_TOKEN (the bot's Linear personal API key), python3.
+# Requires: FACTORY_DASHBOARD_SECRET (or TWIN_DASHBOARD_SECRET) and optionally
+# MC_BASE_URL (defaults to https://missioncontrol.ogenticai.com), python3.
 #
 # Usage:
-#   factory-linear-comment.sh --issue   OGE-123       --body "markdown…"
-#   factory-linear-comment.sh --project <project-uuid> --body "markdown…"
+#   factory-linear-comment.sh --issue OGE-123 --body "markdown…"
 #   printf '%s' "$long_md" | factory-linear-comment.sh --issue OGE-123 --body -
+#
+# The secret is read from the env INSIDE python and sent only in the Authorization
+# header — never on argv.
 set -euo pipefail
 
-issue=""; project=""; body=""
+issue=""; body=""
 while [ $# -gt 0 ]; do
   case "$1" in
-    --issue)   issue="$2";   shift 2;;
-    --project) project="$2"; shift 2;;
-    --body)    body="$2";    shift 2;;
+    --issue) issue="$2"; shift 2;;
+    --body)  body="$2";  shift 2;;
     *) echo "unknown arg: $1" >&2; exit 2;;
   esac
 done
 
-: "${LINEAR_FACTORY_TOKEN:?LINEAR_FACTORY_TOKEN not set — see docs/LINEAR-BOT-SETUP.md}"
 [ "$body" = "-" ] && body="$(cat)"
 [ -n "$body" ] || { echo "--body required" >&2; exit 2; }
-[ -n "$issue$project" ] || { echo "--issue or --project required" >&2; exit 2; }
+[ -n "$issue" ] || { echo "--issue required (a Linear issue UUID or OGE-123 identifier)" >&2; exit 2; }
 
-api() {  # $1 = JSON payload string (carries NO secret)
-  # Read the token from the environment and send it ONLY in the Authorization
-  # header via urllib — the token never appears on argv, so it can't leak through
-  # `ps` (a plain `curl -H "Authorization: $TOKEN"` would expose it). The payload
-  # is passed as argv (safe — no secret) so the token stays out of the heredoc too.
-  python3 - "$1" <<'PY'
+python3 - "$issue" "$body" <<'PY'
 import json, os, ssl, sys, urllib.error, urllib.request
-tok = os.environ.get("LINEAR_FACTORY_TOKEN", "")
-if not tok:
-    sys.exit("LINEAR_FACTORY_TOKEN not set")
+secret = os.environ.get("FACTORY_DASHBOARD_SECRET", "").strip() or os.environ.get("TWIN_DASHBOARD_SECRET", "").strip()
+if not secret:
+    sys.exit("box→MC secret not set (FACTORY_DASHBOARD_SECRET or TWIN_DASHBOARD_SECRET) — see docs/LINEAR-BOT-SETUP.md")
+base = os.environ.get("MC_BASE_URL", "https://missioncontrol.ogenticai.com").rstrip("/")
+payload = json.dumps({"issue": sys.argv[1], "body": sys.argv[2]}).encode()
 req = urllib.request.Request(
-    "https://api.linear.app/graphql",
-    data=sys.argv[1].encode(),
-    headers={"Authorization": tok, "Content-Type": "application/json"},
+    base + "/api/linear/factory-comment",
+    data=payload,
+    headers={"Authorization": "Bearer " + secret, "Content-Type": "application/json"},
 )
 try:
-    with urllib.request.urlopen(req, timeout=30,
-                                context=ssl.create_default_context()) as r:
-        sys.stdout.write(r.read().decode())
+    with urllib.request.urlopen(req, timeout=30, context=ssl.create_default_context()) as r:
+        out = json.loads(r.read())
 except urllib.error.HTTPError as e:
-    sys.exit("Linear API HTTP %s: %s" % (e.code, e.read().decode()[:300]))
+    sys.exit("factory-comment HTTP %s: %s" % (e.code, e.read().decode()[:300]))
+if not out.get("ok"):
+    sys.exit("comment failed: " + json.dumps(out))
+print("posted as %s — %s" % (out.get("author", "?"), out.get("url", "")))
 PY
-}
-
-# Default to a project comment; resolve an issue identifier (OGE-123) to its UUID.
-field="projectId"; pid="$project"
-if [ -n "$issue" ]; then
-  field="issueId"
-  q='{"query":"query($id:String!){issue(id:$id){id}}","variables":{"id":"__ID__"}}'
-  resolve=$(python3 -c 'import json,sys; print(json.dumps({"query":"query($id:String!){issue(id:$id){id}}","variables":{"id":sys.argv[1]}}))' "$issue")
-  pid=$(api "$resolve" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(((d.get("data") or {}).get("issue") or {}).get("id") or "")')
-  [ -n "$pid" ] || { echo "could not resolve issue $issue (check the identifier and token scope)" >&2; exit 1; }
-fi
-
-payload=$(python3 -c '
-import json, sys
-field, pid, body = sys.argv[1], sys.argv[2], sys.argv[3]
-q = "mutation($input: CommentCreateInput!){ commentCreate(input:$input){ success comment { id url user { email displayName } } } }"
-print(json.dumps({"query": q, "variables": {"input": {field: pid, "body": body}}}))
-' "$field" "$pid" "$body")
-
-api "$payload" | python3 -c '
-import json, sys
-d = json.load(sys.stdin)
-c = (d.get("data") or {}).get("commentCreate") or {}
-if not c.get("success"):
-    sys.exit("comment failed: " + json.dumps(d))
-cm = c["comment"]
-print("posted as %s — %s" % (cm["user"]["email"], cm["url"]))
-'
