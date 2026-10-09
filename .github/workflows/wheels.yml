@@ -96,7 +96,7 @@ jobs:
         run: rustup target add x86_64-apple-darwin
 
       - name: Build wheels with cibuildwheel
-        uses: pypa/cibuildwheel@f03ac7617d6cff873ccf24cc0d567ef5ba5a9e6d # v2.21.3 — pinned per OGE-837
+        uses: pypa/cibuildwheel@e090b81e30c4d855ea63bf4b6e59204c09a101ae # v2.21.3 — pinned per OGE-837
         env:
           # abi3 wheels cover every supported CPython once built.
           # We still iterate one build per ABI tag, but cibuildwheel
