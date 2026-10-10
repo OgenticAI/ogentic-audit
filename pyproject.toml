@@ -4,12 +4,12 @@ build-backend = "maturin"
 
 [project]
 name = "ogentic-audit"
-description = "HMAC-SHA256 chained, append-only audit log — Python bindings"
+description = "Tamper-evident audit logs, Ed25519-signed (verify with a public key) or HMAC-SHA256 chained — Python bindings and offline verifier"
 readme = "README.md"
 license = { file = "LICENSE" }
 authors = [{ name = "OgenticAI", email = "engineering@ogenticai.com" }]
 requires-python = ">=3.9"
-keywords = ["audit", "log", "hmac", "tamper-evident", "compliance", "court-defensible"]
+keywords = ["audit", "log", "ed25519", "hmac", "tamper-evident", "compliance", "court-defensible"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",

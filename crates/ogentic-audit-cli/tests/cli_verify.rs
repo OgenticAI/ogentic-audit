@@ -42,6 +42,7 @@ fn cmd() -> Command {
 fn verify_clean_exits_zero() {
     let key_hex = vector_key_hex("single-record");
     cmd()
+        .args(["--key-source", "env"])
         .env("OGENTIC_AUDIT_KEY_HEX", key_hex)
         .arg("verify")
         .arg(vectors_dir().join("single-record"))
@@ -57,6 +58,7 @@ fn verify_clean_exits_zero() {
 fn verify_tampered_exits_one() {
     let key_hex = vector_key_hex("tampered-byte");
     cmd()
+        .args(["--key-source", "env"])
         .env("OGENTIC_AUDIT_KEY_HEX", key_hex)
         .arg("verify")
         .arg(vectors_dir().join("tampered-byte"))
@@ -71,6 +73,7 @@ fn verify_tampered_exits_one() {
 #[test]
 fn verify_missing_dir_exits_two() {
     cmd()
+        .args(["--key-source", "env"])
         .env("OGENTIC_AUDIT_KEY_HEX", "00".repeat(32))
         .arg("verify")
         .arg("/tmp/nonexistent_audit_dir_xyz_oge1063")
@@ -86,6 +89,7 @@ fn verify_missing_dir_exits_two() {
 fn verify_json_status_ok() {
     let key_hex = vector_key_hex("single-record");
     let assert = cmd()
+        .args(["--key-source", "env"])
         .env("OGENTIC_AUDIT_KEY_HEX", key_hex)
         .arg("verify")
         .arg("--format")
@@ -110,6 +114,7 @@ fn verify_json_status_ok() {
 fn verify_json_status_tampered() {
     let key_hex = vector_key_hex("tampered-byte");
     let assert = cmd()
+        .args(["--key-source", "env"])
         .env("OGENTIC_AUDIT_KEY_HEX", key_hex)
         .arg("verify")
         .arg("--format")
@@ -137,6 +142,7 @@ fn verify_json_status_tampered() {
 fn verify_json_no_verdict_key() {
     let key_hex = vector_key_hex("single-record");
     let assert = cmd()
+        .args(["--key-source", "env"])
         .env("OGENTIC_AUDIT_KEY_HEX", key_hex)
         .arg("verify")
         .arg("--format")
@@ -160,6 +166,7 @@ fn verify_json_no_verdict_key() {
 fn verify_json_no_compact_key() {
     let key_hex = vector_key_hex("single-record");
     let assert = cmd()
+        .args(["--key-source", "env"])
         .env("OGENTIC_AUDIT_KEY_HEX", key_hex)
         .arg("verify")
         .arg("--format")
@@ -184,6 +191,7 @@ fn verify_json_no_compact_key() {
 fn verify_segment_valid_exits_zero() {
     let key_hex = vector_key_hex("segment-rollover");
     cmd()
+        .args(["--key-source", "env"])
         .env("OGENTIC_AUDIT_KEY_HEX", key_hex)
         .arg("verify")
         .arg("--segment")
@@ -202,6 +210,7 @@ fn verify_segment_valid_exits_zero() {
 fn verify_segment_invalid_exits_two() {
     let key_hex = vector_key_hex("single-record");
     cmd()
+        .args(["--key-source", "env"])
         .env("OGENTIC_AUDIT_KEY_HEX", key_hex)
         .arg("verify")
         .arg("--segment")
@@ -221,6 +230,7 @@ fn verify_segment_invalid_exits_two() {
 fn verify_segment_zero_is_valid() {
     let key_hex = vector_key_hex("single-record");
     cmd()
+        .args(["--key-source", "env"])
         .env("OGENTIC_AUDIT_KEY_HEX", key_hex)
         .arg("verify")
         .arg("--segment")
@@ -239,6 +249,7 @@ fn verify_segment_zero_is_valid() {
 fn verify_segment_and_forensic_compatible() {
     let key_hex = vector_key_hex("single-record");
     cmd()
+        .args(["--key-source", "env"])
         .env("OGENTIC_AUDIT_KEY_HEX", key_hex)
         .arg("verify")
         .arg("--segment")
@@ -260,6 +271,7 @@ fn verify_segment_and_forensic_compatible() {
 fn verify_text_violation_on_stderr() {
     let key_hex = vector_key_hex("tampered-byte");
     let assert = cmd()
+        .args(["--key-source", "env"])
         .env("OGENTIC_AUDIT_KEY_HEX", key_hex)
         .arg("verify")
         .arg(vectors_dir().join("tampered-byte"))
@@ -287,6 +299,7 @@ fn verify_text_violation_on_stderr() {
 fn verify_summary_on_stdout() {
     let key_hex = vector_key_hex("single-record");
     cmd()
+        .args(["--key-source", "env"])
         .env("OGENTIC_AUDIT_KEY_HEX", key_hex)
         .arg("verify")
         .arg("--summary")
@@ -322,6 +335,7 @@ fn verify_tenant_isolation() {
 
     // 1. Verify A (clean) → must succeed (exit 0).
     cmd()
+        .args(["--key-source", "env"])
         .env("OGENTIC_AUDIT_KEY_HEX", &key_hex)
         .arg("verify")
         .arg(tmp_a.path())
@@ -330,6 +344,7 @@ fn verify_tenant_isolation() {
 
     // 2. Verify B (tampered) → must fail (exit 1).
     cmd()
+        .args(["--key-source", "env"])
         .env("OGENTIC_AUDIT_KEY_HEX", &tampered_key_hex)
         .arg("verify")
         .arg(tmp_b.path())
@@ -338,6 +353,7 @@ fn verify_tenant_isolation() {
 
     // 3. Verify A again → must still succeed (no state contamination from B).
     cmd()
+        .args(["--key-source", "env"])
         .env("OGENTIC_AUDIT_KEY_HEX", &key_hex)
         .arg("verify")
         .arg(tmp_a.path())
@@ -356,6 +372,7 @@ fn verify_tenant_isolation() {
 fn verify_segment_nonzero_valid_exits_zero() {
     let key_hex = vector_key_hex("segment-rollover");
     cmd()
+        .args(["--key-source", "env"])
         .env("OGENTIC_AUDIT_KEY_HEX", key_hex)
         .arg("verify")
         .arg("--segment")
@@ -374,6 +391,7 @@ fn verify_segment_nonzero_valid_exits_zero() {
 fn verify_segment_two_valid_exits_zero() {
     let key_hex = vector_key_hex("segment-rollover");
     cmd()
+        .args(["--key-source", "env"])
         .env("OGENTIC_AUDIT_KEY_HEX", key_hex)
         .arg("verify")
         .arg("--segment")
@@ -392,6 +410,7 @@ fn verify_segment_two_valid_exits_zero() {
 #[test]
 fn verify_segment_overflow_exits_three() {
     cmd()
+        .args(["--key-source", "env"])
         .env("OGENTIC_AUDIT_KEY_HEX", "00".repeat(32))
         .arg("verify")
         .arg("--segment")

@@ -1,0 +1,121 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/OgenticAI/ogentic-audit/blob/main/docs/spec/violation-report-v2.schema.json",
+  "title": "ogentic-audit signed-log report (format_version 2)",
+  "description": "Report for a signed (0x0002) log. See violation-report.md, 'Format version 2'.",
+  "type": "object",
+  "required": ["format_version", "verdict", "status", "reason", "log", "signer", "violation", "additional_violations", "warnings"],
+  "properties": {
+    "format_version": { "const": 2 },
+    "verdict": { "enum": ["Verified", "SelfConsistent", "Violation"] },
+    "status": { "enum": ["ok", "unpinned", "tampered"] },
+    "reason": { "enum": ["not_pinned", "no_signed_records", null] },
+    "log": {
+      "type": "object",
+      "required": ["log_dir", "log_id_hex", "key_id_hex", "segments_inspected", "records_inspected", "first_segment_index", "last_segment_index", "final_record_hash_hex", "head", "head_anchored", "sealed", "elided_records", "unsigned_last_segment"],
+      "properties": {
+        "log_dir": { "type": "string" },
+        "log_id_hex": { "type": ["string", "null"], "pattern": "^[0-9a-f]{32}$" },
+        "key_id_hex": { "type": ["string", "null"], "pattern": "^[0-9a-f]{64}$" },
+        "segments_inspected": { "type": "integer", "minimum": 0 },
+        "records_inspected": { "type": "integer", "minimum": 0 },
+        "first_segment_index": { "type": ["integer", "null"] },
+        "last_segment_index": { "type": ["integer", "null"] },
+        "final_record_hash_hex": { "type": ["string", "null"], "pattern": "^[0-9a-f]{64}$" },
+        "head": { "type": ["string", "null"], "pattern": "^s[0-9]+r[0-9]+$" },
+        "head_anchored": { "type": "boolean" },
+        "sealed": { "type": "boolean" },
+        "elided_records": {
+          "type": "object",
+          "required": ["count", "positions"],
+          "properties": {
+            "count": { "type": "integer", "minimum": 0 },
+            "positions": { "type": "array", "items": { "type": "string", "pattern": "^s[0-9]+r[0-9]+$" } }
+          }
+        },
+        "unsigned_last_segment": { "type": "boolean" }
+      }
+    },
+    "signer": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "required": ["principal", "alg", "key_id_hex", "fingerprint_grouped", "fingerprint_openssh", "trusted", "trust_path", "reason"],
+          "properties": {
+            "principal": { "type": ["string", "null"] },
+            "alg": { "const": "ed25519" },
+            "key_id_hex": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+            "fingerprint_grouped": { "type": "string", "pattern": "^([0-9a-f]{4} ){15}[0-9a-f]{4}$" },
+            "fingerprint_openssh": { "type": "string", "pattern": "^SHA256:[A-Za-z0-9+/]{43}$" },
+            "trusted": { "type": "boolean" },
+            "trust_path": { "type": "array", "items": { "type": "string", "pattern": "^[0-9a-f]{64}$" } },
+            "reason": { "enum": ["pinned", "transition", "not_pinned", "no_signed_records", "not_trusted"] }
+          }
+        }
+      ]
+    },
+    "violation": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/violation" }] },
+    "additional_violations": { "type": "array", "items": { "$ref": "#/$defs/violation" } },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["kind", "item", "message"],
+        "properties": { "kind": { "type": "string" }, "item": { "type": "string" }, "message": { "type": "string" } }
+      }
+    },
+    "checkpoints": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["signed", "signer_key_id_hex", "position", "observed_at", "witnesses", "anchors_head"],
+        "properties": {
+          "signed": { "type": "boolean" },
+          "signer_key_id_hex": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "position": { "type": "string" },
+          "observed_at": { "type": ["string", "null"] },
+          "witnesses": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["principal", "key_id_hex", "observed_at"],
+              "properties": { "principal": { "type": "string" }, "key_id_hex": { "type": "string" }, "observed_at": { "type": "string" } }
+            }
+          },
+          "anchors_head": { "type": "boolean" }
+        }
+      }
+    },
+    "segment_filter": {
+      "type": "object",
+      "required": ["segment", "violations_outside"],
+      "properties": { "segment": { "type": "integer" }, "violations_outside": { "type": "integer" } }
+    }
+  },
+  "$defs": {
+    "violation": {
+      "type": "object",
+      "required": ["kind", "reason", "location", "evidence", "message"],
+      "properties": {
+        "kind": {
+          "enum": ["ChainBreak", "RecordCorrupt", "TimestampRegression", "TimestampInconsistency", "SegmentDiscontinuity", "KeyIdMismatch", "HeaderCorrupt", "UnknownVersion", "CheckpointMismatch", "CheckpointTruncated", "SignatureInvalid", "UntrustedSigner", "RevokedKey", "RetiredKey", "TransitionEquivocation", "AlgorithmMismatch", "UnsupportedAlgorithm", "LogIdMismatch", "SealedLogExtended", "CheckpointForDifferentLog", "FormatDowngrade"]
+        },
+        "reason": { "type": ["string", "null"] },
+        "location": {
+          "type": "object",
+          "required": ["item"],
+          "properties": {
+            "item": { "type": "string" },
+            "segment_index": { "type": "integer" },
+            "record_id": { "type": ["integer", "null"] },
+            "byte_offset": { "type": "integer" },
+            "key_id_hex": { "type": "string" }
+          }
+        },
+        "evidence": {},
+        "message": { "type": "string" }
+      }
+    }
+  }
+}

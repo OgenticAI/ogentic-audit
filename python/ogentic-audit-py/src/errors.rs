@@ -35,6 +35,30 @@ create_exception!(_native, CheckpointMismatchError, VerificationFailed);
 create_exception!(_native, CheckpointTruncatedError, VerificationFailed);
 create_exception!(_native, CheckpointKeyMismatchError, ArgumentError);
 
+// Signed mode (format 0x0002). `SignerNotPinnedError` is deliberately
+// OUTSIDE the tamper hierarchy: a log checked without the signer's key is
+// not verified, but nothing shows it was altered. `HmacLogError` is an
+// argument error: an HMAC log cannot be checked with a public key.
+create_exception!(_native, SignerNotPinnedError, OgenticAuditError);
+create_exception!(_native, HmacLogError, ArgumentError);
+create_exception!(_native, SignatureInvalidError, VerificationFailed);
+create_exception!(_native, UntrustedSignerError, VerificationFailed);
+create_exception!(_native, RevokedKeyError, VerificationFailed);
+create_exception!(_native, RetiredKeyError, VerificationFailed);
+create_exception!(_native, TransitionEquivocationError, VerificationFailed);
+create_exception!(_native, AlgorithmMismatchError, VerificationFailed);
+create_exception!(_native, UnsupportedAlgorithmError, VerificationFailed);
+create_exception!(_native, LogIdMismatchError, VerificationFailed);
+create_exception!(_native, SealedLogExtendedError, VerificationFailed);
+create_exception!(_native, CheckpointForDifferentLogError, VerificationFailed);
+create_exception!(_native, FormatDowngradeError, VerificationFailed);
+create_exception!(_native, AttestationMissingError, VerificationFailed);
+create_exception!(_native, AttestationMalformedError, VerificationFailed);
+create_exception!(_native, ReleaseIdMismatchError, VerificationFailed);
+create_exception!(_native, FileMissingError, VerificationFailed);
+create_exception!(_native, FileAlteredError, VerificationFailed);
+create_exception!(_native, UnattestedFileError, VerificationFailed);
+
 /// Register every exception type on the module.
 pub fn register(py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("OgenticAuditError", py.get_type::<OgenticAuditError>())?;
@@ -66,7 +90,88 @@ pub fn register(py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
         "CheckpointKeyMismatchError",
         py.get_type::<CheckpointKeyMismatchError>(),
     )?;
+    m.add(
+        "SignerNotPinnedError",
+        py.get_type::<SignerNotPinnedError>(),
+    )?;
+    m.add("HmacLogError", py.get_type::<HmacLogError>())?;
+    m.add(
+        "SignatureInvalidError",
+        py.get_type::<SignatureInvalidError>(),
+    )?;
+    m.add(
+        "UntrustedSignerError",
+        py.get_type::<UntrustedSignerError>(),
+    )?;
+    m.add("RevokedKeyError", py.get_type::<RevokedKeyError>())?;
+    m.add("RetiredKeyError", py.get_type::<RetiredKeyError>())?;
+    m.add(
+        "TransitionEquivocationError",
+        py.get_type::<TransitionEquivocationError>(),
+    )?;
+    m.add(
+        "AlgorithmMismatchError",
+        py.get_type::<AlgorithmMismatchError>(),
+    )?;
+    m.add(
+        "UnsupportedAlgorithmError",
+        py.get_type::<UnsupportedAlgorithmError>(),
+    )?;
+    m.add("LogIdMismatchError", py.get_type::<LogIdMismatchError>())?;
+    m.add(
+        "SealedLogExtendedError",
+        py.get_type::<SealedLogExtendedError>(),
+    )?;
+    m.add(
+        "CheckpointForDifferentLogError",
+        py.get_type::<CheckpointForDifferentLogError>(),
+    )?;
+    m.add(
+        "FormatDowngradeError",
+        py.get_type::<FormatDowngradeError>(),
+    )?;
+    m.add(
+        "AttestationMissingError",
+        py.get_type::<AttestationMissingError>(),
+    )?;
+    m.add(
+        "AttestationMalformedError",
+        py.get_type::<AttestationMalformedError>(),
+    )?;
+    m.add(
+        "ReleaseIdMismatchError",
+        py.get_type::<ReleaseIdMismatchError>(),
+    )?;
+    m.add("FileMissingError", py.get_type::<FileMissingError>())?;
+    m.add("FileAlteredError", py.get_type::<FileAlteredError>())?;
+    m.add("UnattestedFileError", py.get_type::<UnattestedFileError>())?;
     Ok(())
+}
+
+/// The exception for a signed-mode violation kind. An unknown kind raises
+/// `VerificationFailed` itself, so it fails closed.
+pub fn signed_violation_exception(kind: &str, message: &str) -> PyErr {
+    let m = message.to_string();
+    match kind {
+        "SignatureInvalid" => SignatureInvalidError::new_err(m),
+        "UntrustedSigner" => UntrustedSignerError::new_err(m),
+        "RevokedKey" => RevokedKeyError::new_err(m),
+        "RetiredKey" => RetiredKeyError::new_err(m),
+        "TransitionEquivocation" => TransitionEquivocationError::new_err(m),
+        "AlgorithmMismatch" => AlgorithmMismatchError::new_err(m),
+        "UnsupportedAlgorithm" => UnsupportedAlgorithmError::new_err(m),
+        "LogIdMismatch" => LogIdMismatchError::new_err(m),
+        "SealedLogExtended" => SealedLogExtendedError::new_err(m),
+        "CheckpointForDifferentLog" => CheckpointForDifferentLogError::new_err(m),
+        "FormatDowngrade" => FormatDowngradeError::new_err(m),
+        "AttestationMissing" => AttestationMissingError::new_err(m),
+        "AttestationMalformed" => AttestationMalformedError::new_err(m),
+        "ReleaseIdMismatch" => ReleaseIdMismatchError::new_err(m),
+        "FileMissing" => FileMissingError::new_err(m),
+        "FileAltered" => FileAlteredError::new_err(m),
+        "UnattestedFile" => UnattestedFileError::new_err(m),
+        other => violation_exception(other, message),
+    }
 }
 
 /// Convert a `ViolationKind` discriminator string into the appropriate

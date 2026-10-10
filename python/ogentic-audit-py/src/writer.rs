@@ -25,6 +25,7 @@
 
 use std::collections::BTreeMap;
 
+use ogentic_audit_core::signed::SignedWriter;
 use ogentic_audit_core::{PayloadValue, RecordInput, Writer, WriterConfig};
 use pyo3::exceptions::PyTypeError;
 use pyo3::prelude::*;
@@ -40,10 +41,37 @@ type PyObject = Py<PyAny>;
 use crate::errors::{ArgumentError, IoFailure, RecoveryError};
 use crate::key::{clone_boxed, PyKeyHandle};
 
-/// Python wrapper over a Rust `Writer`.
+/// HMAC (format 0x0001) or signed (format 0x0002) writer.
+enum Inner {
+    Hmac(Writer),
+    Signed(SignedWriter),
+}
+
+impl Inner {
+    fn append(&mut self, input: RecordInput) -> Result<u64, ogentic_audit_core::WriterError> {
+        match self {
+            Inner::Hmac(w) => w.append(input),
+            Inner::Signed(w) => w.append(input),
+        }
+    }
+    fn flush(&mut self) -> Result<(), ogentic_audit_core::WriterError> {
+        match self {
+            Inner::Hmac(w) => w.flush(),
+            Inner::Signed(w) => w.flush(),
+        }
+    }
+    fn recovery(&self) -> &ogentic_audit_core::RecoveryReport {
+        match self {
+            Inner::Hmac(w) => w.recovery_report(),
+            Inner::Signed(w) => w.recovery_report(),
+        }
+    }
+}
+
+/// Python wrapper over a Rust `Writer` (HMAC) or `SignedWriter`.
 #[pyclass(name = "Writer", module = "ogentic_audit._native", unsendable)]
 pub struct PyWriter {
-    inner: Option<Writer>,
+    inner: Option<Inner>,
 }
 
 #[pymethods]
@@ -53,25 +81,86 @@ impl PyWriter {
     /// `session_id_hex` is a 32-char hex string (UUIDv4 with dashes
     /// stripped). Defaults to all zeros — Python callers SHOULD
     /// generate a real session_id from `uuid.uuid4()`.
+    ///
+    /// Pass exactly one of `key` (an HMAC `KeyHandle`: format 0x0001,
+    /// verifiable only with the same secret) or `signing_key` (a
+    /// `SigningKey`: format 0x0002, verifiable by anyone with the public
+    /// key).
     #[staticmethod]
-    #[pyo3(signature = (log_dir, key, session_id_hex = "00000000000000000000000000000000", segment_size_bytes = None))]
+    #[pyo3(signature = (log_dir, key = None, session_id_hex = "00000000000000000000000000000000", segment_size_bytes = None, signing_key = None))]
     fn open(
         log_dir: &str,
-        key: &PyKeyHandle,
+        key: Option<&PyKeyHandle>,
         session_id_hex: &str,
         segment_size_bytes: Option<u64>,
+        signing_key: Option<&crate::signed::PySigningKey>,
     ) -> PyResult<Self> {
         let session_id = parse_session_id(session_id_hex)?;
-        let key_box = clone_boxed(key);
         let mut config = WriterConfig::default();
         if let Some(size) = segment_size_bytes {
             config.segment_size_bytes = size;
         }
-        let writer =
-            Writer::with_config(log_dir, key_box, session_id, config).map_err(map_writer_error)?;
-        Ok(Self {
-            inner: Some(writer),
-        })
+        let inner = match (key, signing_key) {
+            (Some(k), None) => Inner::Hmac(
+                Writer::with_config(log_dir, clone_boxed(k), session_id, config)
+                    .map_err(map_writer_error)?,
+            ),
+            (None, Some(sk)) => Inner::Signed(
+                SignedWriter::open_signed_with_config(
+                    log_dir,
+                    Box::new(sk.inner.clone()),
+                    session_id,
+                    config,
+                )
+                .map_err(map_writer_error)?,
+            ),
+            _ => {
+                return Err(ArgumentError::new_err(
+                    "pass exactly one of key= (HMAC, format 0x0001) or signing_key= (Ed25519, format 0x0002)",
+                ))
+            },
+        };
+        Ok(Self { inner: Some(inner) })
+    }
+
+    /// Signed logs: close the log for good with a `log.sealed` record.
+    fn seal(&mut self) -> PyResult<u64> {
+        match self.inner.as_mut() {
+            Some(Inner::Signed(w)) => w.seal().map_err(map_writer_error),
+            Some(Inner::Hmac(_)) => Err(ArgumentError::new_err(
+                "only signed (format 0x0002) logs can be sealed",
+            )),
+            None => Err(ArgumentError::new_err("Writer is closed")),
+        }
+    }
+
+    /// Signed logs: the `record_hash` of the last record, hex.
+    fn last_record_hash(&self) -> PyResult<String> {
+        match self.inner.as_ref() {
+            Some(Inner::Signed(w)) => Ok(ogentic_audit_core::signed::hex(&w.last_record_hash())),
+            Some(Inner::Hmac(_)) => Err(ArgumentError::new_err(
+                "an HMAC log has no public record hash; use a signed log",
+            )),
+            None => Err(ArgumentError::new_err("Writer is closed")),
+        }
+    }
+
+    /// Signed logs: the log's random id, hex.
+    fn log_id(&self) -> PyResult<String> {
+        match self.inner.as_ref() {
+            Some(Inner::Signed(w)) => Ok(ogentic_audit_core::signed::hex(&w.log_id())),
+            Some(Inner::Hmac(_)) => Err(ArgumentError::new_err("an HMAC log has no log_id")),
+            None => Err(ArgumentError::new_err("Writer is closed")),
+        }
+    }
+
+    /// The on-disk format being written: 1 (HMAC) or 2 (signed).
+    fn format_version(&self) -> PyResult<u16> {
+        match self.inner.as_ref() {
+            Some(Inner::Signed(_)) => Ok(2),
+            Some(Inner::Hmac(_)) => Ok(1),
+            None => Err(ArgumentError::new_err("Writer is closed")),
+        }
     }
 
     /// Append a record. Returns the assigned `record_id`.
@@ -130,7 +219,7 @@ impl PyWriter {
             .inner
             .as_ref()
             .ok_or_else(|| ArgumentError::new_err("Writer is closed"))?;
-        Ok(format!("{:?}", writer.recovery_report().action))
+        Ok(format!("{:?}", writer.recovery().action))
     }
 
     /// `recovery_truncated_bytes`: bytes lopped off the tail during
@@ -140,7 +229,7 @@ impl PyWriter {
             .inner
             .as_ref()
             .ok_or_else(|| ArgumentError::new_err("Writer is closed"))?;
-        Ok(writer.recovery_report().truncated_bytes)
+        Ok(writer.recovery().truncated_bytes)
     }
 
     fn __repr__(&self) -> String {
@@ -309,6 +398,9 @@ fn map_writer_error(err: ogentic_audit_core::WriterError) -> PyErr {
         WriterError::InvalidInput(msg) => ArgumentError::new_err(msg),
         WriterError::Recovery { reason } => {
             RecoveryError::new_err(format!("recovery refused: {reason}"))
+        },
+        e @ (WriterError::FormatMismatch { .. } | WriterError::Sealed) => {
+            ArgumentError::new_err(e.to_string())
         },
         other => ArgumentError::new_err(format!("unrecognized writer error: {other:?}")),
     }
