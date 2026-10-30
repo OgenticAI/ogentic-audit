@@ -5,7 +5,7 @@ description: Master orchestrator for the OgenticAI Software Factory. Runs the fu
 
 # Feature Factory
 
-You are orchestrating the OgenticAI Software Factory. Twenty specialised agents (plus a scheduled backlog-groomer). Three human checkpoints (plus a design gate for UI work). One coordinated pipeline. **Linear is the source of truth** — every run is grounded in a Linear ticket, and every artefact flows back to that ticket.
+You are orchestrating the OgenticAI Software Factory. Twenty-one specialised agents (plus a scheduled backlog-groomer). Three human checkpoints (plus a design gate for UI work). One coordinated pipeline. **Linear is the source of truth** — every run is grounded in a Linear ticket, and every artefact flows back to that ticket.
 
 ## §0 — Pre-flight (always run first)
 
@@ -202,7 +202,7 @@ Linear-grounded, with state transitions and labels noted next to each step.
 8. ai-eval-engineer  (only if feature touches LLMs)
      - posts scorecard
         ↓
-7/9/18/19/15. reviewer panel — FAN-OUT via Workflow.parallel()
+7/9/18/19/22/15. reviewer panel — FAN-OUT via Workflow.parallel()
      Reviewers dispatched concurrently; each gets the same context
      (story + spec + diff). Results awaited, then synthesized into one
      severity-grouped report before the human checkpoint.
@@ -216,6 +216,9 @@ Linear-grounded, with state transitions and labels noted next to each step.
        19. monorepo-consistency-reviewer — always invoked; SELF-SKIPS (reports
                                  N/A) if the repo is not an apps/* + packages/*
                                  monorepo. Safe to dispatch unconditionally.
+       22. database-reviewer — always invoked; SELF-SKIPS (reports N/A) if the
+                                 diff touches no SQL, schema, migration or query
+                                 code. Safe to dispatch unconditionally.
        15. compliance-reviewer — only if repo imports ogentic-shield or
                                  ogentic-audit (preserve existing conditional;
                                  do NOT make compliance unconditional)
@@ -227,12 +230,13 @@ Linear-grounded, with state transitions and labels noted next to each step.
          lambda: invoke("security-reviewer",            context=review_context),
          lambda: invoke("deploy-fitness-reviewer",      context=review_context),
          lambda: invoke("monorepo-consistency-reviewer", context=review_context),
+         lambda: invoke("database-reviewer",            context=review_context),
          # compliance is conditional:
          *([lambda: invoke("compliance-reviewer", context=review_context)]
            if imports_shield_or_audit else []),
        ])
        ```
-       deploy-fitness and monorepo-consistency are dispatched every run — they
+       deploy-fitness, monorepo-consistency and database are dispatched every run — they
        decide their own relevance and return N/A cheaply when they don't apply,
        so the orchestrator needs no conditional for them (unlike compliance).
        Then synthesize: collect all findings, group by severity (Critical →
@@ -250,6 +254,7 @@ Linear-grounded, with state transitions and labels noted next to each step.
        - Critical from security    → "security-blocked"    + sub-issue "from-security"
        - Critical from deploy-fit   → "deploy-blocked"      + sub-issue "from-deploy-fitness"
        - Critical from consistency  → "consistency-blocked" + sub-issue "from-consistency"
+       - Critical from database     → "database-blocked"    + sub-issue "from-database"
        - Critical from compliance   → "compliance-blocked"  + sub-issue "from-compliance"
        - All Clean                 → remove those labels if present
         ↓
@@ -284,12 +289,12 @@ If the Spec Writer's brief lists changes across more than one repo (per `.claude
 
 ## 4. Orchestration rules
 
-- **One agent active at a time** on any given path, except for the two sanctioned parallel() fan-outs: the reviewer panel (§2 step 7/9/18/19/15) and the multi-stack builder fan-out (§2 steps 4a/4b/14). Both are explicit Workflow.parallel() calls — no other ad-hoc parallelism. (design-fidelity-checker, step 17, runs serially before test-verifier — it needs the rendered UI and gates the acceptance tests, so it is not part of the panel.)
+- **One agent active at a time** on any given path, except for the two sanctioned parallel() fan-outs: the reviewer panel (§2 step 7/9/18/19/22/15) and the multi-stack builder fan-out (§2 steps 4a/4b/14). Both are explicit Workflow.parallel() calls — no other ad-hoc parallelism. (design-fidelity-checker, step 17, runs serially before test-verifier — it needs the rendered UI and gates the acceptance tests, so it is not part of the panel.)
 - **Every agent gets the ticket ID** as its first input, alongside any artefacts it needs. Never paste the whole conversation.
 - **Every agent ends with a `[factory:<agent>]` comment on the ticket** in the standard format (see `LINEAR-INTEGRATION.md` §2/§4). The agent **returns the comment body**; **the orchestrator posts it as the factory's Linear agent** via `.claude/scripts/factory-linear-comment.sh --issue <OGE-ID> --body <markdown>` (→ Mission Control `factory-comment`, box→MC bearer; no Linear token on the box) — **never `linear.save_comment`** (authors as the human operator). Same for the §5 final telemetry comment.
 - **Every agent owns its state transitions and labels.** No agent flips a state it does not own. See LINEAR-INTEGRATION §3.
 - **At each checkpoint**, present the artefact in chat AND on the ticket. Don't auto-advance. The operator's approval can be in chat ("/approved") or on the ticket (removing the `needs-X-approval` label).
-- **Any reviewer can loop builders.** Validator, security-reviewer, compliance-reviewer, design-fidelity-checker, deploy-fitness-reviewer, and monorepo-consistency-reviewer all route Critical findings to the specific agent named in the finding's `file:line` (fidelity findings → frontend-builder). Re-run the reviewer after the fix. The conditional reviewers self-skip when they don't apply (deploy-fitness on non-serverless repos, monorepo-consistency on single-app repos, design-fidelity on non-UI tickets) — they report `N/A` and never block.
+- **Any reviewer can loop builders.** Validator, security-reviewer, compliance-reviewer, design-fidelity-checker, deploy-fitness-reviewer, monorepo-consistency-reviewer, and database-reviewer all route Critical findings to the specific agent named in the finding's `file:line` (fidelity findings → frontend-builder). Re-run the reviewer after the fix. The conditional reviewers self-skip when they don't apply (deploy-fitness on non-serverless repos, monorepo-consistency on single-app repos, database on diffs with no database code, design-fidelity on non-UI tickets) — they report `N/A` and never block.
 - **Halt conditions**:
   - Operator disapproval at any checkpoint
   - An agent unable to proceed without an answer (post the question as a ticket comment; halt)
@@ -318,11 +323,31 @@ Agents engaged: researcher, story-writer, spec-writer, backend-builder-ts, front
                 test-verifier, validator, security-reviewer, release-manager
 Sub-issues opened: OGE-451 (from-validator, deferred)
 
-CLAUDE.md updates suggested:
-- Add rule: "manual trigger endpoints must derive tenant from session, never request body"
+Learnings: 1 captured in .claude/learnings/OGE-123.md
+- [tenancy] Manual trigger endpoints derive the tenant from the session, never the request body.
+  Also taught by OGE-161 — run factory-learn to promote it.
 ```
 
-Use this comment to evolve CLAUDE.md in your next session.
+### 5a. Capture what the run learned (remember)
+
+Before the PR opens, so it ships in the same PR, collect this run's lessons:
+
+- every agent's `New rules CLAUDE.md should learn` line (§F3 sign-off), and
+- every Critical or Important reviewer finding that a standing rule would have prevented.
+
+Drop "none", and drop anything `CLAUDE.md` or `.claude/LEARNED.md` already says. If anything is left, write it to `.claude/learnings/<TICKET-ID>.md`:
+
+```markdown
+---
+ticket: OGE-123
+date: 2026-05-29
+---
+- [tenancy] Manual trigger endpoints derive the tenant from the session, never the request body. — evidence: apps/web/app/api/reminders/trigger/route.ts:42 (validator, Critical)
+```
+
+One file per ticket, so concurrent PRs never conflict. One rule per line: an instruction a later agent can follow, a `[domain]` tag, and the evidence that taught it. Then check the other files in `.claude/learnings/`: if another ticket already taught the same rule, say so in the run-complete comment, as above.
+
+Capture changes nothing on its own. Nothing loads `.claude/learnings/`, so the next run behaves exactly as this one did. Rules start to apply only after the `factory-learn` skill promotes them into `.claude/LEARNED.md` through a PR a person approves. Never edit `CLAUDE.md` here (§F4).
 
 ## 6. Opening prompt template
 

@@ -36,12 +36,16 @@ below are the ceiling** — invoke them for a deeper pass.
 ## Security reviewer (09)
 - `backend-security-coder`, `frontend-security-coder`, `security-audit`, `security-review` (built-in)
 
+## Database reviewer (22)
+- `postgres-best-practices`, `database-migration`, `sql-optimization-patterns` — deeper Postgres, migration and query-plan passes.
+
 ## Library publisher (13)
 - `python-packaging` (PyPI), language-native publish flows.
 
 ## Orchestrator / cross-cutting
 - `architecture`, `senior-architect` — for spec-writer / cross-repo-coordinator design calls.
 - `ogenticai-git` plugin (`/push`) — the org's git/PR flow.
+- `factory-learn` (kit) — promotes rules from `.claude/learnings/` into `.claude/LEARNED.md` once two tickets taught them (CLAUDE-FACTORY §F4).
 
 ---
 _Audit basis: skills installed via the OgenticAI plugin marketplace as of 2026-06.

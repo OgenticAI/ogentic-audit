@@ -19,8 +19,9 @@ Either way, **do not let this file silently overwrite anything you wrote.** It i
 
 ## §F1 — Where the factory lives in this repo
 
-- Agent definitions: `.claude/agents/` (12 core + 3 extensions: library-publisher, rust-builder, compliance-reviewer)
-- Orchestrator skills: `.claude/skills/feature-factory/`, `build-with-tests/`, `repo-bootstrap/`, `multi-repo-coordinator/`, `project-planner/`, `project-factory/`, `repo-create/`, `fleet-onboarding/`, `new-from-knowledge/`
+- Agent definitions: `.claude/agents/` (one file per role; `feature-factory` §2 says which run when)
+- Orchestrator skills: `.claude/skills/feature-factory/`, `build-with-tests/`, `repo-bootstrap/`, `multi-repo-coordinator/`, `project-planner/`, `project-factory/`, `repo-create/`, `fleet-onboarding/`, `new-from-knowledge/`, `factory-learn/`
+- What runs learned: `.claude/learnings/<TICKET-ID>.md` (candidates, one file per ticket) and `.claude/LEARNED.md` (promoted rules) — see §F4
 - Hooks: `.claude/hooks/pre-commit`, `.claude/hooks/pre-push`
 - Multi-repo registry: `.claude/registry/repos.yml`
 - Linear integration contract: `.claude/LINEAR-INTEGRATION.md` — every agent links here.
@@ -62,7 +63,8 @@ If your team uses different state names, list the mapping here. The orchestrator
 | `validator-blocked` | Validator on Critical | Validator when next pass is Clean |
 | `security-blocked` | Security Reviewer on Critical | Security Reviewer when Clean |
 | `compliance-blocked` | Compliance Reviewer on Critical | Compliance Reviewer when Clean |
-| `from-validator` / `from-security` / `from-compliance` | applied to sub-issues from findings | manual |
+| `database-blocked` | Database Reviewer on Critical | Database Reviewer when Clean |
+| `from-validator` / `from-security` / `from-compliance` / `from-database` | applied to sub-issues from findings | manual |
 | `deferred-question` | applied to sub-issues from open questions | manual |
 | `cross-repo` | Spec Writer when brief spans repos | manual |
 | `factory-degraded` | Orchestrator when Linear MCP partial | Orchestrator on reconnect |
@@ -99,13 +101,21 @@ SUMMARY
 - Open questions for the next agent / human: ...
 ```
 
-The "New rules" line is how your `CLAUDE.md` grows over time. Whenever an agent had to guess, surface the assumption. Every guess that wasn't perfectly right earns a new rule in your `CLAUDE.md` next session.
+The "New rules" line is how the factory learns. Whenever an agent had to guess, surface the assumption. The orchestrator writes these lines to `.claude/learnings/<TICKET-ID>.md` at the end of each run (`feature-factory` §5a), and the `factory-learn` skill promotes a rule once two tickets have taught it (§F4).
 
 ---
 
 ## §F4 — What the factory will NOT touch in your existing CLAUDE.md
 
-Hard rule: the factory **never** edits `CLAUDE.md`. It surfaces rule-additions in its sign-off summaries. You decide whether to add them.
+Hard rule: the factory **never** edits `CLAUDE.md`. What it learns goes somewhere else:
+
+1. Each run writes its lessons to `.claude/learnings/<TICKET-ID>.md`. Nothing loads these files, so a lesson changes nothing on its own.
+2. When two or more tickets have taught the same rule, the `factory-learn` skill promotes it into `.claude/LEARNED.md`, in a PR you approve. Rules true of every repo go upstream to agent-factory instead.
+3. `LEARNED.md` loads here, so its rules reach every session that imports this partial:
+
+@./LEARNED.md
+
+`LEARNED.md` is this repo's own file. The kit never ships or overwrites it, and you may edit or delete any rule in it.
 
 Sections 1–8 (or whatever your existing sections are) are yours. The factory reads them; it does not write them.
 
@@ -286,7 +296,9 @@ The factory can consult **org-knowledge** — the org's unified search across Sl
 
 Beyond the factory mechanics above, every OgenticAI agent shares a **core canon** — operating principles, tiered autonomy, identity/posting rules, close-the-loop discipline, and (**§12**) connector + memory parity. It ships in the kit at `.claude/core-canon.md` and is imported here so it loads wherever this partial is imported:
 
-@./.claude/core-canon.md
+@./core-canon.md
+
+An `@` import resolves relative to the file that contains it, and an import that matches no file is dropped without a warning. This line used to read `@./.claude/core-canon.md`, which from inside `.claude/` names `.claude/.claude/core-canon.md`, so the canon never loaded through this partial. If you pasted this partial into `CLAUDE.md` instead of importing it, write that line, and the `LEARNED.md` import in §F4, with the `.claude/` prefix.
 
 **§12 — you have the tools.** You have the **same connector + memory access as Otto and Pascal** (Slack, Linear, Gmail, Drive, Notion, and a persistent project memory). Never tell the operator "I can't talk on Slack," "I have no listener," or "I have no access" — a tool that seems missing is a resolution step, not a dead end. Walk `.claude/runbooks/agent-access-resolution.md` top to bottom (in-session MCP tool → your own Slack bot token → the `claude -p` bridge → browser → escalate with evidence) before reporting any access gap.
 
