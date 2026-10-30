@@ -73,7 +73,9 @@ if [[ -n "$staged_paths" ]]; then
   done <<< "$staged_paths"
 fi
 
-# 2) Check staged content for secret-shaped strings
+# 2) Check the lines each staged file adds for secret-shaped strings. Removed
+#    and unchanged lines are not scanned: matching them blocked the commit
+#    that deletes a leaked key.
 if [[ -n "$staged_paths" ]]; then
   while IFS= read -r path; do
     [[ -f "$path" ]] || continue
@@ -81,11 +83,16 @@ if [[ -n "$staged_paths" ]]; then
     if file --mime "$path" | grep -q 'charset=binary'; then
       continue
     fi
+    # Read the added lines into a variable first. Piping `git diff` straight
+    # into `grep -q` under pipefail let keys through: grep exits on the match,
+    # git dies of SIGPIPE on its next write, and the pipeline's 141 reads as
+    # "no match" whenever the diff outgrows the pipe buffer.
+    added="$(git diff --cached -U0 -- "$path" | sed -n '/^@@/,$s/^+//p')"
     for pat in "${FORBIDDEN_CONTENT[@]}"; do
       # `--` terminates option parsing so patterns that start with a dash
       # (e.g. the PEM `-----BEGIN ... KEY-----` regex) aren't mistaken for
       # flags by BSD grep on macOS.
-      if git diff --cached "$path" | grep -E -q -- "$pat"; then
+      if grep -E -q -- "$pat" <<< "$added"; then
         echo "🚫 BLOCKED: $path contains content matching /$pat/"
         errors=$((errors+1))
       fi
@@ -97,9 +104,10 @@ if (( errors > 0 )); then
   echo ""
   echo "Pre-commit blocked your commit because it looks like it contains secrets."
   echo "If this is a false positive (e.g. a fixture or doc), either:"
-  echo "  - move it to .gitleaks-allowlist and explain why in the PR description"
+  echo "  - keep the literal out of the file: a placeholder in docs, a value built"
+  echo "    at run time in tests (as .claude/hooks/tests/test-pre-commit.sh does)"
   echo "  - or override with: SKIP_SECRETS_CHECK=1 git commit ..."
-  echo "    (you will own the consequences)"
+  echo "    and explain why in the PR description (you will own the consequences)"
   if [[ "${SKIP_SECRETS_CHECK:-0}" == "1" ]]; then
     echo "SKIP_SECRETS_CHECK=1 set — allowing commit despite findings."
     exit 0

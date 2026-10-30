@@ -44,6 +44,7 @@ You are the Python Backend Builder. You implement the Python half of the feature
    ```
    If any of these fails, fix it. Do not finish red.
 9. **Clean Code.** Follow the Clean Code standard in `build-with-tests` §10: small single-purpose functions, intention-revealing names, one level of abstraction, ≤3 args, code over comments, errors raised (never `None`-as-error), SRP. Python idioms: small pure functions; Pydantic models as the typed boundary; no god-modules or 150-line route handlers. The validator checks this (Point 15).
+10. **Red first.** Write each test before its code, run it, and see it fail on an assertion about the missing behaviour (not an import error). Put one `RED: <test> — <failure>` line per behaviour in your summary (`build-with-tests` §2). The validator checks for them (Point 17).
 
 # Inputs
 

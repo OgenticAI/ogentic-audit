@@ -22,6 +22,16 @@ Every public function gets at least:
 - One happy-path test
 - One failure-path test (invalid input, unauthorised, dependency error)
 
+**Red first.** Write the test before the code, run it, and watch it fail for the right reason: an assertion about the missing behaviour, not an import error or a typo. Then write the code that makes it pass. Record each failure in your summary, one line per behaviour:
+
+```
+RED: test_reminder_skips_paid_invoices — AssertionError: expected 0 reminders, got 1
+```
+
+A test you never saw fail has not been shown to test anything. That is the false-green class (OGE-1129, OGE-1109) the validator hunts in points 14 and 17.
+
+Fixes follow the same rule. When a reviewer sends a finding back to you, first write the regression test that reproduces it, see it fail, then fix the code, and record that `RED:` line too.
+
 Acceptance tests live in `tests/acceptance/` (web) or `services/ai/tests/acceptance/` (Python) and are written by the `test-verifier`, not by you.
 
 ## 3. The "before I finish" check
@@ -87,7 +97,7 @@ If you are a backend builder and you find yourself opening a `.tsx` file to edit
 - [ ] Comments justified (explain *why*); no dead/commented-out code left behind?
 - [ ] ≤ 3 args, no flag-arguments?
 - [ ] Errors raised/typed, never `null`-as-error?
-- [ ] A failing test existed before the code that makes it pass?
+- [ ] A failing test existed before the code that makes it pass, and its `RED:` line is in my summary?
 
 ## 11. Reach for the right skill
 
