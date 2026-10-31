@@ -127,7 +127,9 @@ jobs:
   # ----------------------------------------------------------------
   python-test:
     name: python-test (${{ matrix.python }})
-    runs-on: ubuntu-latest
+    # setup-python ships no 3.9 build for ubuntu-latest (26.04); 3.9 stays
+    # on 24.04 while requires-python still says >=3.9.
+    runs-on: ${{ matrix.python == '3.9' && 'ubuntu-24.04' || 'ubuntu-latest' }}
     strategy:
       fail-fast: false
       matrix:
