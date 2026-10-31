@@ -19,6 +19,15 @@ version = 2
 db-path = "$CARGO_HOME/advisory-db"
 db-urls = ["https://github.com/RustSec/advisory-db"]
 yanked = "deny"
+# Unmaintained notices (not vulnerabilities) with no fix to take yet:
+# zbus 6 absorbed these crates, but the Linux keychain chain
+# (keyring -> zbus-secret-service-keyring-store -> secret-service) is
+# still on zbus 5. Drop these once secret-service ships on zbus 6.
+ignore = [
+    { id = "RUSTSEC-2026-0370", reason = "zvariant unmaintained; via secret-service on zbus 5, no zbus-6 release yet" },
+    { id = "RUSTSEC-2026-0371", reason = "zbus_names unmaintained; via secret-service on zbus 5, no zbus-6 release yet" },
+    { id = "RUSTSEC-2026-0372", reason = "zvariant_derive unmaintained; via secret-service on zbus 5, no zbus-6 release yet" },
+]
 
 [licenses]
 version = 2
