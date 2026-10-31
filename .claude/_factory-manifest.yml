@@ -4,9 +4,9 @@
 manifest_version: 1
 factory_source: "https://github.com/OgenticAI/agent-factory"
 
-synced_kit_sha: "569ce8123e3b12e3dfe1de8c87d9710d80fd3c25"
+synced_kit_sha: "62127147c0dd6a6fb6deb4148d76a958ce5e84a1"
 synced_kit_hash: "5bdfc8808b3640223516e60ce8653ddb8fe6047adc918cf34618ae55ff021e5b"
-synced_at: "2026-10-31T15:11:28.770143+00:00"
+synced_at: "2026-10-31T19:14:51.020233+00:00"
 
 files:
   - path: .claude/CLAUDE-FACTORY.md
