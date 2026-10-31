@@ -105,6 +105,13 @@ jobs:
   rust-security:
     name: rust-security
     runs-on: ubuntu-latest
+    # audit-check posts its findings as a check run, which needs
+    # checks: write. With the default read-only token the job failed whenever
+    # the advisory DB had anything to report, even an "unmaintained" notice
+    # with no vulnerability behind it.
+    permissions:
+      contents: read
+      checks: write
     steps:
       - uses: actions/checkout@v6
 
