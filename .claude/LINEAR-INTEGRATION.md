@@ -319,9 +319,11 @@ Add these labels to the OGE team (one-time setup). The factory expects them.
 | `validator-blocked` | Validator (if Critical) | Validator (when next run is clean) |
 | `security-blocked` | Security Reviewer (if Critical) | Security Reviewer (when next run is clean) |
 | `compliance-blocked` | Compliance Reviewer (if Critical) | Compliance Reviewer (when next run is clean) |
+| `database-blocked` | Database Reviewer (if Critical) | Database Reviewer (when next run is clean) |
 | `from-validator` | When opening a sub-issue from validator findings | manual |
 | `from-security` | sub-issue from security review | manual |
 | `from-compliance` | sub-issue from compliance review | manual |
+| `from-database` | sub-issue from database review | manual |
 | `deferred-question` | sub-issue from open questions | manual |
 | `factory-degraded` | Orchestrator (if Linear MCP partially unavailable) | Orchestrator (when restored) |
 | `factory-paused` | Orchestrator (if a checkpoint stalls > 24h) | manual |
