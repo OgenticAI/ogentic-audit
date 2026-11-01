@@ -7,11 +7,15 @@ documented in OGE-433 (PyO3 binding ticket).
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from os import PathLike
 from types import TracebackType
 from typing import Any, TypedDict, Union
 
 _CheckpointArg = Union[str, "PathLike[str]", dict[str, Any]]
+_PathLike = Union[str, "PathLike[str]"]
+
+FORMAT_VERSION_SIGNED: int
 
 __version__: str
 
@@ -49,14 +53,37 @@ class Record(TypedDict):
     hmac: bytes
     hmac_hex: str
 
+class SigningKey:
+    """An Ed25519 signing key (format 0x0002). The private key never leaves it."""
+
+    @staticmethod
+    def generate() -> SigningKey: ...
+    @staticmethod
+    def from_seed(seed: bytes) -> SigningKey: ...
+    @staticmethod
+    def from_keychain(service: str, account: str, create: bool = False) -> SigningKey: ...
+    @staticmethod
+    def create_in_keychain(service: str, account: str) -> SigningKey: ...
+    def public_key_openssh(self, comment: str = "ogentic-audit") -> str: ...
+    def public_key_pem(self) -> str: ...
+    def public_key_hex(self) -> str: ...
+    def fingerprint(self) -> str: ...
+    def fingerprint_openssh(self) -> str: ...
+    def fingerprint_hex(self) -> str: ...
+
 class Writer:
     @staticmethod
     def open(
         log_dir: str,
-        key: KeyHandle,
+        key: KeyHandle | None = None,
         session_id_hex: str = "00000000000000000000000000000000",
         segment_size_bytes: int | None = None,
+        signing_key: SigningKey | None = None,
     ) -> Writer: ...
+    def seal(self) -> int: ...
+    def last_record_hash(self) -> str: ...
+    def log_id(self) -> str: ...
+    def format_version(self) -> int: ...
     def append(self, record: dict[str, Any]) -> int: ...
     def flush(self) -> None: ...
     def close(self) -> None: ...
@@ -92,20 +119,108 @@ class VerifyReport:
     violation: dict[str, Any] | None
     additional_violations: list[dict[str, Any]]
 
+class SignedVerifyReport:
+    verdict: str
+    ok: bool
+    compact: str
+    verdict_kind: str
+    reason: str | None
+    final_record_hash_hex: str | None
+    log_id_hex: str | None
+    head_anchored: bool
+    sealed: bool
+    records_inspected: int
+    segments_inspected: int
+    elided_records: list[str]
+    signer: dict[str, Any] | None
+    violation: dict[str, Any] | None
+    additional_violations: list[dict[str, Any]]
+    warnings: list[dict[str, Any]]
+    def as_dict(self) -> dict[str, Any]: ...
+    def to_json(self) -> str: ...
+    def render(self, ascii: bool = False, program: str = "python -m ogentic_audit") -> str: ...
+
+class ReleaseReport:
+    verdict: str
+    ok: bool
+    compact: str
+    release_id: str | None
+    violations: list[dict[str, Any]]
+    warnings: list[dict[str, Any]]
+    files: dict[str, Any]
+    logs: list[dict[str, Any]]
+    signer: dict[str, Any] | None
+    def as_dict(self) -> dict[str, Any]: ...
+    def to_json(self) -> str: ...
+    def render(self, ascii: bool = False, program: str = "python -m ogentic_audit") -> str: ...
+
+class FileSpec:
+    path: str
+    role: str | None
+    parts: Sequence[tuple[str, int, int]]
+    def __init__(
+        self, path: str, role: str | None = None, parts: Sequence[tuple[str, int, int]] = ...
+    ) -> None: ...
+
+class LogSpec:
+    path: str
+    head: tuple[int, int] | None
+    elide: Sequence[tuple[int, int]]
+    dest: str
+    def __init__(
+        self,
+        path: str,
+        head: tuple[int, int] | None = None,
+        elide: Sequence[tuple[int, int]] = ...,
+        dest: str = "Audit log",
+    ) -> None: ...
+
+def log_format(log_dir: str) -> int | None: ...
 def verify(
-    log_dir: str,
-    key: KeyHandle,
+    log_dir: _PathLike,
+    key: KeyHandle | None = None,
     forensic: bool = False,
     raise_on_violation: bool = False,
-    checkpoint: _CheckpointArg | None = None,
-) -> VerifyReport: ...
-def checkpoint(
-    log_dir: str,
-    key: KeyHandle,
+    checkpoint: _CheckpointArg | Sequence[_PathLike] | None = None,
     *,
+    public_key: str | None = None,
+    key_fingerprint: str | Sequence[str] | None = None,
+    trust: _PathLike | None = None,
+    statements: _PathLike | Sequence[_PathLike] | None = None,
+    revocations: _PathLike | Sequence[_PathLike] | None = None,
+    witnesses: _PathLike | Sequence[_PathLike] | None = None,
+    expect_log_id: str | None = None,
+    segment: int | None = None,
+) -> VerifyReport | SignedVerifyReport: ...
+def checkpoint(
+    log_dir: _PathLike,
+    key: KeyHandle | None = None,
+    *,
+    signing_key: SigningKey | None = None,
     observed_at: str | None = None,
-    out: str | PathLike[str] | None = None,
+    out: _PathLike | None = None,
 ) -> dict[str, Any]: ...
+def attest_release(
+    release_dir: _PathLike,
+    *,
+    files: Sequence[str | FileSpec],
+    logs: Sequence[LogSpec],
+    signing_key: SigningKey,
+    release_id: str,
+    created_at: str | None = None,
+) -> str: ...
+def verify_release(
+    release_dir: _PathLike,
+    *,
+    public_key: str | None = None,
+    key_fingerprint: str | Sequence[str] | None = None,
+    trust: _PathLike | None = None,
+    statements: _PathLike | Sequence[_PathLike] | None = None,
+    revocations: _PathLike | Sequence[_PathLike] | None = None,
+    witnesses: _PathLike | Sequence[_PathLike] | None = None,
+    expect_release_id: str | None = None,
+    allow_unattested: bool = False,
+) -> ReleaseReport: ...
 
 # Exception hierarchy.
 class OgenticAuditError(Exception): ...
@@ -125,3 +240,24 @@ class SchemaError(VerificationFailed): ...
 class CheckpointMismatchError(VerificationFailed): ...
 class CheckpointTruncatedError(VerificationFailed): ...
 class CheckpointKeyMismatchError(ArgumentError): ...
+
+# Signed mode. SignerNotPinnedError is outside the tamper hierarchy.
+class SignerNotPinnedError(OgenticAuditError): ...
+class HmacLogError(ArgumentError): ...
+class SignatureInvalidError(VerificationFailed): ...
+class UntrustedSignerError(VerificationFailed): ...
+class RevokedKeyError(VerificationFailed): ...
+class RetiredKeyError(VerificationFailed): ...
+class TransitionEquivocationError(VerificationFailed): ...
+class AlgorithmMismatchError(VerificationFailed): ...
+class UnsupportedAlgorithmError(VerificationFailed): ...
+class LogIdMismatchError(VerificationFailed): ...
+class SealedLogExtendedError(VerificationFailed): ...
+class CheckpointForDifferentLogError(VerificationFailed): ...
+class FormatDowngradeError(VerificationFailed): ...
+class AttestationMissingError(VerificationFailed): ...
+class AttestationMalformedError(VerificationFailed): ...
+class ReleaseIdMismatchError(VerificationFailed): ...
+class FileMissingError(VerificationFailed): ...
+class FileAlteredError(VerificationFailed): ...
+class UnattestedFileError(VerificationFailed): ...

@@ -1,6 +1,6 @@
 [package]
 name = "ogentic-audit-core"
-description = "HMAC-SHA256 chained, append-only audit log — core library (writer, reader, verifier, key handle)"
+description = "Tamper-evident append-only audit log, Ed25519-signed (anyone verifies with a public key) or HMAC-SHA256 chained — core library"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -35,6 +35,13 @@ rustix = { workspace = true }
 subtle = { workspace = true }
 zeroize = { workspace = true }
 thiserror = { workspace = true }
+# Signed mode (format 0x0002). See docs/adr/0004.
+ed25519-dalek = { workspace = true }
+curve25519-dalek = { workspace = true }
+base64 = { workspace = true }
+getrandom = { workspace = true }
+unicode-normalization = { workspace = true }
+unicase = { workspace = true }
 
 [dev-dependencies]
 hex = { workspace = true }

@@ -91,10 +91,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 fn report(dir: &std::path::Path, checkpoint: Option<Checkpoint>) {
     let verifier = Verifier::new(Box::new(InMemoryKey::from_bytes(KEY)));
-    let opts = VerifyOptions {
-        forensic_mode: false,
-        checkpoint,
-    };
+    let opts = VerifyOptions::new().checkpoint(checkpoint);
     match verifier.verify_with_options(dir, opts) {
         Ok(r) => match (r.verdict, r.violation) {
             (Verdict::Verified, _) => {
@@ -103,7 +100,7 @@ fn report(dir: &std::path::Path, checkpoint: Option<Checkpoint>) {
             (Verdict::Violation, Some(v)) => {
                 println!("VIOLATION {} — {}", v.kind.as_str(), v.message)
             },
-            (Verdict::Violation, None) => println!("VIOLATION (unspecified)"),
+            _ => println!("VIOLATION (unspecified)"),
         },
         Err(e) => println!("ERROR {e}"),
     }

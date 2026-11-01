@@ -1,0 +1,3 @@
+# Test vectors are exact bytes: hashes and signatures cover them, so a
+# checkout must never convert their line endings (Windows would add CR).
+tests/vectors/** -text

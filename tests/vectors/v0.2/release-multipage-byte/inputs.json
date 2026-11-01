@@ -1,0 +1,40 @@
+{
+  "description": "One byte of a multi-page file.",
+  "keys": {
+    "K1": {
+      "fingerprint": "6db5 e9b8 a1ba ce1c dd9a 7c6a db9e 9396 acc5 0734 65d9 fe8e 3a0e f6d9 c60d 6d4f",
+      "public_key": "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
+      "seed": "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60"
+    },
+    "K2": {
+      "fingerprint": "177e 278a 7eed 71a6 07e9 6479 2d25 927e 3eb0 7850 4f7c 1a6e c945 283c 53fd 6230",
+      "public_key": "3d4017c3e843895a92b70aa74d1b7ebc9c982ccf2ec4968cc0cd55f12af4660c",
+      "seed": "4ccd089b28ff96da9db6c346ec114e0f5b8a319f35aba624da8cf6ed4fb8a6fb"
+    },
+    "K3": {
+      "fingerprint": "b376 7603 e9a5 75e7 e51e 8e53 30c1 1403 b325 90c8 3deb 1bed a87f 4318 b1c7 6661",
+      "public_key": "fc51cd8e6218a1a38da47ed00230f0580816ed13ba3303ac5deb911548908025",
+      "seed": "c5aa8df43f9f837bedb7442f31dcb7b166d38535076f094b85ce3a2e0b4458f7"
+    },
+    "K4": {
+      "fingerprint": "ca09 dc0e 6f9b 44a6 d07d 0166 2192 32ec 6d72 2efa 4e01 309b f83d 5d58 b77e 5b04",
+      "public_key": "278117fc144c72340f67d0f2316e8386ceffbf2b2428c9c51fef7c597f1d426e",
+      "seed": "f5e5767cf153319517630f226876b86c8160cc583bc013744c6bf255f5cc0ee5"
+    }
+  },
+  "runs": [
+    {
+      "command": "verify-release",
+      "expect": {
+        "exit": 1,
+        "reason": "content",
+        "verdict": "FileAltered@file:doc.pdf"
+      },
+      "key_fingerprint": [
+        "6db5 e9b8 a1ba ce1c dd9a 7c6a db9e 9396 acc5 0734 65d9 fe8e 3a0e f6d9 c60d 6d4f"
+      ],
+      "target": "release"
+    }
+  ],
+  "vector": "release-multipage-byte"
+}

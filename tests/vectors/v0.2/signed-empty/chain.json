@@ -1,0 +1,15 @@
+{
+  "key": "K1",
+  "key_id": "6db5e9b8a1bace1cdd9a7c6adb9e9396acc5073465d9fe8e3a0ef6d9c60d6d4f",
+  "log_id": "000102030405060708090a0b0c0d0e0f",
+  "post_tamper": false,
+  "public_key": "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
+  "records": [],
+  "segments": [
+    {
+      "chain_start": "377d85f15f810e761308e18230717c9b7a58554a611ef77df2a5822e1fd977dc",
+      "final": "377d85f15f810e761308e18230717c9b7a58554a611ef77df2a5822e1fd977dc",
+      "index": 0
+    }
+  ]
+}

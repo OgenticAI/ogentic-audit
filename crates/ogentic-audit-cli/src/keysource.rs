@@ -30,8 +30,20 @@ use crate::exit::ExitCodeKind;
 
 /// Resolve the key handle from the global args. Returns an `AppError`
 /// shaped for CLI exit-code mapping.
+///
+/// There is no implicit source: an HMAC key is loaded only when the
+/// caller named one with `--key-source` or `--key-file` (spec v0.2 §8.1).
 pub fn load_key(global: &GlobalArgs) -> Result<Box<dyn KeyHandle>, KeyError> {
-    match global.key_source {
+    let source = match (global.key_source, &global.key_file) {
+        (Some(s), _) => s,
+        (None, Some(_)) => KeySource::File,
+        (None, None) => {
+            return Err(KeyError::Config(
+                "this is an HMAC log; pass its key with --key-source or --key-file".into(),
+            ))
+        },
+    };
+    match source {
         KeySource::Env => load_env(&global.key_env).map(box_inmemory),
         KeySource::File => {
             let path = global.key_file.as_deref().ok_or_else(|| {
@@ -99,7 +111,7 @@ fn load_file(path: &Path) -> Result<Zeroizing<[u8; 32]>, KeyError> {
 /// here would be a security theater. This is the same posture `ssh`
 /// takes on Windows.
 #[cfg_attr(not(unix), allow(clippy::needless_pass_by_value))]
-fn check_key_file_permissions(path: &Path) -> Result<(), KeyError> {
+pub(crate) fn check_key_file_permissions(path: &Path) -> Result<(), KeyError> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::MetadataExt;

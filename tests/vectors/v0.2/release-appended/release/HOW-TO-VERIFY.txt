@@ -1,0 +1,24 @@
+How to check this release
+
+This folder was signed when it was released. You can check that nothing in it has been
+changed, without trusting whoever gave it to you and without any secret.
+
+1. Get the signer's key fingerprint FROM THE SIGNER, not from this folder: from their
+   website, a letter, a filing, or by phone. It is 64 characters long, usually written
+   in 16 groups of 4. Any fingerprint printed inside this folder could have been replaced.
+
+2. Check the signature and every file with standard tools, as described at
+   https://github.com/OgenticAI/ogentic-audit/blob/main/docs/guides/verifying-a-release.md
+   This needs only OpenSSH and Python, which most computers already have.
+
+3. To also check the audit log, use ogentic-audit version 0.4.0 or later. Download it
+   from https://github.com/OgenticAI/ogentic-audit/releases and check it as that page
+   explains. Do not run a verifier from this folder until step 2 has passed. Then run:
+
+     ogentic-audit verify-release . --key-fingerprint "<the fingerprint from step 1>"
+
+   "Verified" means every file and the audit log are exactly as signed. "Not verified:
+   you did not supply the signer's key" means you skipped step 1. Anything else names
+   what changed, what is missing, or what was added.
+
+Release: 2026-0147

@@ -88,7 +88,7 @@ pub enum PayloadValue {
 }
 
 impl PayloadValue {
-    fn encode(&self) -> Vec<u8> {
+    pub(crate) fn encode(&self) -> Vec<u8> {
         match self {
             PayloadValue::Uint(v) => cbor::uint(*v),
             PayloadValue::Nint(v) => cbor::nint(*v),
@@ -179,6 +179,23 @@ pub enum WriterError {
         /// Discriminated reason.
         reason: RecoveryFailure,
     },
+
+    /// Signed mode: the directory holds a log in another format (for
+    /// example an HMAC `0x0001` log). A writer never mixes formats,
+    /// algorithms, keys or `log_id`s in one log.
+    #[error("the log in this directory uses format 0x{found:04x}; a signed writer only appends to format 0x0002 logs it can continue")]
+    FormatMismatch {
+        /// The format found.
+        found: u16,
+    },
+
+    /// Signed mode: the log ends in `log.sealed` and cannot be extended.
+    #[error("the log is sealed; open a new log")]
+    Sealed,
+
+    /// Signed mode: the signer failed.
+    #[error("signing failed: {0}")]
+    Sign(#[from] crate::signed::SignError),
 }
 
 /// Why the writer refused to resume from an existing log directory.
@@ -226,6 +243,20 @@ pub enum RecoveryFailure {
         /// Caller-supplied key handle's key_id hex.
         expected_key_id_hex: String,
     },
+    /// Signed mode: a record's signature (or body hash) does not verify.
+    SignatureInvalid {
+        /// Segment containing the bad record.
+        segment_index: u16,
+        /// Position of the bad record.
+        record_id: u64,
+        /// Byte offset where the bad record starts.
+        file_offset: u64,
+    },
+    /// Signed mode: a segment's `log_id` differs from segment 0's.
+    LogIdMismatch {
+        /// Segment with the other `log_id`.
+        segment_index: u16,
+    },
 }
 
 impl core::fmt::Display for RecoveryFailure {
@@ -262,12 +293,26 @@ impl core::fmt::Display for RecoveryFailure {
                 "key_id mismatch in segment {segment_index}: header has {header_key_id_hex}, \
                  caller's key handle is {expected_key_id_hex}"
             ),
+            RecoveryFailure::SignatureInvalid {
+                segment_index,
+                record_id,
+                file_offset,
+            } => write!(
+                f,
+                "signature invalid at segment {segment_index}, record {record_id} \
+                 (file offset {file_offset}): log shows in-place tampering, refusing to extend"
+            ),
+            RecoveryFailure::LogIdMismatch { segment_index } => write!(
+                f,
+                "segment {segment_index} belongs to a different log (log_id differs from segment 0)"
+            ),
         }
     }
 }
 
 /// What `Writer::open` did with the target directory.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum RecoveryAction {
     /// Directory had no segment files. A fresh segment 0 was created.
     Fresh,
@@ -290,6 +335,7 @@ pub enum RecoveryAction {
 /// the relevant bits to the user — e.g. "previous session ended
 /// unexpectedly; recovered to record 1234, truncated 67 bytes".
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct RecoveryReport {
     /// Discriminated action taken.
     pub action: RecoveryAction,

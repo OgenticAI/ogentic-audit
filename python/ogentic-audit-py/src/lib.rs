@@ -26,6 +26,7 @@
 mod errors;
 mod key;
 mod reader;
+mod signed;
 mod verify;
 mod writer;
 
@@ -64,6 +65,20 @@ fn _native(py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
 
     // Checkpoint anchoring: emit a chain-head pin (OGE-1673).
     m.add_function(wrap_pyfunction!(verify::checkpoint, m)?)?;
+
+    // Signed mode (format 0x0002).
+    m.add_class::<signed::PySigningKey>()?;
+    m.add_class::<signed::PySignedReport>()?;
+    m.add_class::<signed::PyReleaseReport>()?;
+    m.add_function(wrap_pyfunction!(signed::log_format, m)?)?;
+    m.add_function(wrap_pyfunction!(signed::verify_signed, m)?)?;
+    m.add_function(wrap_pyfunction!(signed::verify_release, m)?)?;
+    m.add_function(wrap_pyfunction!(signed::attest_release, m)?)?;
+    m.add_function(wrap_pyfunction!(signed::checkpoint_signed, m)?)?;
+    m.add(
+        "FORMAT_VERSION_SIGNED",
+        ogentic_audit_core::signed::FORMAT_VERSION_SIGNED,
+    )?;
 
     Ok(())
 }

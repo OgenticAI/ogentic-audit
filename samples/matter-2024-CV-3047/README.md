@@ -28,7 +28,7 @@ of `2026-06-10T14:00:00Z`.
 
 ```sh
 export OGENTIC_AUDIT_KEY_HEX=0000000000000000000000000000000000000000000000000000000000000000
-ogentic-audit verify ./matter-2024-CV-3047.log/ --summary
+ogentic-audit verify ./matter-2024-CV-3047.log/ --key-source env --summary
 # ✓ Verified · 4 events · chain head 5c643f56
 ```
 

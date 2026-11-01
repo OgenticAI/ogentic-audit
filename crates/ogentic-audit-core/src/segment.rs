@@ -58,6 +58,7 @@ pub struct SegmentHeader {
 
 /// Errors a header byte-buffer can produce when being parsed.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum HeaderParseError {
     /// Buffer was shorter than [`HEADER_TOTAL_LEN`].
     TooShort {

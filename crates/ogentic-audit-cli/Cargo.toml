@@ -1,6 +1,6 @@
 [package]
 name = "ogentic-audit"
-description = "ogentic-audit CLI — verify, inspect, and export tamper-evident audit logs"
+description = "ogentic-audit CLI — verify signed (Ed25519) or HMAC audit logs and signed releases offline; inspect and export"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

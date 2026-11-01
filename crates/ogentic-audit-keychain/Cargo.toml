@@ -1,6 +1,6 @@
 [package]
 name = "ogentic-audit-keychain"
-description = "Optional OS-keychain key source for ogentic-audit (macOS Keychain, Linux Secret Service, Windows Credential Manager)"
+description = "Optional OS-keychain key source for ogentic-audit: HMAC keys and Ed25519 signing keys (macOS Keychain, Linux Secret Service, Windows Credential Manager)"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -17,7 +17,7 @@ categories.workspace = true
 # (Zashboard via OGE-460 KMS source) compile this crate with the type
 # surface intact but no platform-specific code linked in.
 default = ["keychain"]
-keychain = ["dep:keyring", "dep:getrandom"]
+keychain = ["dep:keyring", "dep:getrandom", "dep:keyring-core"]
 
 [package.metadata.docs.rs]
 all-features = true
@@ -29,6 +29,11 @@ zeroize = { workspace = true }
 thiserror = { workspace = true }
 keyring = { workspace = true, optional = true, default-features = true }
 getrandom = { workspace = true, optional = true }
+
+[target.'cfg(windows)'.dependencies]
+# Windows Credential Manager persistence "local" for signing seeds
+# (spec v0.2 §13.2): the keyring v1 Entry has no modifiers constructor.
+keyring-core = { version = "1", optional = true }
 
 [dev-dependencies]
 hex = { workspace = true }

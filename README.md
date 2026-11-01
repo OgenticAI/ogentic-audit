@@ -6,7 +6,10 @@
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Format v0.1](https://img.shields.io/badge/on--disk%20format-v0.1-informational)](docs/spec/v0.1.md)
 
-HMAC-SHA256 chained, append-only audit log library. Tamper-evident, language-agnostic on-disk format, built for evidence.
+Tamper-evident, append-only audit log library with a language-agnostic on-disk format, built for evidence. Two formats:
+
+- **Signed (`0x0002`, Ed25519).** Anyone holding the signer's *public* key can verify a log or a release, offline, with no secret and without the writing application; nobody who can verify can forge. This is the mode for a third party (a requester, an auditor, a court) who must check without trusting the producer. See [signed mode](#signed-mode-verification-a-third-party-can-do) and [spec v0.2](docs/spec/v0.2.md).
+- **HMAC-SHA256 (`0x0001`).** Verifying needs the shared secret key, and whoever holds it could also have written the log: right when the writer is the only verifier.
 
 > **Status:** v0.3.0 — live on [crates.io](https://crates.io/crates/ogentic-audit) and [PyPI](https://pypi.org/project/ogentic-audit/). The on-disk format is specified in [`docs/spec/v0.1.md`](docs/spec/v0.1.md) and the wire bytes are pinned by [committed golden vectors](tests/vectors/v0.1). The format is the stable surface (`0x0001`, unchanged since v0.1); the Rust / Python APIs follow semantic versioning. See [Status & versioning](#status--versioning).
 
@@ -26,7 +29,8 @@ Regulated industries and audit-grade AI tooling need an audit log that:
 - [`crates/ogentic-audit-cli`](crates/ogentic-audit-cli) — `ogentic-audit` CLI binary (`verify` / `show` / `head` / `checkpoint` / `export`)
 - [`crates/ogentic-audit-keychain`](crates/ogentic-audit-keychain) — optional OS-keychain key source (macOS / Linux / Windows)
 - [`crates/ogentic-audit-kms`](crates/ogentic-audit-kms) — optional KMS-backed key source (AWS KMS in v0.1; GCP / Azure in v0.2)
-- [`python/ogentic_audit`](python/ogentic_audit) — PyO3-based Python bindings (`pip install ogentic-audit`)
+- [`python/ogentic_audit`](python/ogentic_audit) — PyO3-based Python bindings (`pip install ogentic-audit`), including `python -m ogentic_audit verify-release`
+- [`tools/gen_vectors_v02.py`](tools/gen_vectors_v02.py) — an independent second implementation of the signed format (Python `cryptography`), which generates the [v0.2 golden vectors](tests/vectors/v0.2) and checks every expected result
 
 ## Quickstart
 
@@ -92,6 +96,52 @@ report = verify("./audit-logs", key=key)
 assert report.ok
 ```
 
+### Signed mode: verification a third party can do
+
+Signed logs need ogentic-audit **0.4.0 or later** to verify.
+
+```rust
+use ogentic_audit_core::signed::{
+    InMemorySigner, Scope, SignedVerifier, SignedWriter, Signer, TrustContext,
+};
+
+// The producer. In production the key lives in the OS keychain:
+// ogentic_audit_keychain::KeychainSigner::load_or_generate(service, account).
+let signer = InMemorySigner::generate();
+let fingerprint = signer.public_key().fingerprint(); // publish this out of band
+let mut w = SignedWriter::open_signed("./audit-logs", Box::new(signer), session_id)?;
+w.append(record)?;
+w.seal()?; // log.sealed: nothing can be cut or added after it
+
+// The third party: only the fingerprint, obtained from the producer.
+let mut trust = TrustContext::new();
+trust.pin_fingerprint(fingerprint, Some("producer"), Scope::DEFAULT)?;
+let report = SignedVerifier::new(trust).verify("./audit-logs")?;
+assert_eq!(report.compact_verdict(), "Verified");
+```
+
+```python
+from ogentic_audit import SigningKey, Writer, verify, verify_release
+
+key = SigningKey.from_keychain("com.example.app", "audit:ed25519", create=True)
+with Writer.open("./audit-logs", signing_key=key) as w:
+    w.append({"actor": "user:alice", "event": "vault.unlocked"})
+print(key.fingerprint())  # publish this out of band
+
+report = verify("./audit-logs", key_fingerprint="6db5 e9b8 ... 6d4f")
+assert report.ok  # False, with verdict "SelfConsistent", if no key is given
+```
+
+```sh
+ogentic-audit key generate --signer keychain:com.example.app:audit:ed25519   # prints the fingerprint
+ogentic-audit verify ./audit-logs --key-fingerprint "<fingerprint from the producer>"
+ogentic-audit verify-release ./release --key-fingerprint "<fingerprint from the producer>"
+```
+
+A signed **release** is a folder of released files plus the audit log, with a signed index of every file (and of every row of an index file), checkable with `ogentic-audit`, with `python -m ogentic_audit`, or with OpenSSH and Python alone. Withheld content stays out of the release without breaking the chain. Walk through one end to end in [`examples/third-party-verification`](examples/third-party-verification); the guide for recipients is [`docs/guides/verifying-a-release.md`](docs/guides/verifying-a-release.md).
+
+Without a key, the verifier never says "Verified": it says **"Not verified: you did not supply the signer's key"** and exits `4`.
+
 ### CLI — quick start
 
 Install the `ogentic-audit` binary from crates.io:
@@ -113,14 +163,14 @@ Developer ID + notarization lands in v0.1.1.
 
 #### Verify the sample log shipped with the project
 
-The sample uses the public all-zeros fixture key; the CLI reads it
-from `OGENTIC_AUDIT_KEY_HEX` under the default `--key-source=env`. Set
-it first, then run the verify:
+The sample is an HMAC (`0x0001`) log under the public all-zeros fixture
+key. The CLI reads it from `OGENTIC_AUDIT_KEY_HEX` when you name that
+source with `--key-source env`; an HMAC key is never taken implicitly:
 
 ```sh
 export OGENTIC_AUDIT_KEY_HEX=0000000000000000000000000000000000000000000000000000000000000000
-ogentic-audit verify ./samples/matter-2024-CV-3047/matter-2024-CV-3047.log/ --summary
-# ✓ Verified · 4 events · chain head 5c643f56
+ogentic-audit verify ./samples/matter-2024-CV-3047/matter-2024-CV-3047.log/ --key-source env --summary
+# ✓ Verified · 4 events · chain head 5c643f56 · shared key: anyone holding it could have written this log
 ```
 
 A tampered companion is also shipped — same four events with one byte
@@ -128,7 +178,7 @@ flipped inside record 2's HMAC field — so you can see a failing
 verification end-to-end:
 
 ```sh
-ogentic-audit verify ./samples/matter-2024-CV-3047-tampered/matter-2024-CV-3047.log/ --summary
+ogentic-audit verify ./samples/matter-2024-CV-3047-tampered/matter-2024-CV-3047.log/ --key-source env --summary
 # ✗ Verification failed · HmacMismatch at segment 0 record 2
 echo $?
 # 1
@@ -142,18 +192,20 @@ someone who does not control the log, and check against it later:
 
 ```sh
 # Observe the current head and store it somewhere the writer can't reach.
-ogentic-audit checkpoint ./samples/matter-2024-CV-3047/matter-2024-CV-3047.log/ --out head.json
+ogentic-audit checkpoint ./samples/matter-2024-CV-3047/matter-2024-CV-3047.log/ --key-source env --out head.json
 
 # Later: prove the log still contains that history.
-ogentic-audit verify ./samples/matter-2024-CV-3047/matter-2024-CV-3047.log/ --checkpoint head.json --summary
+ogentic-audit verify ./samples/matter-2024-CV-3047/matter-2024-CV-3047.log/ --key-source env --checkpoint head.json --summary
 ```
 
 A rewritten log reports `CheckpointMismatch`; a truncated one reports
 `CheckpointTruncated`. Both exit `1`. Keeping `head.json` next to the log
 achieves nothing — whoever can rewrite one can rewrite the other.
 
-Exit codes (CI-friendly): `0` success, `1` verification failed, `2` I/O
-error, `3` argument error, `64` clap usage error.
+Exit codes (CI-friendly): `0` verified, `1` verification failed, `2` I/O
+error, `3` argument error, `4` not verified (a signed log or release
+checked without the signer's key, or with nothing signed), `64` usage
+error.
 
 > The `samples/` directory ships inside the release tarball
 > (`ogentic-audit-<target>.tar.gz`) and inside the source repo.
@@ -190,13 +242,13 @@ or `ogentic-audit-windows-x86_64.zip`. Each ships with a sibling
 ```sh
 # verify a vault's log (64 hex chars = 32 raw bytes)
 export OGENTIC_AUDIT_KEY_HEX=$(openssl rand -hex 32)
-ogentic-audit verify ./audit-logs            # exit 0 verified, 1 violation
+ogentic-audit verify ./audit-logs --key-source env   # exit 0 verified, 1 violation
 
 # verify only segment 0 (useful for spot-checking a specific segment)
-ogentic-audit verify ./audit-logs --segment 0
+ogentic-audit verify ./audit-logs --key-source env --segment 0
 
 # machine-readable output (see "verify JSON output" below)
-ogentic-audit verify ./audit-logs --format json
+ogentic-audit verify ./audit-logs --key-source env --format json
 
 # pretty-print the last 100 records
 ogentic-audit show ./audit-logs --from 0 --to 100
@@ -245,17 +297,20 @@ the JSON summary on **stdout** is clean for `jq`-based pipelines.
 
 #### `--segment <id>` flag
 
-Verify a single named segment. Useful for forensic spot-checks on large logs:
+Narrow the report to one segment. Every segment is still checked (the
+run is forensic), so `--segment` never reports a segment it did not read,
+and for a signed log it never improves the whole log's verdict:
 
 ```sh
-ogentic-audit verify ./audit-logs --segment 0          # verify segment 0 only
-ogentic-audit verify ./audit-logs --segment 42         # verify segment 42 only
+ogentic-audit verify ./audit-logs --key-source env --segment 0    # HMAC log: report on segment 0
+ogentic-audit verify ./signed-logs --key-fingerprint <fp> --segment 42
 ```
 
 Exit codes for `--segment`:
-- `0` — segment verified clean
-- `1` — segment has a chain violation
-- `2` — segment index `> 65535`, or the segment file does not exist in the log directory
+- `0` — verified
+- `1` — a violation in that segment (or, for a signed log, anywhere in it)
+- `2` — the segment file does not exist in the log directory
+- `3` — segment index `> 65535`
 
 ## Design
 
@@ -321,11 +376,14 @@ Full integration guide for the KMS option:
 
 - [`docs/spec/v0.1.md`](docs/spec/v0.1.md) — language-agnostic on-disk format spec
 - [`docs/spec/violation-report.md`](docs/spec/violation-report.md) — normative JSON schema for verifier output
+- [`docs/spec/v0.2.md`](docs/spec/v0.2.md) — signed mode (format `0x0002`, draft): Ed25519-signed records, signed checkpoints and witness co-signatures, key rotation and revocation, offline release attestations
+- [`docs/guides/verifying-a-release.md`](docs/guides/verifying-a-release.md) — plain-language guide for a third party checking a signed release (draft)
 - [`docs/security/threat-model.md`](docs/security/threat-model.md) — adversaries, invariants, accepted residual risk
 - [`docs/security/key-rotation.md`](docs/security/key-rotation.md) — customer-facing rotation policy
 - [`docs/legal/court-defensibility.md`](docs/legal/court-defensibility.md) — court-defensibility brief (draft)
 - [`docs/adr/0001-on-disk-format.md`](docs/adr/0001-on-disk-format.md) — on-disk format rationale (ADR)
 - [`docs/adr/0002-server-side-kms-key-sourcing.md`](docs/adr/0002-server-side-kms-key-sourcing.md) — KMS key sourcing rationale (ADR)
+- [`docs/adr/0004-signed-chain-and-offline-verification.md`](docs/adr/0004-signed-chain-and-offline-verification.md) — signed chain and third-party verification rationale (ADR, proposed)
 - [`tests/vectors/v0.1/README.md`](tests/vectors/v0.1/README.md) — golden-vector layout + procedure for adding new vectors
 - [`docs/integrations/sotto-desktop.md`](docs/integrations/sotto-desktop.md) — embedding `ogentic-audit-core` inside the Sotto Desktop Tauri shell
 - [`docs/integrations/server-side-kms.md`](docs/integrations/server-side-kms.md) — KMS integration guide (AWS KMS `GenerateMac`)

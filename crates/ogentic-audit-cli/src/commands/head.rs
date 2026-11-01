@@ -15,6 +15,11 @@ use crate::keysource::AppError;
 use crate::output::hex;
 
 pub fn run(_global: &GlobalArgs, args: HeadArgs) -> Result<ExitCodeKind, AppError> {
+    if crate::commands::verify::detect_format(&args.log_dir)?
+        == ogentic_audit_core::signed::FORMAT_VERSION_SIGNED
+    {
+        return head_signed(&args);
+    }
     let reader =
         Reader::open(&args.log_dir).map_err(|e| AppError::io(anyhow!("opening log: {e}")))?;
     let segments = reader
@@ -89,5 +94,66 @@ pub fn run(_global: &GlobalArgs, args: HeadArgs) -> Result<ExitCodeKind, AppErro
         },
     }
 
+    Ok(ExitCodeKind::Success)
+}
+
+/// Head of a signed (0x0002) log. Nothing is verified here.
+fn head_signed(args: &HeadArgs) -> Result<ExitCodeKind, AppError> {
+    use ogentic_audit_core::signed::visit_records;
+    let mut count = 0u64;
+    let mut last: Option<ogentic_audit_core::signed::RecordView> = None;
+    visit_records(&args.log_dir, |r| {
+        count += 1;
+        last = Some(r.clone());
+        true
+    })
+    .map_err(|e| AppError::io(anyhow!("reading log: {e}")))?;
+    let segments = std::fs::read_dir(&args.log_dir)
+        .map_err(|e| AppError::io(anyhow!("listing segments: {e}")))?
+        .filter_map(Result::ok)
+        .filter(|e| {
+            e.file_name()
+                .to_str()
+                .and_then(ogentic_audit_core::signed::names::segment_index)
+                .is_some()
+        })
+        .count();
+    let env = last.as_ref().and_then(|l| l.envelope.as_ref().ok());
+    match args.format {
+        OutputFormat::Text => match (&last, env) {
+            (Some(l), Some(e)) => {
+                println!(
+                    "{} records={count} segments={segments} key_id={} (signed, not verified here)",
+                    hex(&l.record_hash),
+                    hex(&e.key_id)
+                );
+                println!(
+                    "    last_segment={} last_record_id={} last_event={:?}",
+                    l.segment, l.position, e.event
+                );
+            },
+            _ => {
+                println!("(empty log; no records)");
+                println!("segments: {segments}");
+            },
+        },
+        OutputFormat::Json => {
+            let value = json!({
+                "format_version": 2,
+                "record_count": count,
+                "segments": segments,
+                "head_record_hash_hex": last.as_ref().map(|l| hex(&l.record_hash)),
+                "last_segment_index": last.as_ref().map(|l| l.segment),
+                "last_record_id": last.as_ref().map(|l| l.position),
+                "last_event": env.map(|e| e.event.clone()),
+                "key_id_hex": env.map(|e| hex(&e.key_id)),
+            });
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&value)
+                    .map_err(|e| AppError::io(anyhow!("serializing head JSON: {e}")))?
+            );
+        },
+    }
     Ok(ExitCodeKind::Success)
 }

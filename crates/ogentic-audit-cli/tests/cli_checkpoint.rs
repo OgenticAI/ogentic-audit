@@ -33,6 +33,7 @@ fn cmd() -> Command {
 fn checkpoint_emits_v1_artifact() {
     let key_hex = vector_key_hex("single-record");
     let out = cmd()
+        .args(["--key-source", "env"])
         .env("OGENTIC_AUDIT_KEY_HEX", key_hex)
         .arg("checkpoint")
         .arg(vectors_dir().join("single-record"))
@@ -61,6 +62,7 @@ fn verify_accepts_a_checkpoint_from_the_same_log() {
     let cp_path = tmp.path().join("cp.json");
 
     cmd()
+        .args(["--key-source", "env"])
         .env("OGENTIC_AUDIT_KEY_HEX", &key_hex)
         .arg("checkpoint")
         .arg(vectors_dir().join("single-record"))
@@ -70,6 +72,7 @@ fn verify_accepts_a_checkpoint_from_the_same_log() {
         .success();
 
     cmd()
+        .args(["--key-source", "env"])
         .env("OGENTIC_AUDIT_KEY_HEX", &key_hex)
         .arg("verify")
         .arg(vectors_dir().join("single-record"))
@@ -89,6 +92,7 @@ fn verify_rejects_a_checkpoint_from_another_log() {
     let cp_path = tmp.path().join("cp.json");
 
     cmd()
+        .args(["--key-source", "env"])
         .env("OGENTIC_AUDIT_KEY_HEX", &key_hex)
         .arg("checkpoint")
         .arg(vectors_dir().join("single-record"))
@@ -104,6 +108,7 @@ fn verify_rejects_a_checkpoint_from_another_log() {
     fs::write(&cp_path, serde_json::to_string(&json).unwrap()).unwrap();
 
     cmd()
+        .args(["--key-source", "env"])
         .env("OGENTIC_AUDIT_KEY_HEX", &key_hex)
         .arg("verify")
         .arg(vectors_dir().join("single-record"))
@@ -125,6 +130,7 @@ fn verify_rejects_a_malformed_checkpoint() {
     fs::write(&cp_path, "{\"format\":\"nope\"}").unwrap();
 
     cmd()
+        .args(["--key-source", "env"])
         .env("OGENTIC_AUDIT_KEY_HEX", key_hex)
         .arg("verify")
         .arg(vectors_dir().join("single-record"))
@@ -147,6 +153,7 @@ fn checkpoint_refuses_a_tampered_log() {
     );
 
     cmd()
+        .args(["--key-source", "env"])
         .env("OGENTIC_AUDIT_KEY_HEX", vector_key_hex(name))
         .arg("checkpoint")
         .arg(&dir)
