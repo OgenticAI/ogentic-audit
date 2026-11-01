@@ -59,7 +59,7 @@ jobs:
             arch: aarch64
             runs-on: ubuntu-24.04-arm
             cibw_archs: aarch64
-          # Both macOS arches build on Apple Silicon (macos-14) — arm64
+          # Both macOS arches build on Apple Silicon (macos-15) — arm64
           # natively, x86_64 cross-compiled — replacing the retired macos-13
           # Intel leg. Kept as two single-arch jobs so each carries its own
           # MACOSX_DEPLOYMENT_TARGET: arm64 macOS starts at 11.0, while Rust's
@@ -67,12 +67,12 @@ jobs:
           # default of 10.9 made delocate reject the wheel (OGE-1407).
           - os: macos
             arch: arm64
-            runs-on: macos-14
+            runs-on: macos-15
             cibw_archs: arm64
             macosx_target: "11.0"
           - os: macos
             arch: x86_64
-            runs-on: macos-14
+            runs-on: macos-15
             cibw_archs: x86_64
             macosx_target: "10.12"
           - os: windows

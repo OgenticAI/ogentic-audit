@@ -57,7 +57,8 @@ strip = true
 [tool.ruff]
 line-length = 100
 target-version = "py39"
-extend-exclude = ["target", "docs/_build"]
+# .claude/ is the factory kit, synced verbatim from agent-factory: not ours to restyle.
+extend-exclude = ["target", "docs/_build", ".claude"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP", "RUF"]

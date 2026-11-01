@@ -21,7 +21,7 @@ For every PR-ready feature, run these checks:
 4. **Secrets in logs.** Search the diff for likely secret-shaped logs (payment payloads, raw LLM payloads with PII, full request bodies in error logs, API keys). Critical.
 5. **Raw error exposure.** Any catch block that returns the raw exception message to a client. Critical.
 6. **Scope drift.** Files changed that are not in the brief's "Files that will change" list. Important by default; Critical if those files are in another agent's territory.
-7. **Pattern consistency.** Did the implementation follow the patterns called out in `CLAUDE.md` and in the researcher's findings? Inconsistencies are Important.
+7. **Pattern consistency.** Did the implementation follow the patterns called out in `CLAUDE.md`, the rules in `.claude/LEARNED.md`, and the researcher's findings? Inconsistencies are Important. Breaking a `LEARNED.md` rule is a mistake this repo already paid for twice; say which rule.
 8. **Duplicate logic.** Any function that re-implements something that already exists. Important.
 9. **Dependencies added.** Any new `package.json` or `pyproject.toml` dependency that was not declared in the brief. Important.
 10. **AI safety surface (if the feature touches LLMs).** Any user-controlled string that is fed into a prompt without sanitisation. Any agent tool that can be called with user-controlled arguments without an allow-list. Critical or Important based on blast radius.
@@ -30,6 +30,8 @@ For every PR-ready feature, run these checks:
 13. **Migration reachability (deploy path).** If the diff adds or changes a Prisma model, column, or migration, confirm the *effective deploy command actually applies it* — `vercel.json` `buildCommand`, `package.json` `build`, or the CI/deploy workflow must run `prisma migrate deploy` (or `db push`). A new model/column with no apply-on-deploy path is **Critical**: the code 500s in prod with `relation "X" does not exist` even though every test passes. A `migration.sql` that nothing in the pipeline runs does not count.
 14. **Tests actually exercise the behaviour (no false-green).** Cross-check the test-verifier's ✅ list against what each test really does. A criterion marked PASS is **Critical (unverified)** if its test is any of: (a) **existence-only** — asserts only that a file/module/export exists; (b) **assertion-free** — no meaningful assertion, or only tautologies (`expect(true).toBe(true)`); (c) **config-not-behaviour** — asserts a registry/constant/config value instead of the runtime behaviour that consumes it (the OGE-1109 trap: it stayed green while PHI routed through the wrong redaction profile); (d) **boundary-mock** — mocks the persistence/integration layer the criterion is about (e.g. `vi.mock('@/lib/prisma')` for a "persists a row" criterion). Cite the test file:line and name which anti-pattern. These are the OGE-1129 / OGE-1109 failure modes — a passing test suite that verifies nothing.
 15. **Code structure (Clean Code).** Per the standard in `build-with-tests` §10: functions do one thing and are reasonably small; names reveal intent; no duplicated or dead/commented-out logic; comments justified (explain *why*); errors are raised/typed, not `null`/sentinel returns; arguments ≤ 3 (or a parameter object). Flag egregious violations as **Important** — escalate to **Critical** only when a violation breaks a pattern named in `CLAUDE.md` or hides a correctness/security bug.
+16. **Silent failures.** Any error the new code swallows instead of surfacing: an empty `catch`/`except`, `.catch(() => [])` or `.catch(() => {})`, `except Exception: pass`, a "best-effort" path that logs and carries on, or a fallback default that hides the failure from the caller (an empty list standing in for "the query failed"). **Important**; **Critical** when the swallowed error is on a write, a state transition, an audit event or a release gate — that is how a missing column stayed invisible in production on 2026-09-01. A deliberate best-effort path is fine when the code says why and the failure is still counted or logged at error level.
+17. **Red-first evidence.** Every builder summary carries a `RED:` line per new behaviour — the failing assertion the test produced before the code existed (`build-with-tests` §2). A behaviour whose test never failed has not been shown to test anything. Missing for a story criterion → **Important**; missing and the test also matches a point-14 anti-pattern → **Critical**.
 
 # Hard boundaries — cannot touch
 
@@ -70,7 +72,7 @@ If CLEAN:
 
 # Self-check before finishing
 
-- Did I check every item on the 15-point list?
+- Did I check every item on the 17-point list?
 - Does every finding cite a file path and line number?
 - Am I reporting honestly? No inflated severities, no padded counts.
 

@@ -19,8 +19,9 @@ Either way, **do not let this file silently overwrite anything you wrote.** It i
 
 ## §F1 — Where the factory lives in this repo
 
-- Agent definitions: `.claude/agents/` (12 core + 3 extensions: library-publisher, rust-builder, compliance-reviewer)
-- Orchestrator skills: `.claude/skills/feature-factory/`, `build-with-tests/`, `repo-bootstrap/`, `multi-repo-coordinator/`, `project-planner/`, `project-factory/`, `repo-create/`, `fleet-onboarding/`, `new-from-knowledge/`
+- Agent definitions: `.claude/agents/` (one file per role; `feature-factory` §2 says which run when)
+- Orchestrator skills: `.claude/skills/feature-factory/`, `build-with-tests/`, `repo-bootstrap/`, `multi-repo-coordinator/`, `project-planner/`, `project-factory/`, `repo-create/`, `fleet-onboarding/`, `new-from-knowledge/`, `factory-learn/`
+- What runs learned: `.claude/learnings/<TICKET-ID>.md` (candidates, one file per ticket) and `.claude/LEARNED.md` (promoted rules) — see §F4
 - Hooks: `.claude/hooks/pre-commit`, `.claude/hooks/pre-push`
 - Multi-repo registry: `.claude/registry/repos.yml`
 - Linear integration contract: `.claude/LINEAR-INTEGRATION.md` — every agent links here.
@@ -37,7 +38,7 @@ The factory grounds every run in a Linear ticket. No exceptions. These are the O
 **Linear team key:** `OGE`
 **Primary project for this repo:** TODO — fill in. Match the `linear_project` field for this repo in `.claude/registry/repos.yml`.
 
-**Linear identity (factory bot).** Every `[factory:*]` **comment** MUST be authored by the factory bot (`factory-bot@ogenticai.com` / "OgenticAI Factory Bot"), never a human — comments are the audit trail. Reads and ticket state/labels may run through the operator's human Linear connector (acceptable attribution). Claude caps Linear connectors at two (both used by human workspaces), so the bot has **no connector** — it posts comments via the **Linear API** using `LINEAR_FACTORY_TOKEN` (its personal API key), out-of-band from the MCP connector, exactly like OgenticAI Reviewer's `LINEAR_API_TOKEN`. This is the Linear analogue of the §F5 git-identity gate. `setup-check` (check #6) confirms `LINEAR_FACTORY_TOKEN` is set and resolves to the bot — a hard gate (skip with `OGENTICAI_BYPASS_IDENTITY`). Runbook: `docs/LINEAR-BOT-SETUP.md`. Full contract: `LINEAR-INTEGRATION.md` §14.
+**Linear identity (factory agent).** Every `[factory:*]` **comment** MUST be authored by the factory's Linear agent (the "OgenticAI Factory Bot" OAuth app, installed from Mission Control), never a human and never a personal account — comments are the audit trail. Every Linear call — comments, reads, ticket state, labels, sub-issues — now routes **through Mission Control**, which holds the app's OAuth credential and acts as the app (`actor=app`); the **box holds no Linear token**, only the box→MC bearer (`FACTORY_DASHBOARD_SECRET`, or `TWIN_DASHBOARD_SECRET` as fallback). Reads go through MC's read-only relay (`/api/linear/factory-gql`, mutations rejected) and writes through typed MC endpoints. This is the Linear analogue of the §F5 git-identity gate. `setup-check` (check #6) confirms the box→MC secret is set and the round-trip's `viewer` resolves to the app user — a hard gate (skip with `OGENTICAI_BYPASS_IDENTITY`). The former on-box token paths (`factory-bot@ogenticai.com` personal key, then a delivered `LINEAR_AGENT_TOKEN`) were retired 2026-09-15 (OGE-2796) so the bot's Linear seat and Google account can be removed; any future agent that genuinely needs a mailbox lives on **@ogents.ai**, never gmail. Runbook: `docs/LINEAR-BOT-SETUP.md`. Full contract: `LINEAR-INTEGRATION.md` §14.
 
 **State machine.** The factory walks tickets through:
 ```
@@ -62,7 +63,8 @@ If your team uses different state names, list the mapping here. The orchestrator
 | `validator-blocked` | Validator on Critical | Validator when next pass is Clean |
 | `security-blocked` | Security Reviewer on Critical | Security Reviewer when Clean |
 | `compliance-blocked` | Compliance Reviewer on Critical | Compliance Reviewer when Clean |
-| `from-validator` / `from-security` / `from-compliance` | applied to sub-issues from findings | manual |
+| `database-blocked` | Database Reviewer on Critical | Database Reviewer when Clean |
+| `from-validator` / `from-security` / `from-compliance` / `from-database` | applied to sub-issues from findings | manual |
 | `deferred-question` | applied to sub-issues from open questions | manual |
 | `cross-repo` | Spec Writer when brief spans repos | manual |
 | `factory-degraded` | Orchestrator when Linear MCP partial | Orchestrator on reconnect |
@@ -99,13 +101,21 @@ SUMMARY
 - Open questions for the next agent / human: ...
 ```
 
-The "New rules" line is how your `CLAUDE.md` grows over time. Whenever an agent had to guess, surface the assumption. Every guess that wasn't perfectly right earns a new rule in your `CLAUDE.md` next session.
+The "New rules" line is how the factory learns. Whenever an agent had to guess, surface the assumption. The orchestrator writes these lines to `.claude/learnings/<TICKET-ID>.md` at the end of each run (`feature-factory` §5a), and the `factory-learn` skill promotes a rule once two tickets have taught it (§F4).
 
 ---
 
 ## §F4 — What the factory will NOT touch in your existing CLAUDE.md
 
-Hard rule: the factory **never** edits `CLAUDE.md`. It surfaces rule-additions in its sign-off summaries. You decide whether to add them.
+Hard rule: the factory **never** edits `CLAUDE.md`. What it learns goes somewhere else:
+
+1. Each run writes its lessons to `.claude/learnings/<TICKET-ID>.md`. Nothing loads these files, so a lesson changes nothing on its own.
+2. When two or more tickets have taught the same rule, the `factory-learn` skill promotes it into `.claude/LEARNED.md`, in a PR you approve. Rules true of every repo go upstream to agent-factory instead.
+3. `LEARNED.md` loads here, so its rules reach every session that imports this partial:
+
+@./LEARNED.md
+
+`LEARNED.md` is this repo's own file. The kit never ships or overwrites it, and you may edit or delete any rule in it.
 
 Sections 1–8 (or whatever your existing sections are) are yours. The factory reads them; it does not write them.
 
@@ -208,7 +218,7 @@ When the kit on `OgenticAI/agent-factory` changes (a new agent role, a tightened
   - new file → copied in (additive)
   - file unchanged since the last sync → overwritten with the new kit version
   - file hand-edited locally → **left alone**; the divergence is listed in the sync PR body
-  - file path in `opt_out:` → skipped entirely
+  - file path in `opt_out:`, or under a directory listed there → skipped entirely
 - Purely-additive sync PRs with no preserved local edits get the `factory-sync-auto-merge` label and merge themselves once CI is green. Anything else waits for human review.
 
 **Files the propagator never touches**
@@ -227,6 +237,15 @@ opt_out:
 ```
 
 After that, propagation will never overwrite the file in this repo.
+
+To keep a whole directory out, list the directory. It also covers files the kit adds to that directory later, which a list of file paths cannot:
+
+```yaml
+opt_out:
+  - .claude/agents/
+```
+
+An entry that matches no kit file is reported in the propagation run's summary, because a misspelt entry protects nothing.
 
 **Forcing a re-sync**
 
@@ -277,11 +296,40 @@ The factory can consult **org-knowledge** — the org's unified search across Sl
 
 Beyond the factory mechanics above, every OgenticAI agent shares a **core canon** — operating principles, tiered autonomy, identity/posting rules, close-the-loop discipline, and (**§12**) connector + memory parity. It ships in the kit at `.claude/core-canon.md` and is imported here so it loads wherever this partial is imported:
 
-@./.claude/core-canon.md
+@./core-canon.md
+
+An `@` import resolves relative to the file that contains it, and an import that matches no file is dropped without a warning. This line used to read `@./.claude/core-canon.md`, which from inside `.claude/` names `.claude/.claude/core-canon.md`, so the canon never loaded through this partial. If you pasted this partial into `CLAUDE.md` instead of importing it, write that line, and the `LEARNED.md` import in §F4, with the `.claude/` prefix.
 
 **§12 — you have the tools.** You have the **same connector + memory access as Otto and Pascal** (Slack, Linear, Gmail, Drive, Notion, and a persistent project memory). Never tell the operator "I can't talk on Slack," "I have no listener," or "I have no access" — a tool that seems missing is a resolution step, not a dead end. Walk `.claude/runbooks/agent-access-resolution.md` top to bottom (in-session MCP tool → your own Slack bot token → the `claude -p` bridge → browser → escalate with evidence) before reporting any access gap.
 
 **Source of truth.** The canon is authored in `internal-ops-agent/docs/core-canon.md` (owner: Otto). The kit vendors a copy so the whole fleet stays in parity; change it at the source and re-vendor into the kit — do not hand-edit the vendored copy per repo (the sync preserves local edits, which silently drifts the fleet out of parity).
+
+---
+
+## §F9 — Repository settings: CI is the merge gate
+
+Every OgenticAI repo the factory works in carries the same settings. They are applied by `.claude/scripts/harden-repo.py`, which `repo-create` runs for new repos and which backfilled the existing ones (OGE-2818). One script, so a new repo and an old one cannot drift apart.
+
+**CI is the merge gate on agent repos.** A PR merges when its required status checks pass. That is the whole gate.
+
+**Required approving reviews stay at 0.** Agents author their PRs as `den-ogenticai`, and GitHub does not let an account approve its own pull request. A repo that requires one approval therefore blocks every agent PR permanently, however green its CI. If a repo needs human review on some changes, put CODEOWNERS on those paths. A blanket approval count blocks the agents along with everyone else.
+
+The settings, per repo:
+
+| Setting | Value | Why |
+| -- | -- | -- |
+| `allow_auto_merge` | `true` | `gh pr merge --auto` needs it. Without it an agent PR waits for a person who is not coming |
+| `delete_branch_on_merge` | `true` | Merged branches do not pile up |
+| Branch protection on the default branch | at least one required status check | Protection that requires nothing gates nothing, and reads as configured |
+| Required check names | discovered, never hardcoded | Only a GitHub Actions check that ran on every recent merged PR. Never another app's check, and never the OgenticAI Reviewer, which is advisory and depends on AI credit |
+| Required approving reviews | `0` | See above |
+
+Two things `harden-repo.py` refuses to do, and every agent should refuse them too:
+
+1. **Create protection that requires nothing.** A repo with no CI needs CI first. Report it; do not paper over it with an empty rule.
+2. **Require a check that does not run on every PR.** A check behind a `paths:` filter, or one that skips on some PRs, strands each PR it does not run on.
+
+**Secret scanning, push protection and Dependabot security updates are organisation-level defaults**, set once for every current and future repo rather than per repo. Do not enable them repo by repo; that is the pattern OGE-2818 exists to end. On private repositories secret scanning is a paid add-on, so enabling it is an organisation spending decision that sits outside the factory.
 
 ---
 

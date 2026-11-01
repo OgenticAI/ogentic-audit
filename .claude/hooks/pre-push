@@ -83,10 +83,22 @@ if [[ "${OGENTICAI_BYPASS_IDENTITY:-0}" != "1" ]]; then
 fi
 
 
+# Language checks run against this repo's own project. The kit's files under
+# .claude/ are not part of it, and without a package.json or pyproject.toml
+# there is no project for pnpm or uv to check.
+project_files="$(echo "$changed_files" | grep -v '^\.claude/' || true)"
 has_ts="false"
 has_py="false"
-echo "$changed_files" | grep -E '\.(ts|tsx|js|jsx|mjs|cjs)$' >/dev/null && has_ts="true" || true
-echo "$changed_files" | grep -E '\.py$' >/dev/null && has_py="true" || true
+echo "$project_files" | grep -E '\.(ts|tsx|js|jsx|mjs|cjs)$' >/dev/null && has_ts="true" || true
+echo "$project_files" | grep -E '\.py$' >/dev/null && has_py="true" || true
+if [[ "$has_ts" == "true" && ! -f package.json ]]; then
+  echo "⚠️  TS checks skipped (no package.json)"
+  has_ts="false"
+fi
+if [[ "$has_py" == "true" && ! -f pyproject.toml ]]; then
+  echo "⚠️  Python checks skipped (no pyproject.toml)"
+  has_py="false"
+fi
 
 run_or_skip () {
   local label="$1"; shift

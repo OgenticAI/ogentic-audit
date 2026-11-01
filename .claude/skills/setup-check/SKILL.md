@@ -62,23 +62,29 @@ Require ≥ `2.40.0`. Older versions parse `gh auth status` differently and the 
 - For `feature-factory`: must not be `main`. If on `main`, halt and ask which Linear branch to checkout (use Linear's auto-generated branch name).
 - For `repo-bootstrap` / `repo-create` / `fleet-onboarding`: any branch is fine.
 
-### 6. Factory-bot Linear token
+### 6. Box→Mission Control Linear path
 
-`[factory:*]` comments must be authored by the factory bot, not a human. Claude caps Linear connectors at two (both used by human workspaces), so the bot has **no connector** — it posts comments via the Linear API using `LINEAR_FACTORY_TOKEN` (its personal API key). See `LINEAR-INTEGRATION.md` §14.
+The box holds **no Linear token** (OGE-2796). Every Linear call routes through Mission
+Control, which acts as the "OgenticAI Factory Bot" OAuth app — so `[factory:*]` comments are
+authored by the app, never a human, and the box carries only the box→MC bearer. See
+`LINEAR-INTEGRATION.md` §14.
 
-Confirm the token is present and resolves to the bot:
+Confirm the box→MC secret is present and the round-trip resolves to the app user (MC's read-only
+relay runs `viewer` as the app):
 
 ```
-test -n "$LINEAR_FACTORY_TOKEN" && curl -fsS -X POST https://api.linear.app/graphql \
-  -H "Authorization: $LINEAR_FACTORY_TOKEN" -H "Content-Type: application/json" \
+SECRET="${FACTORY_DASHBOARD_SECRET:-$TWIN_DASHBOARD_SECRET}"
+test -n "$SECRET" && curl -fsS -X POST "${MC_BASE_URL:-https://missioncontrol.ogenticai.com}/api/linear/factory-gql" \
+  -H "Authorization: Bearer $SECRET" -H "Content-Type: application/json" \
   -d '{"query":"{ viewer { email displayName } }"}'
 ```
 
-Expect `viewer.email` = `factory-bot@ogenticai.com` ("OgenticAI Factory Bot").
+Expect `data.viewer.email` ending `@oauthapp.linear.app` with `displayName` = `ogenticaifactorybot`.
 
-If `LINEAR_FACTORY_TOKEN` is unset or resolves to a human, **halt** (unless `OGENTICAI_BYPASS_IDENTITY=1`) — the factory must not post `[factory:*]` comments as a human. Post and stop:
+If neither `FACTORY_DASHBOARD_SECRET` nor `TWIN_DASHBOARD_SECRET` is set, or the viewer is a human
+(email NOT ending `@oauthapp.linear.app`), **halt** (unless `OGENTICAI_BYPASS_IDENTITY=1`). Post and stop:
 
-> ❌ LINEAR_FACTORY_TOKEN missing or not the bot. Set the factory-bot key (`docs/LINEAR-BOT-SETUP.md`) and re-run, or run once with `OGENTICAI_BYPASS_IDENTITY=1` to skip (comments are buffered per LINEAR-INTEGRATION §9 — never posted as a human).
+> ❌ box→MC secret missing, or MC is not authenticated as the app. Set FACTORY_DASHBOARD_SECRET (or TWIN_DASHBOARD_SECRET) per `docs/LINEAR-BOT-SETUP.md`, or run once with `OGENTICAI_BYPASS_IDENTITY=1` (comments are buffered per LINEAR-INTEGRATION §9 — never posted as a human).
 
 This is the Linear analogue of the git-identity gate — see `CLAUDE-FACTORY.md` §F2 and `LINEAR-INTEGRATION.md` §14.
 
@@ -93,7 +99,7 @@ On success, post a single block:
    ssh key:    ~/.ssh/ogenticai_plugins (present)
    gh version: 2.42.1
    branch:     oge-123-invoice-reminders-7d
-   linear:     LINEAR_FACTORY_TOKEN → factory-bot@ogenticai.com   (halts if missing/human — see check 6)
+   linear:     box→MC → OgenticAI Factory Bot (app)   (halts if secret missing/human — see check 6)
 ```
 
 On any failure, post the failing item and the exact one-liner that fixes it, then halt the orchestration. Don't try to fix the operator's machine config yourself — they own that.

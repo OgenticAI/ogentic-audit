@@ -41,63 +41,76 @@ FORBIDDEN_CONTENT=(
   'ghp_[A-Za-z0-9]{36}'                      # GitHub PAT classic
   'github_pat_[A-Za-z0-9_]{50,}'             # GitHub PAT fine-grained
   'xox[baprs]-[A-Za-z0-9-]{10,}'             # Slack token
-  '-----BEGIN (RSA |EC |DSA |OPENSSH |PRIVATE) ?KEY-----'
+  # Any PEM private-key header: PRIVATE KEY (PKCS8), RSA/EC/DSA/OPENSSH/
+  # ENCRYPTED PRIVATE KEY, and PGP PRIVATE KEY BLOCK. Public keys pass.
+  '-----BEGIN ([A-Z0-9]+ )*PRIVATE KEY( BLOCK)?-----'
 )
 
 errors=0
 
-# 1) Check staged file paths
-staged_paths="$(git diff --cached --name-only --diff-filter=ACM || true)"
-if [[ -n "$staged_paths" ]]; then
-  while IFS= read -r path; do
-    # Allowlist: canonical templates (.env.example, .env.local.example, etc.)
-    # short-circuit before forbidden-path checks. Use `--` so patterns that
-    # start with a dash don't get parsed as flags by BSD grep on macOS.
-    allowed=0
-    for pat in "${ALLOWED_PATHS[@]}"; do
-      if echo "$path" | grep -E -q -- "$pat"; then
-        allowed=1
-        break
-      fi
-    done
-    [[ $allowed -eq 1 ]] && continue
+# Every staged file the commit stores content for: added, copied, modified,
+# renamed, or retyped (a symlink turned into a file). Read NUL-separated:
+# git's line output quotes unusual names ("r\303\251sum\303\251.txt"), and a
+# quoted name matched no file, so it went unscanned. A rename or copy record
+# gives its source before its path.
+while IFS= read -r -d '' status; do
+  source=""
+  if [[ "$status" == [RC]* ]]; then
+    IFS= read -r -d '' source
+  fi
+  IFS= read -r -d '' path
 
+  # 1) The path. Allowlist: canonical templates (.env.example,
+  #    .env.local.example, etc.) skip the forbidden-path checks. Use `--` so
+  #    patterns that start with a dash don't get parsed as flags by BSD grep
+  #    on macOS.
+  allowed=0
+  for pat in "${ALLOWED_PATHS[@]}"; do
+    if grep -E -q -- "$pat" <<< "$path"; then
+      allowed=1
+      break
+    fi
+  done
+  if [[ $allowed -eq 0 ]]; then
     for pat in "${FORBIDDEN_PATHS[@]}"; do
-      if echo "$path" | grep -E -q -- "$pat"; then
+      if grep -E -q -- "$pat" <<< "$path"; then
         echo "🚫 BLOCKED: $path matches forbidden path pattern /$pat/"
         errors=$((errors+1))
       fi
     done
-  done <<< "$staged_paths"
-fi
+  fi
 
-# 2) Check staged content for secret-shaped strings
-if [[ -n "$staged_paths" ]]; then
-  while IFS= read -r path; do
-    [[ -f "$path" ]] || continue
-    # Skip binaries
-    if file --mime "$path" | grep -q 'charset=binary'; then
-      continue
+  # 2) The lines it adds, read from the index rather than the working tree.
+  #    - Removed and unchanged lines are not scanned: matching them blocked
+  #      the commit that deletes a leaked key.
+  #    - A rename is diffed with its source, so a move adds only what changed.
+  #    - Binary files have no hunks, so nothing is read from them.
+  #    - --no-color, --no-ext-diff and --no-textconv stop user config from
+  #      reshaping the diff: under color.ui=always no line began with `+`.
+  #    - The lines go into a variable before grep. Piped straight into
+  #      `grep -q` under pipefail, git's SIGPIPE read as "no match" once the
+  #      diff outgrew the pipe buffer.
+  added="$(git --literal-pathspecs diff --cached -U0 -M --no-color --no-ext-diff --no-textconv \
+    -- ${source:+"$source"} "$path" | sed -n '/^@@/,$s/^+//p')"
+  for pat in "${FORBIDDEN_CONTENT[@]}"; do
+    # `--` terminates option parsing so patterns that start with a dash
+    # (e.g. the PEM `-----BEGIN ... KEY-----` regex) aren't mistaken for
+    # flags by BSD grep on macOS.
+    if grep -E -q -- "$pat" <<< "$added"; then
+      echo "🚫 BLOCKED: $path contains content matching /$pat/"
+      errors=$((errors+1))
     fi
-    for pat in "${FORBIDDEN_CONTENT[@]}"; do
-      # `--` terminates option parsing so patterns that start with a dash
-      # (e.g. the PEM `-----BEGIN ... KEY-----` regex) aren't mistaken for
-      # flags by BSD grep on macOS.
-      if git diff --cached "$path" | grep -E -q -- "$pat"; then
-        echo "🚫 BLOCKED: $path contains content matching /$pat/"
-        errors=$((errors+1))
-      fi
-    done
-  done <<< "$staged_paths"
-fi
+  done
+done < <(git diff --cached --name-status -z -M --no-color --diff-filter=ACMRT)
 
 if (( errors > 0 )); then
   echo ""
   echo "Pre-commit blocked your commit because it looks like it contains secrets."
   echo "If this is a false positive (e.g. a fixture or doc), either:"
-  echo "  - move it to .gitleaks-allowlist and explain why in the PR description"
+  echo "  - keep the literal out of the file: a placeholder in docs, a value built"
+  echo "    at run time in tests (as .claude/hooks/tests/test-pre-commit.sh does)"
   echo "  - or override with: SKIP_SECRETS_CHECK=1 git commit ..."
-  echo "    (you will own the consequences)"
+  echo "    and explain why in the PR description (you will own the consequences)"
   if [[ "${SKIP_SECRETS_CHECK:-0}" == "1" ]]; then
     echo "SKIP_SECRETS_CHECK=1 set — allowing commit despite findings."
     exit 0

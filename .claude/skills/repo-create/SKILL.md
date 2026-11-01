@@ -90,6 +90,9 @@ REGISTRY ENTRY (.claude/registry/repos.yml)
 POST-CREATE CHAIN
 1. Initialise repo with README + LICENSE + .gitignore (auto for stack).
 2. Hand off to repo-bootstrap to install the factory.
+3. Branch protection with a required CI check, via harden-repo.py, once
+   CI has run on merged PRs (see §5 step 8). Auto-merge and branch
+   cleanup are on from creation.
 ```
 
 ## 4. Checkpoint — the only human approval
@@ -128,9 +131,12 @@ When invoked by `fleet-onboarding` Phase 3.0 with the parameter `--bulk-approved
    gh api -X PATCH repos/OgenticAI/<name> \
      -F has_wiki=false \
      -F has_projects=false \
-     -F delete_branch_on_merge=true
+     -F delete_branch_on_merge=true \
+     -F allow_auto_merge=true
    ```
    Forking is already false by org policy; do not include it in the PATCH or the call will 422.
+
+   `allow_auto_merge` is what lets an agent PR merge itself once CI is green. Without it, `gh pr merge --auto` fails and the PR waits for a person who is not coming, which is how eleven PRs sat for up to forty days in OGE-2769. Branch protection is **not** set here: a new repo has no CI run yet, so there is no check name to require. Step 8 sets it.
 
 3. **Set topics.**
    ```
@@ -150,7 +156,16 @@ When invoked by `fleet-onboarding` Phase 3.0 with the parameter `--bulk-approved
 
 7. **Hand off to `repo-bootstrap`.** Clone the new repo, run `repo-bootstrap` against it. That skill detects the stack (which will be the just-bootstrapped one), drops the kit, installs hooks, smoke-tests, prints its checklist.
 
-8. **Summary to chat:**
+8. **Apply branch protection once CI has run on real PRs.**
+   ```
+   .claude/scripts/harden-repo.py --repo OgenticAI/<name>           # read the plan
+   .claude/scripts/harden-repo.py --repo OgenticAI/<name> --apply   # then apply it
+   ```
+   This is the same script that backfilled the org, so a new repo and an old one get identical settings from one implementation. It requires only a check that ran on every one of the last few merged PRs, and it refuses to create protection that requires nothing.
+
+   On a brand-new repo it will usually report that there are too few merged PRs to learn from. That is correct, and the step is not skipped: add it to the summary below as outstanding, and run it after the second merged PR. A repo whose protection requires nothing is worse than an unprotected one, because it reads as configured.
+
+9. **Summary to chat:**
 
 ```
 ✅ Repo created: OgenticAI/<name>
@@ -158,6 +173,7 @@ When invoked by `fleet-onboarding` Phase 3.0 with the parameter `--bulk-approved
    Initial commit: <sha>
    Registry PR: <url-of-PR-on-current-repo>
    repo-bootstrap: ran on the new repo, install checklist below ↓
+   Branch protection: <applied, requiring X> | <outstanding: run harden-repo.py after the 2nd merged PR>
 
 <checklist from repo-bootstrap>
 ```
@@ -169,7 +185,7 @@ When invoked by `fleet-onboarding` Phase 3.0 with the parameter `--bulk-approved
 - Operator asked for a setting that conflicts with org policy (e.g. forking on a private) → halt; surface the policy; ask the operator to choose.
 - Registry entry collides with a stale line → halt; ask whether to clean the registry first.
 - Any `gh` call in §5 fails with a non-trivial error → halt; surface the error; do not attempt cleanup automatically (the operator may want the partial state preserved for diagnosis).
-- Linear connectivity lost mid-run → §5 steps 1–7 can complete; defer the registry-PR-Linear-link until Linear is back. The registry PR itself goes through.
+- Linear connectivity lost mid-run → §5 steps 1–8 can complete; defer the registry-PR-Linear-link until Linear is back. The registry PR itself goes through.
 
 ## 7. What this skill is NOT
 
