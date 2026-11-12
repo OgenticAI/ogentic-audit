@@ -26,7 +26,9 @@ tmpdir="$(mktemp -d -t pre-push-test.XXXXXX)"
 trap 'rm -rf "$tmpdir"' EXIT
 
 mkdir "$tmpdir/bin" "$tmpdir/repo"
-printf '#!/bin/sh\necho davidoladeji-ogenticai\n' > "$tmpdir/bin/gh"
+# The account gh reports comes from $tmpdir/gh-user, so a case can change it.
+echo davidoladeji-ogenticai > "$tmpdir/gh-user"
+printf '#!/bin/sh\ncat "%s/gh-user"\n' "$tmpdir" > "$tmpdir/bin/gh"
 for tool in uv pnpm; do
   printf '#!/bin/sh\necho "%s $*" >> "%s/ran"\nexit 1\n' "$tool" "$tmpdir" > "$tmpdir/bin/$tool"
 done
@@ -82,6 +84,31 @@ push_case "project .ts file, no package.json"    skip  src/app.ts
 # With the manifest present, the checks still run.
 push_case "project .py file, with pyproject.toml" check pyproject.toml src/app.py
 push_case "project .ts file, with package.json"   check package.json src/app.ts
+
+# Identity gate: each approved work account may push; a personal one may not.
+# An empty push range runs no checks, so the gate alone decides the result.
+identity_case() {
+  local account="$1" expected="$2" rc=0
+  echo "$account" > "$tmpdir/gh-user"
+  git reset -q --hard "$base"
+  echo "refs/heads/main $base refs/heads/main $base" \
+    | "$HOOK" origin "$tmpdir/remote.git" >/dev/null 2>&1 || rc=$?
+  if [[ "$expected" == "allow" && $rc -eq 0 ]] || [[ "$expected" == "block" && $rc -ne 0 ]]; then
+    echo "PASS  gh account $account ($expected, rc=$rc)"
+    passes=$((passes+1))
+  else
+    echo "FAIL  gh account $account — expected $expected, got rc=$rc"
+    fails=$((fails+1))
+  fi
+}
+
+identity_case davidoladeji-ogenticai allow
+identity_case den-ogenticai          allow
+identity_case denkodes               block
+identity_case davidoladeji           block
+# A name that only contains an approved one is not approved.
+identity_case den-ogenticai-old      block
+echo davidoladeji-ogenticai > "$tmpdir/gh-user"
 
 echo ""
 echo "Results: $passes passed, $fails failed"

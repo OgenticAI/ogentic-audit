@@ -128,15 +128,16 @@ If you want the factory's section to live elsewhere — different filename, diff
 
 ## §F5 — Git identity (OgenticAI org-admin discipline)
 
-Every commit pushed to an OgenticAI repo must be authored by an OgenticAI identity and pushed under the org-admin gh account. Mis-attributed commits break Vercel preview attribution, distort PR contributor signals, and confuse OgenticAI Reviewer's UAT-gating.
+Every commit pushed to an OgenticAI repo must be authored by an OgenticAI identity and pushed under an approved OgenticAI work account. Mis-attributed commits break Vercel preview attribution, distort PR contributor signals, and confuse OgenticAI Reviewer's UAT-gating.
 
-**Canonical gh CLI user:**
+**Approved gh CLI users:**
 
 ```
-davidoladeji-ogenticai    # has admin:org on OgenticAI
+davidoladeji-ogenticai    # David, has admin:org on OgenticAI
+den-ogenticai             # Dennis, and the agents that push as him
 ```
 
-`davidoladeji` (the personal account) **must not** be the active gh user for any factory push.
+Personal accounts (`davidoladeji`, `denkodes`) **must not** be the active gh user for any factory push.
 
 **Canonical commit author email:**
 
@@ -155,7 +156,7 @@ ssh-add --apple-use-keychain ~/.ssh/ogenticai_plugins  # macOS
 
 **Enforcement** — the kit's `.claude/hooks/pre-push` blocks any push where:
 
-1. `gh auth` is active as anything other than `davidoladeji-ogenticai`, **or**
+1. `gh auth` is active as anything other than an approved account above, **or**
 2. any commit in the push range has an author email outside the approved set.
 
 To bypass for a single push (use sparingly, explain in the PR description):
