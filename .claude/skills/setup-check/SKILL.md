@@ -15,17 +15,17 @@ Verify the local environment is correct before any factory work starts. Cheap to
 
 ## What to check
 
-### 1. gh CLI is authenticated as `davidoladeji-ogenticai`
+### 1. gh CLI is authenticated as an OgenticAI work account
 
 ```
 gh api user --jq .login
 ```
 
-Expect: `davidoladeji-ogenticai`. If anything else (including `davidoladeji`), halt and tell the operator:
+Expect: `davidoladeji-ogenticai` or `den-ogenticai` (the list the kit's `pre-push` hook approves). If anything else (including the personal `davidoladeji` or `denkodes`), halt and tell the operator:
 
 > Your gh CLI is logged in as `<other>`. Switch with:
 > ```
-> gh auth switch -u davidoladeji-ogenticai
+> gh auth switch -u <your work account>
 > ```
 
 ### 2. Global git author email is an OgenticAI identity

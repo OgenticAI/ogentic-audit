@@ -4,13 +4,13 @@
 manifest_version: 1
 factory_source: "https://github.com/OgenticAI/agent-factory"
 
-synced_kit_sha: "62127147c0dd6a6fb6deb4148d76a958ce5e84a1"
-synced_kit_hash: "5bdfc8808b3640223516e60ce8653ddb8fe6047adc918cf34618ae55ff021e5b"
-synced_at: "2026-10-31T19:14:51.020233+00:00"
+synced_kit_sha: "1642917fa0c36e14e67395794e51678f3190bccc"
+synced_kit_hash: "8fa7d3215dea33db8695f63ce924b74d4d7d8c0cf7c8e14ddee00adf797c8a40"
+synced_at: "2026-11-12T01:23:23.168106+00:00"
 
 files:
   - path: .claude/CLAUDE-FACTORY.md
-    content_sha256: de326c64a5f94546c4c6ed5435a8297e9af3cfeccdf2de56a276b6cc5026894a
+    content_sha256: 2831dea469d3b0178a4304a53f99f06f2c881ee5b94f6ad3c1dfd1334f02097d
   - path: .claude/LINEAR-INTEGRATION.md
     content_sha256: 443a73a1755c0287baea978a0fe7718c874fa431198a017951ad6322712a4f70
   - path: .claude/SKILLS.md
@@ -64,11 +64,11 @@ files:
   - path: .claude/hooks/pre-commit
     content_sha256: 2705384c2fee3a491f3b88c7ee3364b56a213d4336e9f579ad6b58cfca54913f
   - path: .claude/hooks/pre-push
-    content_sha256: 088b9efc20c4b6752ae41ac832bb155fbb20beddebdaf3d33b62c847bb842838
+    content_sha256: b748327a5873755ca4d4a9436e2a67f54e49bc6fb9e84cf436c4f773a4684ca0
   - path: .claude/hooks/tests/test-pre-commit.sh
     content_sha256: c04d7a6b2bb17b94a0c9d43c1c1cbfbfae07023914bbc9f341ba3dd9223bc9f6
   - path: .claude/hooks/tests/test-pre-push.sh
-    content_sha256: 65846ce994c2e647141fb570207a3087a263440564f11cbec959199461cb6b64
+    content_sha256: d154466550ce8437b739ee81c4b28f0cae99fc331e687afef36af7a083eef152
   - path: .claude/registry/repos.yml.template
     content_sha256: af07cd3d9e0fc45469325d6426cd3757eaa4df8052d50d5aef128b2afe81c951
   - path: .claude/runbooks/agent-access-resolution.md
@@ -102,7 +102,7 @@ files:
   - path: .claude/skills/repo-create/SKILL.md
     content_sha256: e39f5109e84a1bd692f77d8fac0c1d8fd34cba8427c5382cd451935ceee73637
   - path: .claude/skills/setup-check/SKILL.md
-    content_sha256: d0a3cc273d504d42b844fd93b3a2e675afae39ef4fb2719938423d81b139d5bc
+    content_sha256: 97c8509dc6c98088c714f0d7f8bdce785047680824b785a4ea4a826373796d79
 
 opt_out:
   # (none)
